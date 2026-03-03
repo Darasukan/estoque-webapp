@@ -134,6 +134,9 @@ function confirmEdit() {
   const trimmedGroup = editForm.value.group.trim()
   if (!trimmedName) { error('Nome é obrigatório.'); return }
   if (!trimmedGroup) { error('Grupo é obrigatório.'); return }
+  const minStockNum = Number(editForm.value.minStock)
+  if (!isFinite(minStockNum) || isNaN(minStockNum)) { error('Estoque mínimo deve ser um número válido.'); return }
+  if (minStockNum < 0) { error('Estoque mínimo não pode ser negativo.'); return }
 
   editItem(editingId.value, {
     name: trimmedName,

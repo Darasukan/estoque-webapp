@@ -1,0 +1,1072 @@
+<script setup>
+import { ref, computed, watch, nextTick } from 'vue'
+import { useItems } from '../composables/useItems.js'
+import { useMovements } from '../composables/useMovements.js'
+import { useDestinations } from '../composables/useDestinations.js'
+import { usePeople } from '../composables/usePeople.js'
+import { useToast } from '../composables/useToast.js'
+
+const { items, variations, getVariationsForItem } = useItems()
+const { movements, addMovement, deleteMovement } = useMovements()
+const { activeDestinations, getDestinationName } = useDestinations()
+const { activePeople } = usePeople()
+const { success, error } = useToast()
+
+// ===== Sub-tabs =====
+const activeSubTab = ref('entrada') // 'entrada' | 'saida' | 'historico'
+
+function switchSubTab(tab) {
+  activeSubTab.value = tab
+  resetFlow()
+}
+
+// ===== Step flow (shared for Entrada + Saída) =====
+const step = ref(1) // 1: search item | 2: pick variation | 3: fill form
+const itemSearch = ref('')
+const selectedItem = ref(null)
+const selectedVariation = ref(null)
+const searchInputEl = ref(null)
+const qtyInputEl = ref(null)
+
+const form = ref({
+  qty: '',
+  supplier: '',
+  requestedBy: '',
+  destination: '',
+  docRef: '',
+  note: '',
+})
+
+const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
+const confirmPending = ref(false)
+
+function selectDocType(v) {
+  docType.value = v
+  if (v === 'sem') form.value.docRef = ''
+}
+
+const personDropdownOpen = ref(false)
+const destDropdownOpen = ref(false)
+const docDropdownOpen = ref(false)
+
+function resetFlow() {
+  step.value = 1
+  itemSearch.value = ''
+  selectedItem.value = null
+  selectedVariation.value = null
+  form.value = { qty: '', supplier: '', requestedBy: '', destination: '', docRef: '', note: '' }
+  personSelectVal.value = ''
+  destSelectVal.value = ''
+  docType.value = 'sem'
+  confirmPending.value = false
+  personDropdownOpen.value = false
+  destDropdownOpen.value = false
+  docDropdownOpen.value = false
+  nextTick(() => searchInputEl.value?.focus())
+}
+
+watch(activeSubTab, () => resetFlow())
+
+// ===== Item search (step 1) =====
+const searchNorm = computed(() => itemSearch.value.trim().toLowerCase())
+
+const itemResults = computed(() => {
+  const q = searchNorm.value
+  return items.value.filter(item => {
+    if (!q) return true
+    return (
+      item.name.toLowerCase().includes(q) ||
+      (item.group || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q) ||
+      (item.subcategory || '').toLowerCase().includes(q)
+    )
+  }).slice(0, 50)
+})
+
+function selectItem(item) {
+  selectedItem.value = item
+  step.value = 2
+}
+
+function backToStep1() {
+  selectedItem.value = null
+  selectedVariation.value = null
+  step.value = 1
+  nextTick(() => searchInputEl.value?.focus())
+}
+
+// ===== Variation picker (step 2) =====
+const itemVariations = computed(() =>
+  selectedItem.value ? getVariationsForItem(selectedItem.value.id) : []
+)
+
+function selectVariation(v) {
+  selectedVariation.value = v
+  step.value = 3
+  nextTick(() => qtyInputEl.value?.focus())
+}
+
+function backToStep2() {
+  selectedVariation.value = null
+  step.value = 2
+}
+
+// ===== Destination + People quick-pick helpers =====
+
+// Destinations linked to the selected variation
+const linkedDestinationIds = computed(() =>
+  selectedVariation.value?.destinations || []
+)
+const linkedDestinations = computed(() =>
+  linkedDestinationIds.value
+    .map(id => activeDestinations.value.find(d => d.id === id))
+    .filter(Boolean)
+)
+const otherDestinations = computed(() =>
+  activeDestinations.value.filter(d => !linkedDestinationIds.value.includes(d.id))
+)
+
+// Select-box controller refs ('__outro__' = free-text mode)
+const personSelectVal = ref('')
+const destSelectVal = ref('')
+
+watch(personSelectVal, (v) => {
+  if (v !== '__outro__') form.value.requestedBy = v
+  else form.value.requestedBy = ''
+})
+watch(destSelectVal, (v) => {
+  if (v !== '__outro__') form.value.destination = v
+  else form.value.destination = ''
+})
+
+// ===== Form: step 3 validation =====
+const parsedQty = computed(() => {
+  const n = Number(form.value.qty)
+  return isFinite(n) && n > 0 ? n : null
+})
+
+const saidaExceedsStock = computed(() =>
+  activeSubTab.value === 'saida' &&
+  parsedQty.value !== null &&
+  selectedVariation.value !== null &&
+  parsedQty.value > selectedVariation.value.stock
+)
+
+const canConfirm = computed(() => {
+  if (!parsedQty.value) return false
+  if (saidaExceedsStock.value) return false
+  if (activeSubTab.value === 'saida') {
+    return form.value.requestedBy.trim().length > 0 && form.value.destination.trim().length > 0
+  }
+  return true
+})
+
+function confirm() {
+  if (!canConfirm.value || !selectedVariation.value || !selectedItem.value) return
+  // Find the live reactive variation object in the store
+  const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
+  if (!liveVar) { error('Variação não encontrada.'); return }
+
+  addMovement(
+    activeSubTab.value,
+    liveVar,
+    selectedItem.value,
+    parsedQty.value,
+    {
+      supplier: form.value.supplier,
+      requestedBy: form.value.requestedBy,
+      destination: form.value.destination,
+      docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
+        ? `${docType.value === 'nf' ? 'NF' : 'PC'} ${form.value.docRef.trim()}`
+        : '',
+      note: form.value.note,
+    }
+  )
+
+  const typeLabel = activeSubTab.value === 'entrada' ? 'Entrada' : 'Saída'
+  success(`${typeLabel} registrada com sucesso.`)
+  resetFlow()
+}
+
+// ===== Helpers =====
+function hierarchyLabel(item) {
+  return [item.group, item.category, item.subcategory].filter(Boolean).join(' › ')
+}
+
+function variationLabel(v, item) {
+  const parts = []
+  for (const attr of (item?.attributes || [])) {
+    if (v.values?.[attr]) parts.push(`${attr}: ${v.values[attr]}`)
+  }
+  for (const [k, val] of Object.entries(v.extras || {})) {
+    if (val) parts.push(`${k}: ${val}`)
+  }
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+function formatDate(iso) {
+  const d = new Date(iso)
+  const pad = n => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// ===== Histórico =====
+const histSearch = ref('')
+const histType = ref('all')   // 'all' | 'entrada' | 'saida'
+const histDateFrom = ref('')
+const histDateTo = ref('')
+
+const filteredMovements = computed(() => {
+  const q = histSearch.value.trim().toLowerCase()
+  return movements.value.filter(m => {
+    if (histType.value !== 'all' && m.type !== histType.value) return false
+    if (q) {
+      const haystack = [
+        m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
+        m.supplier, m.requestedBy, m.destination, m.docRef, m.note,
+        ...Object.values(m.variationValues || {}),
+        ...Object.values(m.variationExtras || {}),
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(q)) return false
+    }
+    if (histDateFrom.value) {
+      if (new Date(m.date) < new Date(histDateFrom.value)) return false
+    }
+    if (histDateTo.value) {
+      // include all of the "to" day
+      const to = new Date(histDateTo.value)
+      to.setDate(to.getDate() + 1)
+      if (new Date(m.date) >= to) return false
+    }
+    return true
+  })
+})
+
+const histTotals = computed(() => {
+  let entradas = 0, saidas = 0
+  for (const m of filteredMovements.value) {
+    if (m.type === 'entrada') entradas += m.qty
+    else saidas += m.qty
+  }
+  return { entradas, saidas }
+})
+
+// Delete with inline confirm
+const deletePendingId = ref(null)
+
+function requestDelete(id) { deletePendingId.value = id }
+function cancelDelete() { deletePendingId.value = null }
+function confirmDelete(id) {
+  deleteMovement(id)
+  deletePendingId.value = null
+  success('Movimentação removida do histórico.')
+}
+</script>
+
+<template>
+  <div class="space-y-4">
+
+    <!-- Header -->
+    <div>
+      <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Movimentações</h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Registre entradas e saídas de estoque</p>
+    </div>
+
+    <!-- Sub-tabs -->
+    <div class="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
+      <button
+        v-for="tab in [
+          { id: 'entrada',   label: 'Entrada',   icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6' },
+          { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
+          { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+        ]"
+        :key="tab.id"
+        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative"
+        :class="activeSubTab === tab.id
+          ? 'text-primary-700 dark:text-primary-400'
+          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        @click="switchSubTab(tab.id)"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
+        </svg>
+        {{ tab.label }}
+        <span
+          v-if="activeSubTab === tab.id"
+          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
+        ></span>
+      </button>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- ENTRADA / SAÍDA — step flow                             -->
+    <!-- ======================================================= -->
+    <template v-if="activeSubTab !== 'historico'">
+
+      <!-- Step indicator -->
+      <div class="flex items-center gap-2">
+        <div
+          v-for="(label, i) in ['Buscar item', 'Escolher variação', activeSubTab === 'entrada' ? 'Registrar entrada' : 'Registrar saída']"
+          :key="i"
+          class="flex items-center gap-2"
+        >
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
+              :class="step === i + 1
+                ? 'bg-primary-600 dark:bg-primary-500 text-white'
+                : step > i + 1
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+            >
+              <svg v-if="step > i + 1" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+              <span v-else>{{ i + 1 }}</span>
+            </span>
+            <span
+              class="text-xs font-medium hidden sm:inline transition-colors"
+              :class="step === i + 1 ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'"
+            >{{ label }}</span>
+          </div>
+          <svg v-if="i < 2" class="w-4 h-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- ===== STEP 1: Search item ===== -->
+      <div v-if="step === 1" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+
+        <!-- Search bar -->
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div class="relative max-w-md">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              ref="searchInputEl"
+              v-model="itemSearch"
+              type="text"
+              placeholder="Buscar por nome, grupo, categoria..."
+              class="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            />
+            <button
+              v-if="itemSearch"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              @click="itemSearch = ''"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- No items in DB -->
+        <div v-if="items.length === 0" class="py-16 text-center text-gray-400 dark:text-gray-500 text-sm">
+          Nenhum item cadastrado ainda.
+        </div>
+
+        <!-- No results -->
+        <div v-else-if="itemResults.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
+          Nenhum item encontrado para "<span class="italic">{{ itemSearch }}</span>".
+        </div>
+
+        <!-- Results list -->
+        <div v-else class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 max-h-[420px] overflow-y-auto">
+          <button
+            v-for="item in itemResults"
+            :key="item.id"
+            class="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center justify-between gap-4 group"
+            @click="selectItem(item)"
+          >
+            <div class="min-w-0">
+              <p class="font-medium text-gray-800 dark:text-gray-100 text-sm leading-snug group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">{{ item.name }}</p>
+              <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ hierarchyLabel(item) }}</p>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0">
+              <div class="text-right">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ getVariationsForItem(item.id).length }} variações</p>
+                <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ item.unit }}</p>
+              </div>
+              <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-primary-500 transition-colors" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== STEP 2: Pick variation ===== -->
+      <div v-else-if="step === 2" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+
+        <!-- Header: back + selected item name -->
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <button
+            class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+            @click="backToStep1"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+          <div>
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ selectedItem?.name }}</p>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ hierarchyLabel(selectedItem) }}</p>
+          </div>
+          <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">Escolha uma variação</span>
+        </div>
+
+        <!-- No variations -->
+        <div v-if="itemVariations.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm bg-white dark:bg-gray-900">
+          Este item não tem variações cadastradas.
+        </div>
+
+        <!-- Variation cards grid -->
+        <div v-else class="bg-white dark:bg-gray-900 p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <button
+            v-for="v in itemVariations"
+            :key="v.id"
+            class="text-left p-3 rounded-xl border-2 transition-all hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm group"
+            :class="activeSubTab === 'saida' && v.stock === 0
+              ? 'border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
+              : 'border-gray-200 dark:border-gray-700 cursor-pointer'"
+            :disabled="activeSubTab === 'saida' && v.stock === 0"
+            @click="selectVariation(v)"
+          >
+            <!-- Attribute pills -->
+            <div class="flex flex-wrap gap-1 mb-2">
+              <template v-for="attr in (selectedItem?.attributes || [])" :key="attr">
+                <span
+                  v-if="v.values?.[attr]"
+                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-100 dark:border-primary-800"
+                >
+                  <span class="opacity-60 font-medium">{{ attr }}:</span>{{ v.values[attr] }}
+                </span>
+              </template>
+              <template v-for="(val, key) in (v.extras || {})" :key="'x'+key">
+                <span
+                  v-if="val"
+                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800"
+                >
+                  <span class="opacity-60 font-medium">{{ key }}:</span>{{ val }}
+                </span>
+              </template>
+              <span v-if="!Object.values(v.values||{}).some(Boolean) && !Object.values(v.extras||{}).some(Boolean)" class="text-xs text-gray-400 dark:text-gray-500">Sem atributos</span>
+            </div>
+
+            <!-- Stock badge -->
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-xs text-gray-500 dark:text-gray-400">Estoque atual</span>
+              <span
+                class="text-sm font-bold"
+                :class="v.stock === 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'"
+              >{{ v.stock }} <span class="font-normal text-xs">{{ selectedItem?.unit }}</span></span>
+            </div>
+
+            <!-- Zero badge -->
+            <div v-if="v.stock === 0 && activeSubTab === 'saida'" class="mt-1.5">
+              <span class="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">Sem estoque</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== STEP 3: Form ===== -->
+      <div v-else-if="step === 3" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+
+        <!-- Header -->
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <button
+            class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+            @click="backToStep2"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ variationLabel(selectedVariation, selectedItem) }}</p>
+          </div>
+          <!-- Estoque atual badge -->
+          <div class="flex-shrink-0 text-right">
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">Estoque</p>
+            <p class="text-sm font-bold text-gray-700 dark:text-gray-200">{{ selectedVariation?.stock }} <span class="font-normal text-xs">{{ selectedItem?.unit }}</span></p>
+          </div>
+        </div>
+
+        <!-- Form body -->
+        <div class="bg-white dark:bg-gray-900 p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 max-w-2xl">
+
+          <!-- Quantidade -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">
+              Quantidade <span class="text-red-500">*</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                ref="qtyInputEl"
+                v-model="form.qty"
+                type="number"
+                min="0.001"
+                step="any"
+                placeholder="0"
+                class="w-36 px-3 py-2.5 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
+                :class="saidaExceedsStock
+                  ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
+                @keydown.enter="canConfirm && confirm()"
+              />
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{ selectedItem?.unit }}</span>
+            </div>
+            <p v-if="saidaExceedsStock" class="text-xs text-red-500 dark:text-red-400 mt-1">
+              Quantidade excede o estoque disponível ({{ selectedVariation?.stock }} {{ selectedItem?.unit }}).
+            </p>
+            <p v-else-if="activeSubTab === 'saida' && selectedVariation" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Disponível: {{ selectedVariation.stock }} {{ selectedItem?.unit }}
+            </p>
+          </div>
+
+          <!-- ENTRADA fields -->
+          <template v-if="activeSubTab === 'entrada'">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
+              <input
+                v-model="form.supplier"
+                type="text"
+                placeholder="Nome do fornecedor..."
+                class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nº Documento</label>
+              <div
+                class="flex items-stretch rounded-xl border transition-colors"
+                :class="docType !== 'sem' ? 'border-gray-300 dark:border-gray-600 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500' : 'border-gray-200 dark:border-gray-700'"
+              >
+                <!-- Custom type picker -->
+                <div class="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700">
+                  <div v-if="docDropdownOpen" class="fixed inset-0 z-10" @click="docDropdownOpen = false"></div>
+                  <button
+                    type="button"
+                    class="h-full flex items-center gap-1.5 pl-3 pr-2 py-2.5 text-xs font-semibold transition-colors focus:outline-none rounded-l-xl"
+                    :class="docType !== 'sem'
+                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/30'
+                      : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/60'"
+                    @click="docDropdownOpen = !docDropdownOpen"
+                  >
+                    <span>{{ docType === 'nf' ? 'NF-e' : docType === 'pedido' ? 'PC' : 'Sem doc.' }}</span>
+                    <svg class="w-3.5 h-3.5 opacity-60 transition-transform duration-150" :class="docDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  <!-- Dropdown panel -->
+                  <div
+                    v-if="docDropdownOpen"
+                    class="absolute z-20 top-full left-0 mt-1 min-w-[130px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden py-1"
+                  >
+                    <button
+                      v-for="opt in [{ v: 'sem', label: 'Sem doc.' }, { v: 'nf', label: 'NF-e' }, { v: 'pedido', label: 'PC' }]"
+                      :key="opt.v"
+                      type="button"
+                      class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors"
+                      :class="docType === opt.v
+                        ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                      @click="selectDocType(opt.v); docDropdownOpen = false"
+                    >
+                      <svg v-if="docType === opt.v" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
+                      <span v-else class="w-3.5"></span>
+                      {{ opt.label }}
+                    </button>
+                  </div>
+                </div>
+                <!-- Number input -->
+                <input
+                  v-if="docType !== 'sem'"
+                  v-model="form.docRef"
+                  type="text"
+                  :placeholder="docType === 'nf' ? 'Número da NF-e...' : 'Número do pedido...'"
+                  class="flex-1 min-w-0 px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none rounded-r-xl"
+                />
+                <span
+                  v-else
+                  class="flex-1 flex items-center px-3 text-xs text-gray-400 dark:text-gray-500 italic bg-white dark:bg-gray-800 rounded-r-xl"
+                >Sem documento</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- SAÍDA fields -->
+          <template v-else>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Quem retirou <span class="text-red-500">*</span>
+              </label>
+              <template v-if="activePeople.length">
+                <!-- Custom dropdown -->
+                <div class="relative">
+                  <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
+                  <button
+                    type="button"
+                    class="w-full flex items-center justify-between px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none transition-colors"
+                    :class="personDropdownOpen
+                      ? 'border-primary-500 ring-1 ring-primary-500'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'"
+                    @click="personDropdownOpen = !personDropdownOpen"
+                  >
+                    <span :class="!personSelectVal ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'">
+                      <template v-if="!personSelectVal">— Selecione… —</template>
+                      <template v-else-if="personSelectVal === '__outro__'"><em class="not-italic text-gray-500 dark:text-gray-400">Outro (digitar)…</em></template>
+                      <template v-else>
+                        {{ personSelectVal }}
+                        <span v-if="activePeople.find(p => p.name === personSelectVal)?.role" class="text-xs text-gray-400 dark:text-gray-500 ml-1">– {{ activePeople.find(p => p.name === personSelectVal).role }}</span>
+                      </template>
+                    </span>
+                    <svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150" :class="personDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  <!-- Panel -->
+                  <div
+                    v-if="personDropdownOpen"
+                    class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+                  >
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+                        @click="personSelectVal = ''; personDropdownOpen = false"
+                      >— Selecione… —</button>
+                      <div class="mx-2 my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                      <button
+                        v-for="p in activePeople"
+                        :key="p.id"
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors"
+                        :class="personSelectVal === p.name
+                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                          : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                        @click="personSelectVal = p.name; personDropdownOpen = false"
+                      >
+                        <div class="flex items-center gap-2 min-w-0">
+                          <svg v-if="personSelectVal === p.name" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
+                          <span v-else class="w-3.5"></span>
+                          <span class="font-medium truncate">{{ p.name }}</span>
+                        </div>
+                        <span v-if="p.role" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ p.role }}</span>
+                      </button>
+                      <div class="mx-2 my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2"
+                        :class="personSelectVal === '__outro__'
+                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                        @click="personSelectVal = '__outro__'; personDropdownOpen = false"
+                      >
+                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                        <em class="not-italic">Outro (digitar)…</em>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  v-if="personSelectVal === '__outro__'"
+                  v-model="form.requestedBy"
+                  type="text"
+                  placeholder="Digite o nome..."
+                  class="mt-2 w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+                  autofocus
+                />
+              </template>
+              <input
+                v-else
+                v-model="form.requestedBy"
+                type="text"
+                placeholder="Nome do solicitante..."
+                class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Local de destino <span class="text-red-500">*</span>
+              </label>
+              <template v-if="activeDestinations.length">
+                <!-- Custom dropdown -->
+                <div class="relative">
+                  <div v-if="destDropdownOpen" class="fixed inset-0 z-10" @click="destDropdownOpen = false"></div>
+                  <button
+                    type="button"
+                    class="w-full flex items-center justify-between px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none transition-colors"
+                    :class="destDropdownOpen
+                      ? 'border-primary-500 ring-1 ring-primary-500'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'"
+                    @click="destDropdownOpen = !destDropdownOpen"
+                  >
+                    <span :class="!destSelectVal ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'">
+                      <template v-if="!destSelectVal">— Selecione… —</template>
+                      <template v-else-if="destSelectVal === '__outro__'"><em class="not-italic text-gray-500 dark:text-gray-400">Outro (digitar)…</em></template>
+                      <template v-else>
+                        <span v-if="linkedDestinations.find(d => d.name === destSelectVal)" class="mr-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">📌 vinculado</span>
+                        {{ destSelectVal }}
+                      </template>
+                    </span>
+                    <svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150" :class="destDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  <!-- Panel -->
+                  <div
+                    v-if="destDropdownOpen"
+                    class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+                  >
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+                        @click="destSelectVal = ''; destDropdownOpen = false"
+                      >— Selecione… —</button>
+
+                      <!-- Linked group -->
+                      <template v-if="linkedDestinations.length">
+                        <div class="px-3 pt-2 pb-0.5">
+                          <p class="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.653 16.915l-.005-.003-.019-.01a20.759 20.759 0 0 1-1.162-.682 22.045 22.045 0 0 1-2.582-2.09c-1.736-1.766-3.133-3.986-3.133-6.312 0-2.47 2.028-4.318 4.5-4.318 1.18 0 2.31.48 3.148 1.315.839-.836 1.968-1.315 3.148-1.315 2.472 0 4.5 1.848 4.5 4.318 0 2.326-1.397 4.546-3.133 6.312a22.044 22.044 0 0 1-2.582 2.09 20.759 20.759 0 0 1-1.182.692l-.005.003h-.002a.739.739 0 0 1-.686 0l-.002-.001Z" /></svg>
+                            Vinculados
+                          </p>
+                        </div>
+                        <button
+                          v-for="d in linkedDestinations"
+                          :key="d.id"
+                          type="button"
+                          class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors"
+                          :class="destSelectVal === d.name
+                            ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                            : 'text-gray-800 dark:text-gray-100 hover:bg-amber-50 dark:hover:bg-amber-900/10'"
+                          @click="destSelectVal = d.name; destDropdownOpen = false"
+                        >
+                          <svg v-if="destSelectVal === d.name" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
+                          <span v-else class="w-3.5"></span>
+                          {{ d.name }}
+                        </button>
+                      </template>
+
+                      <!-- Other group -->
+                      <template v-if="otherDestinations.length">
+                        <div class="px-3 pt-2 pb-0.5" :class="linkedDestinations.length ? 'mt-1' : ''">
+                          <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            {{ linkedDestinations.length ? 'Outros destinos' : 'Destinos' }}
+                          </p>
+                        </div>
+                        <button
+                          v-for="d in otherDestinations"
+                          :key="d.id"
+                          type="button"
+                          class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors"
+                          :class="destSelectVal === d.name
+                            ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                            : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                          @click="destSelectVal = d.name; destDropdownOpen = false"
+                        >
+                          <svg v-if="destSelectVal === d.name" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
+                          <span v-else class="w-3.5"></span>
+                          {{ d.name }}
+                        </button>
+                      </template>
+
+                      <div class="mx-2 my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2"
+                        :class="destSelectVal === '__outro__'
+                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                        @click="destSelectVal = '__outro__'; destDropdownOpen = false"
+                      >
+                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                        <em class="not-italic">Outro (digitar)…</em>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  v-if="destSelectVal === '__outro__'"
+                  v-model="form.destination"
+                  type="text"
+                  placeholder="Digite o destino..."
+                  class="mt-2 w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+                  autofocus
+                />
+              </template>
+              <input
+                v-else
+                v-model="form.destination"
+                type="text"
+                placeholder="Ex: Obra São Paulo, Depósito B..."
+                class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+            </div>
+          </template>
+
+          <!-- Observação (both) -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Observação</label>
+            <input
+              v-model="form.note"
+              type="text"
+              placeholder="Observação opcional..."
+              class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            />
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center gap-3">
+          <button
+            class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+            :class="canConfirm
+              ? activeSubTab === 'entrada'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
+            :disabled="!canConfirm"
+            @click="confirm"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
+              <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
+            </svg>
+            Confirmar {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saída' }}
+          </button>
+          <button
+            class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            @click="resetFlow"
+          >
+            Cancelar
+          </button>
+          <p v-if="activeSubTab === 'saida' && !form.requestedBy.trim() || activeSubTab === 'saida' && !form.destination.trim()" class="text-xs text-gray-400 dark:text-gray-500">
+            Preencha quem retirou e o local de destino.
+          </p>
+        </div>
+      </div>
+
+    </template>
+
+    <!-- ======================================================= -->
+    <!-- HISTÓRICO                                               -->
+    <!-- ======================================================= -->
+    <template v-else>
+      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-start">
+
+        <!-- Filters sidebar -->
+        <div class="w-52 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 space-y-4 self-stretch">
+
+          <!-- Search -->
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              v-model="histSearch"
+              type="text"
+              placeholder="Buscar..."
+              class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            />
+            <button v-if="histSearch" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="histSearch = ''">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          <!-- Type filter -->
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Tipo</p>
+            <ul class="space-y-0.5">
+              <li v-for="opt in [{ v: 'all', label: 'Todos' }, { v: 'entrada', label: 'Entrada' }, { v: 'saida', label: 'Saída' }]" :key="opt.v">
+                <button
+                  class="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors"
+                  :class="histType === opt.v
+                    ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                  @click="histType = opt.v"
+                >{{ opt.label }}</button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Date range -->
+          <div class="space-y-2">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Período</p>
+            <div>
+              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">De</label>
+              <input
+                v-model="histDateFrom"
+                type="date"
+                class="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Até</label>
+              <input
+                v-model="histDateTo"
+                type="date"
+                class="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+              />
+            </div>
+            <button
+              v-if="histDateFrom || histDateTo"
+              class="text-[10px] text-primary-600 dark:text-primary-400 hover:underline"
+              @click="histDateFrom = ''; histDateTo = ''"
+            >Limpar período</button>
+          </div>
+        </div>
+
+        <!-- Table area -->
+        <div class="flex-1 min-w-0 bg-white dark:bg-gray-900 flex flex-col">
+
+          <!-- Empty state -->
+          <div v-if="movements.length === 0" class="py-20 text-center text-gray-400 dark:text-gray-500">
+            <svg class="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="text-sm">Nenhuma movimentação registrada ainda.</p>
+          </div>
+
+          <!-- No filter results -->
+          <div v-else-if="filteredMovements.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
+            Nenhum resultado para os filtros selecionados.
+          </div>
+
+          <template v-else>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+                    <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Data</th>
+                    <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item / Variação</th>
+                    <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Quantidade</th>
+                    <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Estoque após</th>
+                    <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Responsável / Local</th>
+                    <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Doc</th>
+                    <th class="px-3 py-2.5 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                  <tr
+                    v-for="m in filteredMovements"
+                    :key="m.id"
+                    class="hover:bg-gray-50/60 dark:hover:bg-gray-800/30 transition-colors"
+                  >
+                    <!-- Date + type pill -->
+                    <td class="px-3 py-2.5 whitespace-nowrap">
+                      <span
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold mb-1 uppercase tracking-wider"
+                        :class="m.type === 'entrada'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'"
+                      >
+                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" :d="m.type === 'entrada' ? 'M12 4.5v15m0-15 6 6m-6-6-6 6' : 'M12 19.5v-15m0 15-6-6m6 6 6-6'" />
+                        </svg>
+                        {{ m.type === 'entrada' ? 'Entrada' : 'Saída' }}
+                      </span>
+                      <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ formatDate(m.date) }}</p>
+                    </td>
+
+                    <!-- Item + variation -->
+                    <td class="px-3 py-2.5 max-w-[220px]">
+                      <p class="font-medium text-gray-800 dark:text-gray-100 text-xs leading-snug truncate">{{ m.itemName }}</p>
+                      <p class="text-[10px] text-gray-400 dark:text-gray-500 truncate mb-1">{{ [m.itemGroup, m.itemCategory, m.itemSubcategory].filter(Boolean).join(' › ') }}</p>
+                      <div class="flex flex-wrap gap-0.5">
+                        <span
+                          v-for="(val, key) in m.variationValues"
+                          :key="key"
+                          class="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300"
+                        >
+                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                        </span>
+                        <span
+                          v-for="(val, key) in m.variationExtras"
+                          :key="'x'+key"
+                          class="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
+                        >
+                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                        </span>
+                      </div>
+                    </td>
+
+                    <!-- Qty -->
+                    <td class="px-3 py-2.5 text-center whitespace-nowrap">
+                      <span
+                        class="text-sm font-bold"
+                        :class="m.type === 'entrada' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                      >{{ m.type === 'entrada' ? '+' : '-' }}{{ m.qty }}</span>
+                      <span class="text-xs text-gray-400 dark:text-gray-500 ml-0.5">{{ m.itemUnit }}</span>
+                    </td>
+
+                    <!-- Stock after -->
+                    <td class="px-3 py-2.5 text-center whitespace-nowrap">
+                      <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ m.stockAfter }}</span>
+                      <span class="text-xs text-gray-400 dark:text-gray-500 ml-0.5">{{ m.itemUnit }}</span>
+                    </td>
+
+                    <!-- Responsible / location -->
+                    <td class="px-3 py-2.5 max-w-[160px]">
+                      <template v-if="m.type === 'entrada'">
+                        <p v-if="m.supplier" class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ m.supplier }}</p>
+                        <p v-else class="text-xs text-gray-300 dark:text-gray-600">—</p>
+                      </template>
+                      <template v-else>
+                        <p class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ m.requestedBy || '—' }}</p>
+                        <p v-if="m.destination" class="text-[10px] text-gray-400 dark:text-gray-500 truncate">{{ m.destination }}</p>
+                      </template>
+                    </td>
+
+                    <!-- Doc ref -->
+                    <td class="px-3 py-2.5 max-w-[100px]">
+                      <span v-if="m.docRef" class="text-xs text-gray-600 dark:text-gray-400 font-mono truncate block">{{ m.docRef }}</span>
+                      <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
+                      <p v-if="m.note" class="text-[10px] text-gray-400 dark:text-gray-500 italic truncate mt-0.5">{{ m.note }}</p>
+                    </td>
+
+                    <!-- Delete -->
+                    <td class="px-3 py-2.5 text-center">
+                      <div v-if="deletePendingId === m.id" class="flex items-center gap-1">
+                        <button class="text-[10px] font-bold text-red-600 dark:text-red-400 hover:underline" @click="confirmDelete(m.id)">Sim</button>
+                        <span class="text-gray-300 dark:text-gray-600">/</span>
+                        <button class="text-[10px] text-gray-500 dark:text-gray-400 hover:underline" @click="cancelDelete">Não</button>
+                      </div>
+                      <button
+                        v-else
+                        class="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors rounded"
+                        title="Remover do histórico"
+                        @click="requestDelete(m.id)"
+                      >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Footer totals -->
+            <div class="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 flex items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
+              <span>{{ filteredMovements.length }} movimentações</span>
+              <span v-if="histTotals.entradas > 0" class="text-green-600 dark:text-green-400 font-semibold">
+                ↑ {{ histTotals.entradas }} entrada{{ histTotals.entradas !== 1 ? 's' : '' }}
+              </span>
+              <span v-if="histTotals.saidas > 0" class="text-red-500 dark:text-red-400 font-semibold">
+                ↓ {{ histTotals.saidas }} saída{{ histTotals.saidas !== 1 ? 's' : '' }}
+              </span>
+            </div>
+          </template>
+
+        </div>
+      </div>
+    </template>
+
+  </div>
+</template>

@@ -1,16 +1,34 @@
 import { ref, computed, watch } from 'vue'
-import { loadItems, saveItems, resetItems, loadVariations, saveVariations, resetVariations } from '../services/storageService.js'
+import { loadItems, saveItems, resetItems, loadVariations, saveVariations, resetVariations, loadOrder, saveOrder, resetOrder } from '../services/storageService.js'
 import { generateId } from '../utils/id.js'
+
+/**
+ * Returns the stock alert status for a single variation.
+ * 'zero'     — qty is 0
+ * 'critical' — qty <= minStock (requires minStock > 0)
+ * 'alert'    — qty <= minStock * 2 (requires minStock > 0)
+ * 'ok'       — no issue
+ */
+export function stockAlertStatus(variation, item) {
+  const min = variation.minStock ?? 0
+  if (variation.stock <= 0) return 'zero'
+  if (min > 0 && variation.stock <= min) return 'critical'
+  if (min > 0 && variation.stock <= min * 2) return 'alert'
+  return 'ok'
+}
 
 // Shared state (singleton)
 const items = ref(loadItems())
 const variations = ref(loadVariations())
+const orderData = ref(loadOrder())
 const activeGroup = ref(null)
 const activeFilters = ref({})
+const viewingItemId = ref(null) // item currently open in detail view
 
 // Auto-save
 watch(items, (val) => saveItems(val), { deep: true })
 watch(variations, (val) => saveVariations(val), { deep: true })
+watch(orderData, (val) => saveOrder(val), { deep: true })
 
 // ===== Faceted filter helpers (pure functions) =====
 function _splitFilters(filters) {
@@ -36,6 +54,34 @@ function _varMatchesA(v, aF) {
   return true
 }
 
+// ===== Validation helpers =====
+
+/**
+ * Sanitizes a numeric value:
+ * - Converts strings to numbers
+ * - Returns 0 for NaN, Infinity, or text
+ * - Clamps to minimum (default 0, so negatives become 0)
+ */
+function _sanitizeNumber(val, min = 0) {
+  const n = Number(val)
+  if (!isFinite(n) || isNaN(n)) return min
+  return Math.max(min, Math.round(n))
+}
+
+/**
+ * Checks if a variation with the exact same attribute values already exists
+ * for the given item. Optionally excludes one variation id (for edits).
+ */
+function _hasDuplicateVariation(itemId, values, excludeId = null) {
+  return variations.value.some(v => {
+    if (v.itemId !== itemId) return false
+    if (v.id === excludeId) return false
+    const keys = Object.keys(values)
+    if (keys.length !== Object.keys(v.values || {}).length) return false
+    return keys.every(k => (v.values[k] || '') === (values[k] || ''))
+  })
+}
+
 export function useItems() {
 
   // ===== CRUD =====
@@ -48,14 +94,17 @@ export function useItems() {
       category: data.category || null,
       subcategory: data.subcategory || null,
       unit: data.unit || 'UN',
-      minStock: data.minStock ?? 0,
-      attributes: data.attributes || []
+      minStock: _sanitizeNumber(data.minStock),
+      attributes: data.attributes || [],
+      location: data.location || ''
     })
   }
 
   function editItem(id, changes) {
     const item = items.value.find(i => i.id === id)
-    if (item) Object.assign(item, changes)
+    if (!item) return
+    if (changes.minStock !== undefined) changes.minStock = _sanitizeNumber(changes.minStock)
+    Object.assign(item, changes)
   }
 
   function deleteItem(id) {
@@ -69,23 +118,50 @@ export function useItems() {
     return variations.value.filter(v => v.itemId === itemId)
   }
 
-  function addVariation(itemId, values = {}, stock = 0) {
+  /**
+   * Returns { ok: true, variation } on success
+   * Returns { ok: false, error: string } on validation failure
+   */
+  function addVariation(itemId, values = {}, stock = 0, minStock = 0, extras = {}, location = '', destinations = []) {
+    const sanitizedStock = _sanitizeNumber(stock)
+    const sanitizedMinStock = _sanitizeNumber(minStock)
+    if (_hasDuplicateVariation(itemId, values)) {
+      return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
+    }
     const v = {
       id: generateId('var'),
       itemId,
       values: { ...values },
-      stock: Number(stock) || 0
+      stock: sanitizedStock,
+      minStock: sanitizedMinStock,
+      initialStock: sanitizedStock,
+      extras: { ...extras },
+      location: location || '',
+      destinations: Array.isArray(destinations) ? [...destinations] : [],
     }
     variations.value.push(v)
-    return v
+    return { ok: true, variation: v }
   }
 
+  /**
+   * Returns { ok: true } on success
+   * Returns { ok: false, error: string } on validation failure
+   */
   function editVariation(id, changes) {
     const v = variations.value.find(v => v.id === id)
-    if (v) {
-      if (changes.values !== undefined) v.values = { ...changes.values }
-      if (changes.stock !== undefined) v.stock = Number(changes.stock) || 0
+    if (!v) return { ok: false, error: 'Variação não encontrada.' }
+    if (changes.values !== undefined) {
+      if (_hasDuplicateVariation(v.itemId, changes.values, id)) {
+        return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
+      }
+      v.values = { ...changes.values }
     }
+    if (changes.stock !== undefined) v.stock = _sanitizeNumber(changes.stock)
+    if (changes.minStock !== undefined) v.minStock = _sanitizeNumber(changes.minStock)
+    if (changes.extras !== undefined) v.extras = { ...changes.extras }
+    if (changes.location !== undefined) v.location = changes.location
+    if (changes.destinations !== undefined) v.destinations = Array.isArray(changes.destinations) ? [...changes.destinations] : []
+    return { ok: true }
   }
 
   function deleteVariation(id) {
@@ -107,24 +183,32 @@ export function useItems() {
   }
 
   // ===== Computed: unique hierarchy values =====
+
+  // Apply a stored order to a list: ordered items first, then any new ones appended
+  function _applyOrder(all, stored) {
+    if (!stored || !stored.length) return all
+    return [
+      ...stored.filter(x => all.includes(x)),
+      ...all.filter(x => !stored.includes(x))
+    ]
+  }
+
   const uniqueGroups = computed(() => {
-    const set = new Set(items.value.map(i => i.group))
-    return [...set].sort()
+    const all = [...new Set(items.value.map(i => i.group))]
+    return _applyOrder(all, orderData.value.groups)
   })
 
   const uniqueCategories = computed(() => {
     const map = new Map()
     for (const item of items.value) {
       if (item.category) {
-        const key = item.group
-        if (!map.has(key)) map.set(key, new Set())
-        map.get(key).add(item.category)
+        if (!map.has(item.group)) map.set(item.group, new Set())
+        map.get(item.group).add(item.category)
       }
     }
-    // Return { group: [categories] }
     const result = {}
     for (const [group, cats] of map) {
-      result[group] = [...cats].sort()
+      result[group] = _applyOrder([...cats], orderData.value.categories?.[group])
     }
     return result
   })
@@ -140,7 +224,7 @@ export function useItems() {
     }
     const result = {}
     for (const [key, subs] of map) {
-      result[key] = [...subs].sort()
+      result[key] = _applyOrder([...subs], orderData.value.subcategories?.[key])
     }
     return result
   })
@@ -314,12 +398,47 @@ export function useItems() {
     }
   }
 
+  // ===== Reorder =====
+  function _splice(arr, from, to) {
+    const r = [...arr]
+    const [item] = r.splice(from, 1)
+    r.splice(to, 0, item)
+    return r
+  }
+
+  function reorderGroups(from, to) {
+    orderData.value = { ...orderData.value, groups: _splice(uniqueGroups.value, from, to) }
+  }
+
+  function reorderCategories(group, from, to) {
+    const list = getCategoriesForGroup(group)
+    orderData.value = { ...orderData.value, categories: { ...orderData.value.categories, [group]: _splice(list, from, to) } }
+  }
+
+  function reorderSubcategories(group, category, from, to) {
+    const key = `${group}|||${category}`
+    const list = getSubcategoriesForCategory(group, category)
+    orderData.value = { ...orderData.value, subcategories: { ...orderData.value.subcategories, [key]: _splice(list, from, to) } }
+  }
+
+  function reorderItemAttributes(itemId, from, to) {
+    const item = items.value.find(i => i.id === itemId)
+    if (!item) return
+    item.attributes = _splice(item.attributes, from, to)
+  }
+
   // ===== Reset =====
   function resetAll() {
     items.value = resetItems()
     variations.value = resetVariations()
+    orderData.value = resetOrder()
     activeGroup.value = null
     activeFilters.value = {}
+  }
+
+  // ===== Viewing item =====
+  function setViewingItem(id) {
+    viewingItemId.value = id || null
   }
 
   // ===== Faceted Filtering =====
@@ -370,12 +489,33 @@ export function useItems() {
     const { hierarchy: hF, attrs: aF } = _splitFilters(activeFilters.value)
     const out = []
 
+    // ── When a specific item is open, show ONLY that item's attribute facets ──
+    if (viewingItemId.value) {
+      const item = items.value.find(i => i.id === viewingItemId.value)
+      if (!item) return []
+      const itemVars = variations.value.filter(v => v.itemId === item.id)
+      for (const an of (item.attributes || [])) {
+        const fk = `attr:${an}`
+        const counts = {}
+        for (const v of itemVars) {
+          const val = v.values?.[an] || ''
+          if (val) counts[val] = (counts[val] || 0) + 1
+        }
+        const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))
+        if (opts.length >= 2) {
+          out.push({ key: fk, label: an, options: opts, selected: aF[fk] || [] })
+        }
+      }
+      return out
+    }
+
+    // ── Normal group view: hierarchy + attribute facets ──
+
     // Hierarchy facets
     for (const d of [
       { key: 'category', label: 'Categoria', get: i => i.category || '' },
       { key: 'subcategory', label: 'Subcategoria', get: i => i.subcategory || '' },
       { key: 'name', label: 'Item', get: i => {
-        // Only expose name as a facet value when it differs from the last hierarchy level
         const lastLevel = i.subcategory || i.category || i.group
         return i.name !== lastLevel ? i.name : ''
       }},
@@ -398,13 +538,13 @@ export function useItems() {
       }
     }
 
-    // Attribute facets
+    // Attribute facets — scoped to items matching current hierarchy filters
+    const hFilteredItems = Object.keys(hF).length ? all.filter(i => _itemMatchesH(i, hF)) : all
     const attrSet = new Set()
-    for (const item of all) for (const a of item.attributes || []) attrSet.add(a)
+    for (const item of hFilteredItems) for (const a of item.attributes || []) attrSet.add(a)
     for (const an of [...attrSet].sort()) {
       const fk = `attr:${an}`
-      let c = all
-      if (Object.keys(hF).length) c = c.filter(i => _itemMatchesH(i, hF))
+      let c = hFilteredItems
       const oA = { ...aF }; delete oA[fk]
       const counts = {}
       for (const item of c) {
@@ -447,9 +587,13 @@ export function useItems() {
     getItemsForSubcategory, renameAttribute, addAttribute, removeAttribute,
     // Navigation
     setActiveGroup,
+    // Viewing item
+    setViewingItem,
     // Faceted filtering
     groupItems, filteredResults, facets, hasActiveFilters,
     toggleFilter, clearFilters,
+    // Reorder
+    reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes,
     resetAll,
     // Dev / seed
     seedDatabase

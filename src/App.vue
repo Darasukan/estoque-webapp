@@ -1,22 +1,24 @@
 <script setup>
 import { ref } from 'vue'
 import CatalogView from './views/CatalogView.vue'
-import ManageView from './views/ManageView.vue'
-import CadastroView from './views/CadastroView.vue'
+import CadastrosView from './views/CadastrosView.vue'
+import InventarioView from './views/InventarioView.vue'
+import MovimentacoesView from './views/MovimentacoesView.vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
+import { useMovements } from './composables/useMovements.js'
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters } = useItems()
+const { recentMovements } = useMovements()
 const sidebarCollapsed = ref(false)
 const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes'
 
 const tabs = [
   { id: 'catalogo', label: 'Catálogo' },
   { id: 'cadastros', label: 'Cadastros' },
-  { id: 'itens', label: 'Itens' },
   { id: 'inventario', label: 'Inventário' },
   { id: 'movimentacoes', label: 'Movimentações' }
 ]
@@ -58,6 +60,10 @@ const tabs = [
               @click="activeTab = tab.id"
             >
               {{ tab.label }}
+              <span
+                v-if="tab.id === 'movimentacoes' && recentMovements.length > 0"
+                class="ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400"
+              >{{ recentMovements.length }}</span>
               <!-- Active indicator -->
               <span
                 v-if="activeTab === tab.id"
@@ -88,28 +94,13 @@ const tabs = [
         <CatalogView v-if="activeTab === 'catalogo'" />
 
         <!-- Cadastros tab -->
-        <CadastroView v-else-if="activeTab === 'cadastros'" />
+        <CadastrosView v-else-if="activeTab === 'cadastros'" />
 
-        <!-- Itens tab (manage) -->
-        <ManageView v-else-if="activeTab === 'itens'" />
+        <!-- Inventário tab -->
+        <InventarioView v-else-if="activeTab === 'inventario'" />
 
-        <!-- Inventário tab (placeholder) -->
-        <div v-else-if="activeTab === 'inventario'" class="text-center py-16 text-gray-400 dark:text-gray-500">
-          <svg class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
-          </svg>
-          <p class="text-lg">Inventário</p>
-          <p class="text-sm mt-1">Em breve.</p>
-        </div>
-
-        <!-- Movimentações tab (placeholder) -->
-        <div v-else-if="activeTab === 'movimentacoes'" class="text-center py-16 text-gray-400 dark:text-gray-500">
-          <svg class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-          </svg>
-          <p class="text-lg">Movimentações</p>
-          <p class="text-sm mt-1">Em breve.</p>
-        </div>
+        <!-- Movimentações tab -->
+        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" />
       </main>
     </div>
 
