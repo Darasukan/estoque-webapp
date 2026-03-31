@@ -15,6 +15,21 @@
   --color-primary-950: #071530;
 }
 
+/* ===== Dark mode: escala de cinza ===== */
+.dark {
+  --color-primary-50: #f5f5f5;
+  --color-primary-100: #e0e0e0;
+  --color-primary-200: #cccccc;
+  --color-primary-300: #b3b3b3;
+  --color-primary-400: #999999;
+  --color-primary-500: #808080;
+  --color-primary-600: #666666;
+  --color-primary-700: #4d4d4d;
+  --color-primary-800: #333333;
+  --color-primary-900: #1a1a1a;
+  --color-primary-950: #0a0a0a;
+}
+
 /* ===== Dark mode via class ===== */
 @custom-variant dark (&:where(.dark, .dark *));
 

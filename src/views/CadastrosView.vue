@@ -13,7 +13,7 @@ const { locais, addLocal, editLocal, toggleLocalActive, deleteLocal } = useLocat
 const { roles, activeRoles, addRole, editRole, toggleRoleActive, deleteRole } = useRoles()
 const { success, error } = useToast()
 
-const activeSubTab = ref('hierarquia') // 'hierarquia' | 'destinos' | 'pessoas' | 'locais' | 'cargos'
+const activeSubTab = ref('hierarquia') // 'hierarquia' | 'destinos' | 'locais' | 'pessoas' | 'cargos'
 
 // ===== Destinations CRUD state =====
 const newDestName = ref('')
@@ -169,7 +169,7 @@ function onDeleteRole(r) {
   <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
     <nav class="flex gap-1 px-1 -mb-px">
       <button
-        v-for="tab in [{ id: 'hierarquia', label: 'Hierarquia' }, { id: 'destinos', label: 'Destinos' }, { id: 'pessoas', label: 'Pessoas' }, { id: 'locais', label: 'Locais' }, { id: 'cargos', label: 'Cargos' }]"
+        v-for="tab in [{ id: 'hierarquia', label: 'Hierarquia' }, { id: 'destinos', label: 'Destinos' }, { id: 'locais', label: 'Locais' }, { id: 'pessoas', label: 'Pessoas' }, { id: 'cargos', label: 'Cargos' }]"
         :key="tab.id"
         class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
         :class="activeSubTab === tab.id
