@@ -18,7 +18,7 @@ const { activeDestinations, getDestinationName } = useDestinations()
 const { activePeople } = usePeople()
 const { success, error } = useToast()
 
-const emit = defineEmits(['update:browsing'])
+const emit = defineEmits(['update:browsing', 'update:subTab'])
 
 // ===== Sub-tabs =====
 const activeSubTab = ref('entrada') // 'entrada' | 'saida' | 'historico'
@@ -76,8 +76,9 @@ function resetFlow() {
 watch(activeSubTab, () => resetFlow())
 
 // Emit browsing state and manage viewingItemId
-watch(step, (v) => {
-  emit('update:browsing', v <= 2)
+watch([step, activeSubTab], ([v, tab]) => {
+  emit('update:browsing', v <= 2 && tab !== 'historico')
+  emit('update:subTab', tab)
   if (v === 1) setViewingItem(null)
 }, { immediate: true })
 
@@ -260,14 +261,118 @@ function formatDate(iso) {
 
 // ===== Histórico =====
 const histSearch = ref('')
-const histType = ref('all')   // 'all' | 'entrada' | 'saida'
 const histDateFrom = ref('')
 const histDateTo = ref('')
+const histFilters = ref({})   // { key: [val, val, ...] }
+
+// Build facets from movements for the sidebar
+const histFacets = computed(() => {
+  const ms = movements.value
+  if (!ms.length) return []
+
+  // Collect facet counts
+  const counts = {}
+  function inc(key, val) {
+    if (!val) return
+    if (!counts[key]) counts[key] = {}
+    counts[key][val] = (counts[key][val] || 0) + 1
+  }
+
+  for (const m of ms) {
+    inc('tipo', m.type === 'entrada' ? 'Entrada' : 'Saída')
+    inc('grupo', m.itemGroup)
+    inc('categoria', m.itemCategory)
+    inc('subcategoria', m.itemSubcategory)
+    inc('item', m.itemName)
+    for (const [k, v] of Object.entries(m.variationValues || {})) {
+      if (v) inc(`attr_${k}`, v)
+    }
+  }
+
+  const selected = histFilters.value
+  const result = []
+
+  const facetDefs = [
+    { key: 'tipo', label: 'Tipo' },
+    { key: 'grupo', label: 'Grupo' },
+    { key: 'categoria', label: 'Categoria' },
+    { key: 'subcategoria', label: 'Subcategoria' },
+    { key: 'item', label: 'Item' },
+  ]
+
+  for (const def of facetDefs) {
+    const vals = counts[def.key]
+    if (!vals) continue
+    const options = Object.entries(vals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([value, count]) => ({ value, count }))
+    if (options.length > 1 || (selected[def.key] && selected[def.key].length)) {
+      result.push({ key: def.key, label: def.label, options, selected: selected[def.key] || [] })
+    }
+  }
+
+  // Dynamic attribute facets
+  for (const key of Object.keys(counts)) {
+    if (!key.startsWith('attr_')) continue
+    const attrName = key.slice(5)
+    const vals = counts[key]
+    const options = Object.entries(vals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([value, count]) => ({ value, count }))
+    if (options.length > 1 || (selected[key] && selected[key].length)) {
+      result.push({ key, label: attrName, options, selected: selected[key] || [] })
+    }
+  }
+
+  return result
+})
+
+const hasHistFilters = computed(() =>
+  histSearch.value.trim().length > 0 ||
+  histDateFrom.value !== '' ||
+  histDateTo.value !== '' ||
+  Object.values(histFilters.value).some(arr => arr.length > 0)
+)
+
+function toggleHistFilter(key, value) {
+  const cur = histFilters.value[key] || []
+  const idx = cur.indexOf(value)
+  if (idx >= 0) {
+    cur.splice(idx, 1)
+  } else {
+    cur.push(value)
+  }
+  histFilters.value = { ...histFilters.value, [key]: cur }
+}
+
+function clearHistFilters() {
+  histSearch.value = ''
+  histDateFrom.value = ''
+  histDateTo.value = ''
+  histFilters.value = {}
+}
 
 const filteredMovements = computed(() => {
   const q = histSearch.value.trim().toLowerCase()
+  const sf = histFilters.value
   return movements.value.filter(m => {
-    if (histType.value !== 'all' && m.type !== histType.value) return false
+    // Sidebar facet filters
+    if (sf.tipo && sf.tipo.length) {
+      const typeLabel = m.type === 'entrada' ? 'Entrada' : 'Saída'
+      if (!sf.tipo.includes(typeLabel)) return false
+    }
+    if (sf.grupo && sf.grupo.length && !sf.grupo.includes(m.itemGroup)) return false
+    if (sf.categoria && sf.categoria.length && !sf.categoria.includes(m.itemCategory)) return false
+    if (sf.subcategoria && sf.subcategoria.length && !sf.subcategoria.includes(m.itemSubcategory)) return false
+    if (sf.item && sf.item.length && !sf.item.includes(m.itemName)) return false
+    // Dynamic attribute filters
+    for (const key of Object.keys(sf)) {
+      if (!key.startsWith('attr_') || !sf[key].length) continue
+      const attrName = key.slice(5)
+      const val = (m.variationValues || {})[attrName] || ''
+      if (!sf[key].includes(val)) return false
+    }
+    // Text search
     if (q) {
       const haystack = [
         m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
@@ -309,6 +414,16 @@ function confirmDelete(id) {
   deletePendingId.value = null
   success('Movimentação removida do histórico.')
 }
+
+defineExpose({
+  histFacets,
+  hasHistFilters,
+  toggleHistFilter,
+  clearHistFilters,
+  histSearch,
+  histDateFrom,
+  histDateTo,
+})
 </script>
 
 <template>
@@ -1101,72 +1216,10 @@ function confirmDelete(id) {
     <!-- HISTÓRICO                                               -->
     <!-- ======================================================= -->
     <template v-else>
-      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-start">
-
-        <!-- Filters sidebar -->
-        <div class="w-52 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 space-y-4 self-stretch">
-
-          <!-- Search -->
-          <div class="relative">
-            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-            <input
-              v-model="histSearch"
-              type="text"
-              placeholder="Buscar..."
-              class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-            />
-            <button v-if="histSearch" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="histSearch = ''">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-
-          <!-- Type filter -->
-          <div>
-            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Tipo</p>
-            <ul class="space-y-0.5">
-              <li v-for="opt in [{ v: 'all', label: 'Todos' }, { v: 'entrada', label: 'Entrada' }, { v: 'saida', label: 'Saída' }]" :key="opt.v">
-                <button
-                  class="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors"
-                  :class="histType === opt.v
-                    ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
-                  @click="histType = opt.v"
-                >{{ opt.label }}</button>
-              </li>
-            </ul>
-          </div>
-
-          <!-- Date range -->
-          <div class="space-y-2">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Período</p>
-            <div>
-              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">De</label>
-              <input
-                v-model="histDateFrom"
-                type="date"
-                class="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
-              />
-            </div>
-            <div>
-              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Até</label>
-              <input
-                v-model="histDateTo"
-                type="date"
-                class="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
-              />
-            </div>
-            <button
-              v-if="histDateFrom || histDateTo"
-              class="text-[10px] text-primary-600 dark:text-primary-400 hover:underline"
-              @click="histDateFrom = ''; histDateTo = ''"
-            >Limpar período</button>
-          </div>
-        </div>
+      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         <!-- Table area -->
-        <div class="flex-1 min-w-0 bg-white dark:bg-gray-900 flex flex-col">
+        <div class="bg-white dark:bg-gray-900 flex flex-col">
 
           <!-- Empty state -->
           <div v-if="movements.length === 0" class="py-20 text-center text-gray-400 dark:text-gray-500">

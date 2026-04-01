@@ -5,6 +5,7 @@ import CadastrosView from './views/CadastrosView.vue'
 import InventarioView from './views/InventarioView.vue'
 import MovimentacoesView from './views/MovimentacoesView.vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
+import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
@@ -16,10 +17,16 @@ const { recentMovements } = useMovements()
 const sidebarCollapsed = ref(false)
 const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes'
 const movBrowsing = ref(true)
+const movSubTab = ref('entrada')
+const movRef = ref(null)
 
-const showSidebar = computed(() =>
+const showCatalogSidebar = computed(() =>
   activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
 )
+const showHistorySidebar = computed(() =>
+  activeTab.value === 'movimentacoes' && movSubTab.value === 'historico'
+)
+const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
 
 const tabs = [
   { id: 'catalogo', label: 'Catálogo' },
@@ -31,9 +38,9 @@ const tabs = [
 
 <template>
   <div class="min-h-screen">
-    <!-- Sidebar (only on Catálogo tab) -->
+    <!-- Catalog Sidebar -->
     <AppSidebar
-      v-if="showSidebar"
+      v-if="showCatalogSidebar"
       :groups="uniqueGroups"
       :active-group="activeGroup"
       :collapsed="sidebarCollapsed"
@@ -45,10 +52,27 @@ const tabs = [
       @clear-filters="clearFilters"
     />
 
+    <!-- History Sidebar -->
+    <HistorySidebar
+      v-if="showHistorySidebar && movRef"
+      :collapsed="sidebarCollapsed"
+      :facets="movRef.histFacets"
+      :has-active-filters="movRef.hasHistFilters"
+      :search="movRef.histSearch"
+      :date-from="movRef.histDateFrom"
+      :date-to="movRef.histDateTo"
+      @toggle="sidebarCollapsed = !sidebarCollapsed"
+      @toggle-filter="(k, v) => movRef.toggleHistFilter(k, v)"
+      @clear-filters="movRef.clearHistFilters()"
+      @update:search="v => movRef.histSearch = v"
+      @update:date-from="v => movRef.histDateFrom = v"
+      @update:date-to="v => movRef.histDateTo = v"
+    />
+
     <!-- Main content -->
     <div
       class="transition-all duration-300 flex flex-col min-h-screen"
-      :class="showSidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
+      :class="anySidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
     >
       <!-- Navbar -->
       <nav class="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
@@ -105,7 +129,7 @@ const tabs = [
         <InventarioView v-else-if="activeTab === 'inventario'" />
 
         <!-- Movimentações tab -->
-        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" @update:browsing="v => movBrowsing = v" />
+        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" ref="movRef" @update:browsing="v => movBrowsing = v" @update:sub-tab="v => movSubTab = v" />
       </main>
     </div>
 

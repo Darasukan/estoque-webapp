@@ -276,6 +276,10 @@ function closeAllDrops() {
   destsDropOpen.value = false
 }
 
+// ===== Variation Modal =====
+const showVarModal = computed(() => addingVariation.value || !!editingVariationId.value)
+const varModalTitle = computed(() => editingVariationId.value ? 'Editar Variação' : 'Nova Variação')
+
 function onDeleteVariation(v) {
   const label = Object.values(v.values).filter(Boolean).join(' / ') || 'esta variação'
   if (!confirm(`Excluir "${label}"?`)) return
@@ -448,13 +452,13 @@ const searchedResults = computed(() => {
         </button>
       </div>
 
-      <!-- Variations table -->
+      <!-- Variations table — condensed -->
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-                <th v-for="attr in viewingItem.attributes" :key="attr" class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">{{ attr }}</th>
+                <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Variação</th>
                 <th class="text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-20">Qtd.</th>
                 <th class="text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-20">Mín.</th>
                 <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Local</th>
@@ -469,211 +473,76 @@ const searchedResults = computed(() => {
                 :key="v.id"
                 class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
               >
-                <!-- Editing row -->
-                <template v-if="editingVariationId === v.id">
-                  <td v-for="attr in viewingItem.attributes" :key="attr" class="px-4 py-2">
-                    <input v-model="varForm.values[attr]" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" :placeholder="attr" @keydown.enter="saveVariation" @keydown.escape="cancelVariation" />
-                  </td>
-                  <td class="px-4 py-2 text-center">
-                    <input v-model.number="varForm.stock" type="number" min="0" class="w-16 px-2 py-1 text-sm text-center border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="saveVariation" @keydown.escape="cancelVariation" />
-                  </td>
-                  <td class="px-4 py-2 text-center">
-                    <input v-model.number="varForm.minStock" type="number" min="0" class="w-16 px-2 py-1 text-sm text-center border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="saveVariation" @keydown.escape="cancelVariation" />
-                  </td>
-                  <td class="px-4 py-2">
-                    <input
-                      v-model="varForm.location"
-                      type="text"
-                      placeholder="— Sem local —"
-                      autocomplete="off"
-                      class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                      @focus="e => openLocalDrop(e.currentTarget)"
-                      @input="e => openLocalDrop(e.currentTarget)"
-                      @keydown.escape.stop="localDropOpen ? (localDropOpen = false) : cancelVariation()"
-                      @keydown.enter.prevent="selectFirstLocal"
-                    />
-                  </td>
-                  <td class="px-4 py-2">
-                    <div
-                      class="dests-wrapper flex flex-wrap items-center gap-1 px-2 py-1 min-h-[32px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 cursor-text"
-                      @click="e => e.currentTarget.querySelector('input').focus()"
+                <!-- Variation: attribute tags -->
+                <td class="px-4 py-2.5">
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="attr in viewingItem.attributes"
+                      :key="attr"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      :title="attr"
                     >
-                      <span
-                        v-for="id in varForm.destinations" :key="id"
-                        class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-[11px] rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 whitespace-nowrap"
-                      >
-                        {{ getDestinationName(id) }}
-                        <button type="button" class="hover:text-red-500 leading-none" @click.stop="toggleDest(id)">×</button>
-                      </span>
-                      <input
-                        v-model="destsSearch"
-                        type="text"
-                        :placeholder="varForm.destinations.length ? '' : 'Destinos...'"
-                        autocomplete="off"
-                        class="flex-1 min-w-[60px] bg-transparent text-xs text-gray-800 dark:text-gray-100 outline-none placeholder-gray-400"
-                        @focus="e => openDestsDrop(e.currentTarget)"
-                        @input="e => openDestsDrop(e.currentTarget)"
-                        @keydown.enter.prevent="selectFirstDest"
-                        @keydown.escape.stop="destsDropOpen ? (destsDropOpen = false) : cancelVariation()"
-                        @keydown.backspace="handleDestsBackspace"
-                      />
-                    </div>
-                  </td>
-                  <td class="px-4 py-2">
-                    <div class="flex flex-col gap-1">
-                      <div v-for="(e, i) in varForm.extrasList" :key="i" class="flex items-center gap-1">
-                        <input v-model="e.key" placeholder="Campo" class="w-20 px-1.5 py-0.5 text-xs border border-primary-300 dark:border-primary-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" />
-                        <input v-model="e.value" placeholder="Valor" class="w-20 px-1.5 py-0.5 text-xs border border-primary-300 dark:border-primary-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" />
-                        <button class="text-gray-400 hover:text-red-500 transition-colors" @click="removeExtraField(i)">
-                          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                      <button class="text-left text-[11px] text-primary-500 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors" @click="addExtraField">+ Campo</button>
-                    </div>
-                  </td>
-                  <td class="px-4 py-2">
-                    <div class="flex items-center justify-center gap-1">
-                      <button class="p-1 text-green-500 hover:text-green-600 transition-colors" title="Salvar" @click="saveVariation">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                      </button>
-                      <button class="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Cancelar" @click="cancelVariation">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                      </button>
-                    </div>
-                  </td>
-                </template>
-                <!-- Display row -->
-                <template v-else>
-                  <td v-for="attr in viewingItem.attributes" :key="attr" class="px-4 py-2.5 text-gray-700 dark:text-gray-300">{{ v.values[attr] || '—' }}</td>
-                  <td
-                    class="px-4 py-2.5 text-center tabular-nums font-medium"
-                    :class="v.stock <= 0 ? 'text-red-500 dark:text-red-400' : (v.minStock > 0 && v.stock <= v.minStock) ? 'text-amber-500 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'"
-                  >
-                    {{ v.stock }}
-                    <span v-if="v.stock <= 0" class="ml-1 text-[10px]">&#x1F534;</span>
-                    <span v-else-if="v.minStock > 0 && v.stock <= v.minStock" class="ml-1 text-[10px]">&#x1F7E1;</span>
-                  </td>
-                  <td class="px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400">
-                    {{ v.minStock > 0 ? v.minStock : '—' }}
-                  </td>
-                  <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400">
-                    {{ v.location || viewingItem.location || '—' }}
-                  </td>
-                  <td class="px-4 py-2.5">
-                    <div v-if="v.destinations && v.destinations.length" class="flex flex-wrap gap-1">
-                      <span
-                        v-for="destId in v.destinations"
-                        :key="destId"
-                        class="px-1.5 py-0.5 text-[11px] rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 whitespace-nowrap"
-                      >{{ getDestinationName(destId) }}</span>
-                    </div>
-                    <span v-else class="text-gray-300 dark:text-gray-600">—</span>
-                  </td>
-                  <td class="px-4 py-2.5 text-sm">
-                    <template v-if="v.extras && Object.keys(v.extras).length">
-                      <span v-for="(val, key, i) in v.extras" :key="key">
-                        <span class="font-medium text-gray-600 dark:text-gray-400">{{ key }}</span><span class="text-gray-400 dark:text-gray-500">:</span> <span class="text-gray-700 dark:text-gray-300">{{ val }}</span><span v-if="i < Object.keys(v.extras).length - 1" class="mx-1 text-gray-300 dark:text-gray-600">&middot;</span>
-                      </span>
-                    </template>
-                    <span v-else class="text-gray-300 dark:text-gray-600">—</span>
-                  </td>
-                  <td class="px-4 py-2.5">
-                    <div class="flex items-center justify-center gap-1">
-                      <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditVariation(v)">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
-                      </button>
-                      <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteVariation(v)">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
-                      </button>
-                    </div>
-                  </td>
-                </template>
+                      <span class="text-gray-400 dark:text-gray-500 text-[10px]">{{ attr }}:</span>
+                      {{ v.values[attr] || '—' }}
+                    </span>
+                  </div>
+                </td>
+                <!-- Qtd -->
+                <td
+                  class="px-4 py-2.5 text-center tabular-nums font-medium"
+                  :class="v.stock <= 0 ? 'text-red-500 dark:text-red-400' : (v.minStock > 0 && v.stock <= v.minStock) ? 'text-amber-500 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'"
+                >
+                  {{ v.stock }}
+                  <span v-if="v.stock <= 0" class="ml-1 text-[10px]">&#x1F534;</span>
+                  <span v-else-if="v.minStock > 0 && v.stock <= v.minStock" class="ml-1 text-[10px]">&#x1F7E1;</span>
+                </td>
+                <!-- Mín -->
+                <td class="px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400">
+                  {{ v.minStock > 0 ? v.minStock : '—' }}
+                </td>
+                <!-- Local -->
+                <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400">
+                  {{ v.location || viewingItem.location || '—' }}
+                </td>
+                <!-- Destinos (count + tooltip) -->
+                <td class="px-4 py-2.5 text-sm">
+                  <span v-if="v.destinations && v.destinations.length" class="relative group/dests inline-flex items-center gap-1 cursor-default">
+                    <span class="text-blue-600 dark:text-blue-400">{{ v.destinations.length }} {{ v.destinations.length === 1 ? 'destino' : 'destinos' }}</span>
+                    <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover/dests:text-blue-500 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                    <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/dests:block z-20 px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-xs shadow-lg whitespace-nowrap">
+                      <span v-for="(dId, di) in v.destinations" :key="dId">{{ getDestinationName(dId) }}<template v-if="di < v.destinations.length - 1">, </template></span>
+                    </span>
+                  </span>
+                  <span v-else class="text-gray-300 dark:text-gray-600">—</span>
+                </td>
+                <!-- Obs (count + tooltip) -->
+                <td class="px-4 py-2.5 text-sm">
+                  <span v-if="v.extras && Object.keys(v.extras).length" class="relative group/obs inline-flex items-center gap-1 cursor-default">
+                    <span class="text-amber-600 dark:text-amber-400">{{ Object.keys(v.extras).length }} {{ Object.keys(v.extras).length === 1 ? 'campo' : 'campos' }}</span>
+                    <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover/obs:text-amber-500 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                    <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/obs:block z-20 px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-700 text-white text-xs shadow-lg whitespace-nowrap">
+                      <span v-for="(val, key) in v.extras" :key="key" class="block"><span class="text-gray-400">{{ key }}:</span> {{ val }}</span>
+                    </span>
+                  </span>
+                  <span v-else class="text-gray-300 dark:text-gray-600">—</span>
+                </td>
+                <!-- Ações -->
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center justify-center gap-1">
+                    <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditVariation(v)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    </button>
+                    <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteVariation(v)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
+                    </button>
+                  </div>
+                </td>
               </tr>
 
               <!-- No search results -->
               <tr v-if="varSearchNorm && filteredItemVariations.length === 0 && !addingVariation">
-                <td :colspan="(viewingItem.attributes?.length || 0) + 6" class="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                <td colspan="7" class="px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
                   Nenhuma variação encontrada para "{{ varSearchQuery }}".
-                </td>
-              </tr>
-
-              <!-- Add new row -->
-              <tr v-if="addingVariation" class="border-b border-gray-100 dark:border-gray-700/50 bg-primary-50/30 dark:bg-primary-900/10">
-                <td v-for="(attr, ai) in viewingItem.attributes" :key="attr" class="px-4 py-2">
-                  <input
-                    v-model="varForm.values[attr]"
-                    :class="['w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none', ai === 0 ? 'var-form-input' : '']"
-                    :placeholder="attr"
-                    @keydown.enter="saveVariation"
-                    @keydown.escape="cancelVariation"
-                  />
-                </td>
-                <td class="px-4 py-2 text-center">
-                  <input v-model.number="varForm.stock" type="number" min="0" placeholder="Qtd." class="w-16 px-2 py-1 text-sm text-center border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="saveVariation" @keydown.escape="cancelVariation" />
-                </td>
-                <td class="px-4 py-2 text-center">
-                  <input v-model.number="varForm.minStock" type="number" min="0" placeholder="Mín." class="w-16 px-2 py-1 text-sm text-center border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="saveVariation" @keydown.escape="cancelVariation" />
-                </td>
-                <td class="px-4 py-2">
-                  <input
-                    v-model="varForm.location"
-                    type="text"
-                    placeholder="— Sem local —"
-                    autocomplete="off"
-                    class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                    @focus="e => openLocalDrop(e.currentTarget)"
-                    @input="e => openLocalDrop(e.currentTarget)"
-                    @keydown.escape.stop="localDropOpen ? (localDropOpen = false) : cancelVariation()"
-                    @keydown.enter.prevent="selectFirstLocal"
-                  />
-                </td>
-                <td class="px-4 py-2">
-                  <div
-                    class="dests-wrapper flex flex-wrap items-center gap-1 px-2 py-1 min-h-[32px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 cursor-text"
-                    @click="e => e.currentTarget.querySelector('input').focus()"
-                  >
-                    <span
-                      v-for="id in varForm.destinations" :key="id"
-                      class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-[11px] rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 whitespace-nowrap"
-                    >
-                      {{ getDestinationName(id) }}
-                      <button type="button" class="hover:text-red-500 leading-none" @click.stop="toggleDest(id)">×</button>
-                    </span>
-                    <input
-                      v-model="destsSearch"
-                      type="text"
-                      :placeholder="varForm.destinations.length ? '' : 'Destinos...'"
-                      autocomplete="off"
-                      class="flex-1 min-w-[60px] bg-transparent text-xs text-gray-800 dark:text-gray-100 outline-none placeholder-gray-400"
-                      @focus="e => openDestsDrop(e.currentTarget)"
-                      @input="e => openDestsDrop(e.currentTarget)"
-                      @keydown.enter.prevent="selectFirstDest"
-                      @keydown.escape.stop="destsDropOpen ? (destsDropOpen = false) : cancelVariation()"
-                      @keydown.backspace="handleDestsBackspace"
-                    />
-                  </div>
-                </td>
-                <td class="px-4 py-2">
-                  <div class="flex flex-col gap-1">
-                    <div v-for="(e, i) in varForm.extrasList" :key="i" class="flex items-center gap-1">
-                      <input v-model="e.key" placeholder="Campo" class="w-20 px-1.5 py-0.5 text-xs border border-primary-300 dark:border-primary-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" />
-                      <input v-model="e.value" placeholder="Valor" class="w-20 px-1.5 py-0.5 text-xs border border-primary-300 dark:border-primary-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" />
-                      <button class="text-gray-400 hover:text-red-500 transition-colors" @click="removeExtraField(i)">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                      </button>
-                    </div>
-                    <button class="text-left text-[11px] text-primary-500 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors" @click="addExtraField">+ Campo</button>
-                  </div>
-                </td>
-                <td class="px-4 py-2">
-                  <div class="flex items-center justify-center gap-1">
-                    <button class="p-1 text-green-500 hover:text-green-600 transition-colors" title="Salvar" @click="saveVariation">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                    </button>
-                    <button class="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Cancelar" @click="cancelVariation">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
                 </td>
               </tr>
             </tbody>
@@ -948,6 +817,145 @@ const searchedResults = computed(() => {
       </div>
     </template>
   </div>
+
+  <!-- ===== Variation Add/Edit Modal ===== -->
+  <Teleport to="body">
+    <div
+      v-if="showVarModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="cancelVariation"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" @click.stop>
+        <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-400 mb-5">
+          {{ varModalTitle }}
+        </h3>
+
+        <!-- Attributes -->
+        <div v-if="viewingItem?.attributes?.length" class="mb-4">
+          <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Atributos</label>
+          <div class="grid grid-cols-2 gap-3">
+            <div v-for="attr in viewingItem.attributes" :key="attr">
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ attr }}</label>
+              <input
+                v-model="varForm.values[attr]"
+                type="text"
+                class="var-form-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+                :placeholder="attr"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Stock + Min Stock -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Quantidade</label>
+            <input
+              v-model.number="varForm.stock"
+              type="number"
+              min="0"
+              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Estoque Mín.</label>
+            <input
+              v-model.number="varForm.minStock"
+              type="number"
+              min="0"
+              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            />
+          </div>
+        </div>
+
+        <!-- Location -->
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Local</label>
+          <input
+            v-model="varForm.location"
+            type="text"
+            placeholder="Digite ou selecione..."
+            autocomplete="off"
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            @focus="e => openLocalDrop(e.currentTarget)"
+            @input="e => openLocalDrop(e.currentTarget)"
+            @keydown.enter.prevent="selectFirstLocal"
+            @keydown.escape.stop="localDropOpen ? (localDropOpen = false) : cancelVariation()"
+          />
+        </div>
+
+        <!-- Destinations -->
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Destinos</label>
+          <div
+            class="dests-wrapper flex flex-wrap gap-1 items-center min-h-[38px] px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 cursor-text focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 transition-colors"
+            @click="$event.currentTarget.querySelector('input')?.focus()"
+          >
+            <span
+              v-for="dId in varForm.destinations"
+              :key="dId"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 text-xs"
+            >
+              {{ getDestinationName(dId) }}
+              <button type="button" class="hover:text-red-500" @click.stop="toggleDest(dId)">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </span>
+            <input
+              v-model="destsSearch"
+              type="text"
+              :placeholder="varForm.destinations.length ? '' : 'Destinos...'"
+              autocomplete="off"
+              class="flex-1 min-w-[60px] bg-transparent text-sm text-gray-800 dark:text-gray-100 outline-none placeholder-gray-400 py-0.5"
+              @focus="e => openDestsDrop(e.currentTarget)"
+              @input="e => openDestsDrop(e.currentTarget)"
+              @keydown.enter.prevent="selectFirstDest"
+              @keydown.escape.stop="destsDropOpen ? (destsDropOpen = false) : cancelVariation()"
+              @keydown.backspace="handleDestsBackspace"
+            />
+          </div>
+        </div>
+
+        <!-- Extras (obs) -->
+        <div class="mb-5">
+          <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Campos extras</label>
+          <div class="flex flex-col gap-2">
+            <div v-for="(e, i) in varForm.extrasList" :key="i" class="flex items-center gap-2">
+              <input
+                v-model="e.key"
+                placeholder="Campo"
+                class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+              <input
+                v-model="e.value"
+                placeholder="Valor"
+                class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+              <button class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded hover:bg-red-50 dark:hover:bg-red-900/20" @click="removeExtraField(i)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <button
+              class="text-left text-xs text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors font-medium"
+              @click="addExtraField"
+            >+ Adicionar campo</button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <button
+            class="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            @click="cancelVariation"
+          >Cancelar</button>
+          <button
+            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
+            @click="saveVariation"
+          >{{ editingVariationId ? 'Salvar' : 'Adicionar' }}</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- Teleported combobox dropdowns — renders outside any overflow-hidden container -->
   <Teleport to="body">
