@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import CatalogView from './views/CatalogView.vue'
 import CadastrosView from './views/CadastrosView.vue'
 import InventarioView from './views/InventarioView.vue'
@@ -15,6 +15,11 @@ const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, tog
 const { recentMovements } = useMovements()
 const sidebarCollapsed = ref(false)
 const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes'
+const movBrowsing = ref(true)
+
+const showSidebar = computed(() =>
+  activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
+)
 
 const tabs = [
   { id: 'catalogo', label: 'Catálogo' },
@@ -28,7 +33,7 @@ const tabs = [
   <div class="min-h-screen">
     <!-- Sidebar (only on Catálogo tab) -->
     <AppSidebar
-      v-if="activeTab === 'catalogo'"
+      v-if="showSidebar"
       :groups="uniqueGroups"
       :active-group="activeGroup"
       :collapsed="sidebarCollapsed"
@@ -43,7 +48,7 @@ const tabs = [
     <!-- Main content -->
     <div
       class="transition-all duration-300 flex flex-col min-h-screen"
-      :class="activeTab === 'catalogo' ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
+      :class="showSidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
     >
       <!-- Navbar -->
       <nav class="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
@@ -100,7 +105,7 @@ const tabs = [
         <InventarioView v-else-if="activeTab === 'inventario'" />
 
         <!-- Movimentações tab -->
-        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" />
+        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" @update:browsing="v => movBrowsing = v" />
       </main>
     </div>
 
