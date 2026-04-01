@@ -56,6 +56,51 @@ export function useMovements() {
   }
 
   /**
+   * Edit a movement's editable fields and adjust stock if qty changed.
+   * @param {string} id
+   * @param {object} changes — partial fields to update
+   * @param {object|null} variation — live reactive variation (needed when qty changes)
+   * @returns {{ ok: boolean, error?: string }}
+   */
+  function editMovement(id, changes, variation) {
+    const m = movements.value.find(mv => mv.id === id)
+    if (!m) return { ok: false, error: 'Movimentação não encontrada.' }
+
+    const oldQty = m.qty
+    const newQty = changes.qty !== undefined ? Number(changes.qty) : oldQty
+    if (!isFinite(newQty) || newQty <= 0) return { ok: false, error: 'Quantidade deve ser positiva.' }
+
+    // Adjust variation stock when qty changed
+    if (newQty !== oldQty && variation) {
+      const diff = newQty - oldQty
+      if (m.type === 'entrada') variation.stock += diff
+      else variation.stock -= diff
+
+      if (variation.stock < 0) {
+        if (m.type === 'entrada') variation.stock -= diff
+        else variation.stock += diff
+        return { ok: false, error: 'Estoque ficaria negativo com essa quantidade.' }
+      }
+      m.stockAfter = m.stockBefore + (m.type === 'entrada' ? newQty : -newQty)
+    }
+
+    if (changes.qty !== undefined) m.qty = newQty
+    if (changes.date !== undefined) m.date = changes.date
+    if (changes.supplier !== undefined) m.supplier = changes.supplier
+    if (changes.requestedBy !== undefined) m.requestedBy = changes.requestedBy
+    if (changes.destination !== undefined) m.destination = changes.destination
+    if (changes.docRef !== undefined) m.docRef = changes.docRef
+    if (changes.note !== undefined) m.note = changes.note
+
+    // Re-sort by date descending after date change
+    if (changes.date !== undefined) {
+      movements.value.sort((a, b) => new Date(b.date) - new Date(a.date))
+    }
+
+    return { ok: true }
+  }
+
+  /**
    * Movements in the last 24 hours — used for the badge in App.vue
    */
   const recentMovements = computed(() => {
@@ -66,6 +111,7 @@ export function useMovements() {
   return {
     movements,
     addMovement,
+    editMovement,
     deleteMovement,
     recentMovements,
   }
