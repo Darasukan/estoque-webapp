@@ -220,6 +220,44 @@ function onRemoveAttr(itemId, attrName) {
   success(`Atributo "${attrName}" removido.`)
 }
 
+// ===== Item unit editing =====
+const editingUnitItemId = ref(null)
+const editUnitValue = ref('')
+
+function startEditUnit(item) {
+  editingUnitItemId.value = item.id
+  editUnitValue.value = item.unit || 'UN'
+}
+
+function saveEditUnit(itemId) {
+  editItem(itemId, { unit: editUnitValue.value })
+  editingUnitItemId.value = null
+  editUnitValue.value = ''
+}
+
+function cancelEditUnit() {
+  editingUnitItemId.value = null
+  editUnitValue.value = ''
+}
+
+// ===== Item minStock editing =====
+const editingMinStockItemId = ref(null)
+const editMinStockValue = ref(0)
+
+function startEditMinStock(item) {
+  editingMinStockItemId.value = item.id
+  editMinStockValue.value = item.minStock ?? 0
+}
+
+function saveEditMinStock(itemId) {
+  editItem(itemId, { minStock: Number(editMinStockValue.value) || 0 })
+  editingMinStockItemId.value = null
+}
+
+function cancelEditMinStock() {
+  editingMinStockItemId.value = null
+}
+
 // ===== Item location editing =====
 const editingLocationItemId = ref(null)
 const editLocationValue = ref('')
@@ -238,6 +276,10 @@ function saveEditLocation(itemId) {
 function cancelEditLocation() {
   editingLocationItemId.value = null
   editLocationValue.value = ''
+}
+
+function onLocationChange(itemId) {
+  saveEditLocation(itemId)
 }
 
 function onEditLocationKeydown(e, itemId) {
@@ -1058,8 +1100,52 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
               <div class="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
                 <div>
                   <p class="text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">{{ item.name }}</p>
-                  <span class="text-xs font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded mt-1 inline-block">{{ item.unit }}</span>
-                  <span v-if="item.minStock > 0" class="text-[11px] text-gray-400 dark:text-gray-500 ml-1.5">mín. {{ item.minStock }}</span>
+                  <!-- Unit badge (click to edit) -->
+                  <template v-if="editingUnitItemId === item.id">
+                    <select
+                      v-model="editUnitValue"
+                      class="text-xs font-medium px-1.5 py-0.5 rounded mt-1 inline-block border border-primary-400 dark:border-primary-500 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"
+                      @change="saveEditUnit(item.id)"
+                      @keydown.escape="cancelEditUnit"
+                      autofocus
+                    >
+                      <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
+                    </select>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="text-xs font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 hover:bg-primary-100 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 px-1.5 py-0.5 rounded mt-1 inline-block transition-colors cursor-pointer"
+                      title="Clique para alterar a unidade"
+                      @click.stop="startEditUnit(item)"
+                    >{{ item.unit }}</button>
+                  </template>
+                  <!-- MinStock (click to edit) -->
+                  <template v-if="editingMinStockItemId === item.id">
+                    <span class="inline-flex items-center gap-1 ml-1.5 mt-1">
+                      <span class="text-[11px] text-gray-400">mín.</span>
+                      <input
+                        v-model="editMinStockValue"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="w-14 px-1 py-0.5 text-[11px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
+                        @keydown.enter="saveEditMinStock(item.id)"
+                        @keydown.escape="cancelEditMinStock"
+                        @blur="saveEditMinStock(item.id)"
+                        autofocus
+                      />
+                    </span>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="text-[11px] ml-1.5 transition-colors cursor-pointer"
+                      :class="item.minStock > 0
+                        ? 'text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400'
+                        : 'text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400'"
+                      title="Clique para alterar o estoque mínimo"
+                      @click.stop="startEditMinStock(item)"
+                    >{{ item.minStock > 0 ? `mín. ${item.minStock}` : 'mín. 0' }}</button>
+                  </template>
                   <!-- Location -->
                   <div class="mt-1.5">
                     <template v-if="editingLocationItemId === item.id">
@@ -1068,7 +1154,8 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
                         <select
                           v-model="editLocationValue"
                           class="flex-1 px-1.5 py-0.5 text-[11px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                          @keydown="onEditLocationKeydown($event, item.id)"
+                          @change="onLocationChange(item.id)"
+                          @keydown.escape="cancelEditLocation"
                           autofocus
                         >
                           <option value="">— Sem local —</option>
@@ -1077,9 +1164,6 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
                             <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;↳ {{ c.name }}</option>
                           </template>
                         </select>
-                        <button class="p-0.5 text-green-500 hover:text-green-600" @click.stop="saveEditLocation(item.id)">
-                          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                        </button>
                         <button class="p-0.5 text-gray-400 hover:text-gray-600" @click.stop="cancelEditLocation">
                           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                         </button>
