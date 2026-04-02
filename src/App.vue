@@ -21,6 +21,7 @@ provide('isAdmin', isAdmin)
 const showLoginModal = ref(false)
 const sidebarCollapsed = ref(false)
 const catalogSearch = ref('')
+const catalogRef = ref(null)
 const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes'
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
@@ -59,6 +60,7 @@ const tabs = computed(() => allTabs.filter(t => !t.adminOnly || isAdmin.value))
       @toggle-filter="(k, v) => toggleFilter(k, v)"
       @clear-filters="clearFilters"
       @update:search="v => catalogSearch = v"
+      @search-submit="catalogRef?.triggerSearchDrill?.()"
     />
 
     <!-- History Sidebar -->
@@ -153,7 +155,7 @@ const tabs = computed(() => allTabs.filter(t => !t.adminOnly || isAdmin.value))
       <!-- Page content -->
       <main class="flex-1 p-5">
         <!-- Catálogo tab -->
-        <CatalogView v-if="activeTab === 'catalogo'" :search="catalogSearch" @update:search="v => catalogSearch = v" />
+        <CatalogView v-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
 
         <!-- Cadastros tab -->
         <CadastrosView v-else-if="activeTab === 'cadastros'" />

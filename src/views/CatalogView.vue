@@ -38,6 +38,52 @@ const searchNorm = computed(() => props.search.trim().toLowerCase())
 // Reset search only when user manually navigates (not auto-drill)
 const autoDrilling = ref(false)
 
+// Auto-drill triggered by Enter key from sidebar search
+function triggerSearchDrill() {
+  const q = searchNorm.value
+  if (!q) return
+
+  // Reset navigation to root first
+  if (viewingItem.value) closeItem()
+  setActiveSubcategory(null)
+  setActiveCategory(null)
+  setActiveGroup(null)
+
+  autoDrilling.value = true
+  nextTick(() => {
+    // Drill into group
+    if (searchedGroups.value.length === 1) {
+      setActiveGroup(searchedGroups.value[0])
+    } else { autoDrilling.value = false; return }
+
+    nextTick(() => {
+      // Drill into category
+      if (groupCategories.value.length && searchedCategories.value.length === 1) {
+        setActiveCategory(searchedCategories.value[0])
+      } else if (!groupCategories.value.length && searchedGroupItems.value.length === 1) {
+        openItem(searchedGroupItems.value[0]); autoDrilling.value = false; return
+      } else { autoDrilling.value = false; return }
+
+      nextTick(() => {
+        // Drill into subcategory
+        if (categorySubcategories.value.length && searchedSubcategories.value.length === 1) {
+          setActiveSubcategory(searchedSubcategories.value[0])
+        } else if (!categorySubcategories.value.length && searchedResults.value.length === 1) {
+          openItem(searchedResults.value[0]); autoDrilling.value = false; return
+        } else { autoDrilling.value = false; return }
+
+        nextTick(() => {
+          // Drill into item
+          if (searchedResults.value.length === 1) {
+            openItem(searchedResults.value[0])
+          }
+          autoDrilling.value = false
+        })
+      })
+    })
+  })
+}
+
 // Categories and subcategories for the current nav level
 const groupCategories = computed(() =>
   activeGroup.value ? getCategoriesForGroup(activeGroup.value) : []
@@ -415,62 +461,8 @@ const searchedResults = computed(() => {
   return navigationItems.value.filter(item => itemMatchesSearch(item, q))
 })
 
-// ===== Auto-drill: when search narrows results to 1, auto-navigate =====
-watch([searchedGroups, searchNorm], ([groups, q]) => {
-  if (!q || activeGroup.value || viewingItem.value) return
-  if (groups.length === 1) {
-    autoDrilling.value = true
-    setActiveGroup(groups[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedCategories, searchNorm], ([cats, q]) => {
-  if (!q || !activeGroup.value || activeCategory.value || viewingItem.value) return
-  if (!groupCategories.value.length) {
-    if (searchedGroupItems.value.length === 1) {
-      autoDrilling.value = true
-      openItem(searchedGroupItems.value[0])
-      nextTick(() => { autoDrilling.value = false })
-    }
-    return
-  }
-  if (cats.length === 1) {
-    autoDrilling.value = true
-    setActiveCategory(cats[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedSubcategories, searchNorm], ([subs, q]) => {
-  if (!q || !activeGroup.value || !activeCategory.value || activeSubcategory.value || viewingItem.value) return
-  if (!categorySubcategories.value.length) {
-    if (searchedResults.value.length === 1) {
-      autoDrilling.value = true
-      openItem(searchedResults.value[0])
-      nextTick(() => { autoDrilling.value = false })
-    }
-    return
-  }
-  if (subs.length === 1) {
-    autoDrilling.value = true
-    setActiveSubcategory(subs[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedResults, searchNorm], ([results, q]) => {
-  if (!q || !activeGroup.value || viewingItem.value) return
-  const atLeaf =
-    activeSubcategory.value !== null ||
-    (activeCategory.value !== null && categorySubcategories.value.length === 0) ||
-    (activeCategory.value === null && groupCategories.value.length === 0)
-  if (atLeaf && results.length === 1) {
-    autoDrilling.value = true
-    openItem(results[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
+// ===== Auto-drill is now triggered only on Enter (triggerSearchDrill) =====
+defineExpose({ triggerSearchDrill })
 </script>
 
 <template>

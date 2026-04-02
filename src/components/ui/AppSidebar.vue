@@ -10,7 +10,7 @@ defineProps({
   search: { type: String, default: '' }
 })
 
-defineEmits(['toggle', 'select-group', 'toggle-filter', 'clear-filters', 'update:search'])
+defineEmits(['toggle', 'select-group', 'toggle-filter', 'clear-filters', 'update:search', 'search-submit'])
 
 // Sections start collapsed — track which ones the user has expanded
 const expandedSections = reactive({})
@@ -89,8 +89,9 @@ function toggleSection(key) {
             :value="search"
             type="text"
             placeholder="Buscar..."
-            class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            class="sidebar-search-input w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
             @input="$emit('update:search', $event.target.value)"
+            @keydown.enter="$emit('search-submit')"
           />
           <button
             v-if="search"
@@ -143,8 +144,9 @@ function toggleSection(key) {
             :value="search"
             type="text"
             placeholder="Buscar item, atributo..."
-            class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            class="sidebar-search-input w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
             @input="$emit('update:search', $event.target.value)"
+            @keydown.enter="$emit('search-submit')"
           />
           <button
             v-if="search"
