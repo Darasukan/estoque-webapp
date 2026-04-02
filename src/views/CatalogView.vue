@@ -97,66 +97,6 @@ watch(navigationItems, (navItems) => {
   }
 }, { immediate: true })
 
-// ===== Auto-drill: when search narrows results to 1, auto-navigate =====
-watch([searchedGroups, searchNorm], ([groups, q]) => {
-  if (!q || activeGroup.value || viewingItem.value) return
-  if (groups.length === 1) {
-    autoDrilling.value = true
-    setActiveGroup(groups[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedCategories, searchNorm], ([cats, q]) => {
-  if (!q || !activeGroup.value || activeCategory.value || viewingItem.value) return
-  if (!groupCategories.value.length) {
-    // No categories — check items directly
-    if (searchedGroupItems.value.length === 1) {
-      autoDrilling.value = true
-      openItem(searchedGroupItems.value[0])
-      nextTick(() => { autoDrilling.value = false })
-    }
-    return
-  }
-  if (cats.length === 1) {
-    autoDrilling.value = true
-    setActiveCategory(cats[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedSubcategories, searchNorm], ([subs, q]) => {
-  if (!q || !activeGroup.value || !activeCategory.value || activeSubcategory.value || viewingItem.value) return
-  if (!categorySubcategories.value.length) {
-    // No subcategories — check items directly
-    if (searchedResults.value.length === 1) {
-      autoDrilling.value = true
-      openItem(searchedResults.value[0])
-      nextTick(() => { autoDrilling.value = false })
-    }
-    return
-  }
-  if (subs.length === 1) {
-    autoDrilling.value = true
-    setActiveSubcategory(subs[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
-watch([searchedResults, searchNorm], ([results, q]) => {
-  if (!q || !activeGroup.value || viewingItem.value) return
-  // Only at leaf level (subcategory selected or no further nesting)
-  const atLeaf =
-    activeSubcategory.value !== null ||
-    (activeCategory.value !== null && categorySubcategories.value.length === 0) ||
-    (activeCategory.value === null && groupCategories.value.length === 0)
-  if (atLeaf && results.length === 1) {
-    autoDrilling.value = true
-    openItem(results[0])
-    nextTick(() => { autoDrilling.value = false })
-  }
-})
-
 // Breadcrumb navigation
 function goToGroup() {
   setActiveCategory(null)
@@ -473,6 +413,63 @@ const searchedResults = computed(() => {
   if (!searchNorm.value) return navigationItems.value
   const q = searchNorm.value
   return navigationItems.value.filter(item => itemMatchesSearch(item, q))
+})
+
+// ===== Auto-drill: when search narrows results to 1, auto-navigate =====
+watch([searchedGroups, searchNorm], ([groups, q]) => {
+  if (!q || activeGroup.value || viewingItem.value) return
+  if (groups.length === 1) {
+    autoDrilling.value = true
+    setActiveGroup(groups[0])
+    nextTick(() => { autoDrilling.value = false })
+  }
+})
+
+watch([searchedCategories, searchNorm], ([cats, q]) => {
+  if (!q || !activeGroup.value || activeCategory.value || viewingItem.value) return
+  if (!groupCategories.value.length) {
+    if (searchedGroupItems.value.length === 1) {
+      autoDrilling.value = true
+      openItem(searchedGroupItems.value[0])
+      nextTick(() => { autoDrilling.value = false })
+    }
+    return
+  }
+  if (cats.length === 1) {
+    autoDrilling.value = true
+    setActiveCategory(cats[0])
+    nextTick(() => { autoDrilling.value = false })
+  }
+})
+
+watch([searchedSubcategories, searchNorm], ([subs, q]) => {
+  if (!q || !activeGroup.value || !activeCategory.value || activeSubcategory.value || viewingItem.value) return
+  if (!categorySubcategories.value.length) {
+    if (searchedResults.value.length === 1) {
+      autoDrilling.value = true
+      openItem(searchedResults.value[0])
+      nextTick(() => { autoDrilling.value = false })
+    }
+    return
+  }
+  if (subs.length === 1) {
+    autoDrilling.value = true
+    setActiveSubcategory(subs[0])
+    nextTick(() => { autoDrilling.value = false })
+  }
+})
+
+watch([searchedResults, searchNorm], ([results, q]) => {
+  if (!q || !activeGroup.value || viewingItem.value) return
+  const atLeaf =
+    activeSubcategory.value !== null ||
+    (activeCategory.value !== null && categorySubcategories.value.length === 0) ||
+    (activeCategory.value === null && groupCategories.value.length === 0)
+  if (atLeaf && results.length === 1) {
+    autoDrilling.value = true
+    openItem(results[0])
+    nextTick(() => { autoDrilling.value = false })
+  }
 })
 </script>
 
