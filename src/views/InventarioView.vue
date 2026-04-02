@@ -2,11 +2,13 @@
 import { ref, computed, nextTick, inject } from 'vue'
 import { useItems } from '../composables/useItems.js'
 import { stockAlertStatus } from '../composables/useItems.js'
+import { useMovements } from '../composables/useMovements.js'
 import { useToast } from '../composables/useToast.js'
 
 const isAdmin = inject('isAdmin')
 
 const { items, getVariationsForItem, editVariation, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
+const { movements } = useMovements()
 const { success, error } = useToast()
 
 // ===== Search =====
@@ -277,6 +279,93 @@ const FILTER_COUNT_CLASS = {
   alert:    'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-500',
   all:      'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
 }
+
+// ===== CSV Export =====
+const csvSelectedMonth = ref(new Date().getMonth() + 1)
+const csvSelectedYear = ref(new Date().getFullYear())
+
+const CSV_MONTHS = [
+  { value: 1, label: 'Janeiro' },
+  { value: 2, label: 'Fevereiro' },
+  { value: 3, label: 'Março' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Maio' },
+  { value: 6, label: 'Junho' },
+  { value: 7, label: 'Julho' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Setembro' },
+  { value: 10, label: 'Outubro' },
+  { value: 11, label: 'Novembro' },
+  { value: 12, label: 'Dezembro' },
+]
+
+const csvYears = computed(() => {
+  const cur = new Date().getFullYear()
+  const years = []
+  for (let y = cur; y >= cur - 5; y--) years.push(y)
+  return years
+})
+
+function exportCSV() {
+  const month = Number(csvSelectedMonth.value)
+  const year = Number(csvSelectedYear.value)
+  const from = new Date(year, month - 1, 1)
+  const to = new Date(year, month, 1)
+  const monthTag = `${String(month).padStart(2, '0')}/${year}`
+
+  // Pre-compute monthly movements per variation
+  const monthMovs = {}
+  for (const m of movements.value) {
+    const d = new Date(m.date)
+    if (d >= from && d < to) {
+      if (!monthMovs[m.variationId]) monthMovs[m.variationId] = { entradas: 0, saidas: 0 }
+      if (m.type === 'entrada') monthMovs[m.variationId].entradas += m.qty
+      else monthMovs[m.variationId].saidas += m.qty
+    }
+  }
+
+  const STATUS_LABEL = { zero: 'Zero', critical: 'Crítico', alert: 'Alerta', ok: 'OK' }
+  const sep = ';'
+  const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local'].join(sep)
+
+  const rows = filteredRows.value.map(row => {
+    const attrs = []
+    for (const k of (row.item.attributes || [])) {
+      const v = row.variation.values?.[k]
+      if (v) attrs.push(`${k}: ${v}`)
+    }
+    for (const [k, v] of Object.entries(row.variation.extras || {})) {
+      if (v) attrs.push(`${k}: ${v}`)
+    }
+    const vm = monthMovs[row.variation.id] || { entradas: 0, saidas: 0 }
+    return [
+      row.item.group || '',
+      row.item.category || '',
+      row.item.subcategory || '',
+      row.item.name,
+      attrs.join(', '),
+      row.item.unit || 'UN',
+      row.variation.stock,
+      row.variation.minStock || 0,
+      STATUS_LABEL[row.status],
+      vm.entradas,
+      vm.saidas,
+      row.variation.location || '',
+    ].map(v => String(v).replace(/;/g, ',')).join(sep)
+  })
+
+  const bom = '\uFEFF'
+  const csv = bom + header + '\n' + rows.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const fileTag = `${year}-${String(month).padStart(2, '0')}`
+  a.download = `estoque_${fileTag}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+  success(`Relatório exportado: estoque_${fileTag}.csv`)
+}
 </script>
 
 <template>
@@ -299,28 +388,56 @@ const FILTER_COUNT_CLASS = {
       </div>
     </div>
 
-    <!-- Filter tabs -->
-    <div class="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
-      <button
-        v-for="tab in FILTER_TABS"
-        :key="tab.id"
-        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative"
-        :class="filterStatus === tab.id
-          ? 'text-primary-700 dark:text-primary-400'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-        @click="filterStatus = tab.id"
-      >
-        {{ tab.label }}
-        <span
-          v-if="tab.countKey && counts[tab.countKey]"
-          class="text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
-          :class="FILTER_COUNT_CLASS[tab.countKey]"
-        >{{ counts[tab.countKey] }}</span>
-        <span
-          v-if="filterStatus === tab.id"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
-        ></span>
-      </button>
+    <!-- Filter tabs + CSV export -->
+    <div class="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex items-center gap-1">
+        <button
+          v-for="tab in FILTER_TABS"
+          :key="tab.id"
+          class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative"
+          :class="filterStatus === tab.id
+            ? 'text-primary-700 dark:text-primary-400'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+          @click="filterStatus = tab.id"
+        >
+          {{ tab.label }}
+          <span
+            v-if="tab.countKey && counts[tab.countKey]"
+            class="text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+            :class="FILTER_COUNT_CLASS[tab.countKey]"
+          >{{ counts[tab.countKey] }}</span>
+          <span
+            v-if="filterStatus === tab.id"
+            class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
+          ></span>
+        </button>
+      </div>
+
+      <!-- CSV export -->
+      <div class="flex items-center gap-2 pb-1">
+        <select
+          v-model="csvSelectedMonth"
+          class="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+        >
+          <option v-for="m in CSV_MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
+        </select>
+        <select
+          v-model="csvSelectedYear"
+          class="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+        >
+          <option v-for="y in csvYears" :key="y" :value="y">{{ y }}</option>
+        </select>
+        <button
+          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-500 hover:text-primary-700 dark:hover:text-primary-400 transition-colors"
+          title="Exportar relatório de estoque em CSV"
+          @click="exportCSV"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          Exportar CSV
+        </button>
+      </div>
     </div>
 
     <!-- Empty: no alerts -->
