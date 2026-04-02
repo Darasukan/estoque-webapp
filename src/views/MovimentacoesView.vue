@@ -7,6 +7,7 @@ import { usePeople } from '../composables/usePeople.js'
 import { useToast } from '../composables/useToast.js'
 
 const isAdmin = inject('isAdmin')
+const isLoggedIn = inject('isLoggedIn')
 
 const {
   items, variations, getVariationsForItem, getTotalStock,
@@ -31,11 +32,11 @@ const visibleSubTabs = computed(() => {
     { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
   ]
-  return isAdmin.value ? all : all.filter(t => t.id === 'historico')
+  return isLoggedIn.value ? all : all.filter(t => t.id === 'historico')
 })
 
 // Force historico when visitor
-watch(isAdmin, (v) => { if (!v) activeSubTab.value = 'historico' }, { immediate: true })
+watch(isLoggedIn, (v) => { if (!v) activeSubTab.value = 'historico' }, { immediate: true })
 
 function switchSubTab(tab) {
   activeSubTab.value = tab
@@ -415,6 +416,7 @@ const filteredMovements = computed(() => {
       const haystack = [
         m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
         m.supplier, m.requestedBy, m.destination, m.docRef, m.note,
+        m.operatorName || '',
         ...Object.values(m.variationValues || {}),
         ...Object.values(m.variationExtras || {}),
       ].join(' ').toLowerCase()
@@ -478,13 +480,13 @@ function startEditMovement(m) {
 
 function cancelEditMovement() { editingMovement.value = null }
 
-function saveEditMovement() {
+async function saveEditMovement() {
   if (!editingMovement.value) return
   const liveVar = variations.value.find(v => v.id === editingMovement.value.variationId)
   const changes = { ...editMovForm.value }
   // Convert local datetime string to ISO
   if (changes.date) changes.date = new Date(changes.date).toISOString()
-  const result = editMovement(editingMovement.value.id, changes, liveVar)
+  const result = await editMovement(editingMovement.value.id, changes, liveVar)
   if (!result.ok) { error(result.error); return }
   success('Movimentação atualizada!')
   editingMovement.value = null
@@ -1336,6 +1338,7 @@ defineExpose({
                     <th class="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Estoque após</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Responsável / Local</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Doc</th>
+                    <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Operador</th>
                     <th v-if="isAdmin" class="px-3 py-2.5 w-16"></th>
                   </tr>
                 </thead>
@@ -1415,6 +1418,12 @@ defineExpose({
                       <span v-if="m.docRef" class="text-xs text-gray-600 dark:text-gray-400 font-mono truncate block">{{ m.docRef }}</span>
                       <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
                       <p v-if="m.note" class="text-[10px] text-gray-400 dark:text-gray-500 italic truncate mt-0.5">{{ m.note }}</p>
+                    </td>
+
+                    <!-- Operator -->
+                    <td class="px-3 py-2.5 max-w-[120px]">
+                      <span v-if="m.operatorName" class="text-xs text-gray-600 dark:text-gray-400 truncate block">{{ m.operatorName }}</span>
+                      <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
                     </td>
 
                     <!-- Actions: edit + delete -->

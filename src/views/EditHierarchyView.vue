@@ -380,8 +380,8 @@ function cancelAddVariation() {
   newVariationStock.value = 0
 }
 
-function saveAddVariation(item) {
-  const result = addVariation(item.id, { ...newVariationValues.value }, newVariationStock.value)
+async function saveAddVariation(item) {
+  const result = await addVariation(item.id, { ...newVariationValues.value }, newVariationStock.value)
   if (!result.ok) { error(result.error || 'Variação duplicada.'); return }
   success('Variação adicionada.')
   cancelAddVariation()
@@ -404,8 +404,8 @@ function cancelEditVariation() {
   editingVariationStock.value = 0
 }
 
-function saveEditVariation() {
-  const result = editVariation(editingVariationId.value, {
+async function saveEditVariation() {
+  const result = await editVariation(editingVariationId.value, {
     values: { ...editingVariationValues.value },
     stock: editingVariationStock.value
   })

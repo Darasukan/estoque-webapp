@@ -1,13 +1,14 @@
-import { ref, computed, watch } from 'vue'
-import { generateId } from '../utils/id.js'
-import { loadLocais, saveLocais } from '../services/storageService.js'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
 // Singleton state
-const locais = ref(loadLocais())
-
-watch(locais, (data) => saveLocais(data), { deep: true })
+const locais = ref([])
 
 export function useLocations() {
+  async function loadData() {
+    locais.value = await api.getLocations()
+  }
+
   const activeLocais = computed(() =>
     locais.value.filter(l => l.active)
   )
@@ -34,7 +35,7 @@ export function useLocations() {
   function getFullName(idOrName) {
     if (!idOrName) return ''
     const loc = locais.value.find(l => l.id === idOrName)
-    if (!loc) return idOrName // fallback: return raw value (legacy text)
+    if (!loc) return idOrName
     if (!loc.parentId) return loc.name
     const parent = locais.value.find(l => l.id === loc.parentId)
     return parent ? `${parent.name} > ${loc.name}` : loc.name
@@ -54,39 +55,35 @@ export function useLocations() {
       const children = getActiveChildren(p.id)
       result.push({ parent: p, children })
     }
-    // Also include orphaned active locais without parent (shouldn't happen, but safe)
     return result
   })
 
-  function addLocal(name, description = '', parentId = null) {
+  async function addLocal(name, description = '', parentId = null) {
     const trimmed = name.trim()
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
 
-    // Enforce max 2 levels: cannot create child of a child
     if (parentId) {
       const parent = locais.value.find(l => l.id === parentId)
       if (!parent) return { ok: false, error: 'Local pai não encontrado.' }
       if (parent.parentId) return { ok: false, error: 'Não é possível criar sub-local de um sub-local (máximo 2 níveis).' }
     }
 
-    // Unique name within same level (same parentId)
     const siblings = locais.value.filter(l => (l.parentId || null) === (parentId || null))
     if (siblings.some(l => l.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe um local com esse nome neste nível.' }
     }
 
-    const l = {
-      id: generateId('loc'),
+    const created = await api.createLocation({
       name: trimmed,
       description: description.trim(),
       active: true,
       parentId: parentId || null,
-    }
-    locais.value.push(l)
-    return { ok: true, local: l }
+    })
+    locais.value.push(created)
+    return { ok: true, local: created }
   }
 
-  function editLocal(id, changes) {
+  async function editLocal(id, changes) {
     const l = locais.value.find(l => l.id === id)
     if (!l) return { ok: false, error: 'Local não encontrado.' }
     if (changes.name !== undefined) {
@@ -96,30 +93,27 @@ export function useLocations() {
       if (siblings.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe um local com esse nome neste nível.' }
       }
-      l.name = trimmed
     }
-    if (changes.description !== undefined) l.description = changes.description.trim()
+    const updated = await api.updateLocation(id, { ...l, ...changes })
+    Object.assign(l, updated)
     return { ok: true }
   }
 
-  function toggleLocalActive(id) {
+  async function toggleLocalActive(id) {
     const l = locais.value.find(l => l.id === id)
-    if (l) l.active = !l.active
+    if (!l) return
+    const updated = await api.updateLocation(id, { ...l, active: !l.active })
+    Object.assign(l, updated)
   }
 
-  function deleteLocal(id) {
-    // Also delete children
-    const children = locais.value.filter(l => l.parentId === id)
-    for (const child of children) {
-      const cidx = locais.value.findIndex(l => l.id === child.id)
-      if (cidx !== -1) locais.value.splice(cidx, 1)
-    }
-    const idx = locais.value.findIndex(l => l.id === id)
-    if (idx !== -1) locais.value.splice(idx, 1)
+  async function deleteLocal(id) {
+    await api.deleteLocation(id)
+    locais.value = locais.value.filter(l => l.id !== id && l.parentId !== id)
   }
 
   return {
     locais,
+    loadData,
     activeLocais,
     topLevelLocais,
     activeTopLevel,

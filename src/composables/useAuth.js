@@ -1,24 +1,36 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
-const ADMIN_USER = 'admin'
-const ADMIN_PASS = 'admin123'
-
-const isAdmin = ref(sessionStorage.getItem('auth_role') === 'admin')
+const user = ref(JSON.parse(sessionStorage.getItem('auth_user') || 'null'))
 
 export function useAuth() {
-  function login(user, pass) {
-    if (user === ADMIN_USER && pass === ADMIN_PASS) {
-      isAdmin.value = true
-      sessionStorage.setItem('auth_role', 'admin')
+  const isAdmin = computed(() => user.value?.role === 'admin')
+  const isLoggedIn = computed(() => !!user.value)
+
+  async function login(name, pin) {
+    try {
+      const u = await api.login(name, pin)
+      user.value = u
       return true
+    } catch {
+      return false
     }
-    return false
   }
 
-  function logout() {
-    isAdmin.value = false
-    sessionStorage.removeItem('auth_role')
+  async function logout() {
+    await api.logout()
+    user.value = null
   }
 
-  return { isAdmin, login, logout }
+  async function checkSession() {
+    if (!sessionStorage.getItem('auth_token')) return
+    try {
+      const u = await api.getMe()
+      user.value = u
+    } catch {
+      user.value = null
+    }
+  }
+
+  return { user, isAdmin, isLoggedIn, login, logout, checkSession }
 }

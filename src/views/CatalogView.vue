@@ -231,7 +231,7 @@ function startEditVariation(v) {
   addingVariation.value = false
 }
 
-function saveVariation() {
+async function saveVariation() {
   const hasValue = Object.values(varForm.value.values).some(v => v.trim())
   if (!hasValue && (viewingItem.value?.attributes?.length || 0) > 0) {
     error('Preencha ao menos um atributo.')
@@ -247,12 +247,12 @@ function saveVariation() {
     return
   }
   if (editingVariationId.value) {
-    const result = editVariation(editingVariationId.value, { values: { ...varForm.value.values }, stock: varForm.value.stock, minStock: varForm.value.minStock, extras: _extrasListToObj(varForm.value.extrasList), location: varForm.value.location, destinations: varForm.value.destinations })
+    const result = await editVariation(editingVariationId.value, { values: { ...varForm.value.values }, stock: varForm.value.stock, minStock: varForm.value.minStock, extras: _extrasListToObj(varForm.value.extrasList), location: varForm.value.location, destinations: varForm.value.destinations })
     if (!result.ok) { error(result.error); return }
     editingVariationId.value = null
     success('Variação atualizada!')
   } else {
-    const result = addVariation(viewingItem.value.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, _extrasListToObj(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
+    const result = await addVariation(viewingItem.value.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, _extrasListToObj(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
     if (!result.ok) { error(result.error); return }
     success('Variação adicionada!')
   }

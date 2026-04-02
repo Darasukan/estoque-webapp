@@ -1,34 +1,34 @@
-import { ref, computed, watch } from 'vue'
-import { generateId } from '../utils/id.js'
-import { loadPeople, savePeople } from '../services/storageService.js'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
 // Singleton state
-const people = ref(loadPeople())
-
-watch(people, (data) => savePeople(data), { deep: true })
+const people = ref([])
 
 export function usePeople() {
+  async function loadData() {
+    people.value = await api.getPeople()
+  }
+
   const activePeople = computed(() =>
     people.value.filter(p => p.active)
   )
 
-  function addPerson(name, role = '') {
+  async function addPerson(name, role = '') {
     const trimmed = name.trim()
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (people.value.some(p => p.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe uma pessoa com esse nome.' }
     }
-    const p = {
-      id: generateId('person'),
+    const created = await api.createPerson({
       name: trimmed,
       role: role.trim(),
       active: true,
-    }
-    people.value.push(p)
-    return { ok: true, person: p }
+    })
+    people.value.push(created)
+    return { ok: true, person: created }
   }
 
-  function editPerson(id, changes) {
+  async function editPerson(id, changes) {
     const p = people.value.find(p => p.id === id)
     if (!p) return { ok: false, error: 'Pessoa não encontrada.' }
     if (changes.name !== undefined) {
@@ -37,20 +37,22 @@ export function usePeople() {
       if (people.value.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe uma pessoa com esse nome.' }
       }
-      p.name = trimmed
     }
-    if (changes.role !== undefined) p.role = changes.role.trim()
+    const updated = await api.updatePerson(id, { ...p, ...changes })
+    Object.assign(p, updated)
     return { ok: true }
   }
 
-  function togglePersonActive(id) {
+  async function togglePersonActive(id) {
     const p = people.value.find(p => p.id === id)
-    if (p) p.active = !p.active
+    if (!p) return
+    const updated = await api.updatePerson(id, { ...p, active: !p.active })
+    Object.assign(p, updated)
   }
 
-  function deletePerson(id) {
-    const idx = people.value.findIndex(p => p.id === id)
-    if (idx !== -1) people.value.splice(idx, 1)
+  async function deletePerson(id) {
+    await api.deletePerson(id)
+    people.value = people.value.filter(p => p.id !== id)
   }
 
   function getPersonById(id) {
@@ -63,6 +65,7 @@ export function usePeople() {
 
   return {
     people,
+    loadData,
     activePeople,
     addPerson,
     editPerson,

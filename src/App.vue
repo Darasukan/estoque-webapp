@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, provide } from 'vue'
+import { ref, computed, provide, onMounted, watch } from 'vue'
 import CatalogView from './views/CatalogView.vue'
 import CadastrosView from './views/CadastrosView.vue'
 import InventarioView from './views/InventarioView.vue'
@@ -11,13 +11,24 @@ import LoginModal from './components/ui/LoginModal.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
 import { useMovements } from './composables/useMovements.js'
+import { useLocations } from './composables/useLocations.js'
+import { useDestinations } from './composables/useDestinations.js'
+import { usePeople } from './composables/usePeople.js'
+import { useRoles } from './composables/useRoles.js'
+import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
 
 const { isDark, toggleTheme } = useTheme()
-const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters } = useItems()
-const { recentMovements } = useMovements()
-const { isAdmin, logout } = useAuth()
+const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
+const { recentMovements, loadData: loadMovements } = useMovements()
+const { loadData: loadLocations } = useLocations()
+const { loadData: loadDestinations } = useDestinations()
+const { loadData: loadPeople } = usePeople()
+const { loadData: loadRoles } = useRoles()
+const { loadData: loadUsers } = useUsers()
+const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
 provide('isAdmin', isAdmin)
+provide('isLoggedIn', isLoggedIn)
 const showLoginModal = ref(false)
 const sidebarCollapsed = ref(false)
 const catalogSearch = ref('')
@@ -37,11 +48,42 @@ const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar
 
 const allTabs = [
   { id: 'catalogo', label: 'Catálogo' },
-  { id: 'cadastros', label: 'Cadastros', adminOnly: true },
+  { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
   { id: 'movimentacoes', label: 'Movimentações' }
 ]
-const tabs = computed(() => allTabs.filter(t => !t.adminOnly || isAdmin.value))
+const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
+
+// Load all data from API
+async function loadAllData() {
+  try {
+    await Promise.all([
+      loadItems(),
+      loadMovements(),
+      loadLocations(),
+      loadDestinations(),
+      loadPeople(),
+      loadRoles(),
+      loadUsers(),
+    ])
+  } catch (e) {
+    console.error('Erro ao carregar dados:', e)
+  }
+}
+
+onMounted(async () => {
+  await checkSession()
+  if (user.value) await loadAllData()
+})
+
+// Reload data after login
+watch(user, (newUser, oldUser) => {
+  if (newUser && !oldUser) loadAllData()
+})
+
+function onLoginClose() {
+  showLoginModal.value = false
+}
 </script>
 
 <template>
@@ -115,20 +157,20 @@ const tabs = computed(() => allTabs.filter(t => !t.adminOnly || isAdmin.value))
           <!-- Auth + Theme -->
           <div class="flex items-center gap-1">
           <button
-            v-if="isAdmin"
+            v-if="isLoggedIn"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            title="Sair do modo admin"
+            title="Sair"
             @click="logout(); activeTab = 'catalogo'"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
             </svg>
-            Sair
+            {{ user.name }}
           </button>
           <button
             v-else
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            title="Entrar como administrador"
+            title="Entrar"
             @click="showLoginModal = true"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

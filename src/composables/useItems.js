@@ -1,6 +1,5 @@
-import { ref, computed, watch } from 'vue'
-import { loadItems, saveItems, resetItems, loadVariations, saveVariations, resetVariations, loadOrder, saveOrder, resetOrder } from '../services/storageService.js'
-import { generateId } from '../utils/id.js'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
 /**
  * Returns the stock alert status for a single variation.
@@ -18,19 +17,14 @@ export function stockAlertStatus(variation, item) {
 }
 
 // Shared state (singleton)
-const items = ref(loadItems())
-const variations = ref(loadVariations())
-const orderData = ref(loadOrder())
+const items = ref([])
+const variations = ref([])
+const orderData = ref({})
 const activeGroup = ref(null)
 const activeCategory = ref(null)
 const activeSubcategory = ref(null)
 const activeFilters = ref({})
 const viewingItemId = ref(null) // item currently open in detail view
-
-// Auto-save
-watch(items, (val) => saveItems(val), { deep: true })
-watch(variations, (val) => saveVariations(val), { deep: true })
-watch(orderData, (val) => saveOrder(val), { deep: true })
 
 // ===== Faceted filter helpers (pure functions) =====
 function _splitFilters(filters) {
@@ -86,11 +80,22 @@ function _hasDuplicateVariation(itemId, values, excludeId = null) {
 
 export function useItems() {
 
+  // ===== Load from API =====
+  async function loadData() {
+    const [itemsData, varsData, order] = await Promise.all([
+      api.getItems(),
+      api.getVariations(),
+      api.getDisplayOrder()
+    ])
+    items.value = itemsData
+    variations.value = varsData
+    orderData.value = order || {}
+  }
+
   // ===== CRUD =====
-  function addItem(data) {
+  async function addItem(data) {
     const resolvedName = data.name || data.subcategory || data.category || data.group
-    items.value.push({
-      id: generateId('item'),
+    const created = await api.createItem({
       name: resolvedName,
       group: data.group,
       category: data.category || null,
@@ -100,18 +105,21 @@ export function useItems() {
       attributes: data.attributes || [],
       location: data.location || ''
     })
+    items.value.push(created)
   }
 
-  function editItem(id, changes) {
+  async function editItem(id, changes) {
     const item = items.value.find(i => i.id === id)
     if (!item) return
     if (changes.minStock !== undefined) changes.minStock = _sanitizeNumber(changes.minStock)
+    const merged = { ...item, ...changes }
+    await api.updateItem(id, merged)
     Object.assign(item, changes)
   }
 
-  function deleteItem(id) {
+  async function deleteItem(id) {
+    await api.deleteItem(id)
     items.value = items.value.filter(i => i.id !== id)
-    // Also delete all variations for this item
     variations.value = variations.value.filter(v => v.itemId !== id)
   }
 
@@ -124,14 +132,13 @@ export function useItems() {
    * Returns { ok: true, variation } on success
    * Returns { ok: false, error: string } on validation failure
    */
-  function addVariation(itemId, values = {}, stock = 0, minStock = 0, extras = {}, location = '', destinations = []) {
+  async function addVariation(itemId, values = {}, stock = 0, minStock = 0, extras = {}, location = '', destinations = []) {
     const sanitizedStock = _sanitizeNumber(stock)
     const sanitizedMinStock = _sanitizeNumber(minStock)
     if (_hasDuplicateVariation(itemId, values)) {
       return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
     }
-    const v = {
-      id: generateId('var'),
+    const created = await api.createVariation({
       itemId,
       values: { ...values },
       stock: sanitizedStock,
@@ -140,33 +147,33 @@ export function useItems() {
       extras: { ...extras },
       location: location || '',
       destinations: Array.isArray(destinations) ? [...destinations] : [],
-    }
-    variations.value.push(v)
-    return { ok: true, variation: v }
+    })
+    variations.value.push(created)
+    return { ok: true, variation: created }
   }
 
-  /**
-   * Returns { ok: true } on success
-   * Returns { ok: false, error: string } on validation failure
-   */
-  function editVariation(id, changes) {
+  async function editVariation(id, changes) {
     const v = variations.value.find(v => v.id === id)
     if (!v) return { ok: false, error: 'Variação não encontrada.' }
     if (changes.values !== undefined) {
       if (_hasDuplicateVariation(v.itemId, changes.values, id)) {
         return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
       }
-      v.values = { ...changes.values }
     }
-    if (changes.stock !== undefined) v.stock = _sanitizeNumber(changes.stock)
-    if (changes.minStock !== undefined) v.minStock = _sanitizeNumber(changes.minStock)
-    if (changes.extras !== undefined) v.extras = { ...changes.extras }
-    if (changes.location !== undefined) v.location = changes.location
-    if (changes.destinations !== undefined) v.destinations = Array.isArray(changes.destinations) ? [...changes.destinations] : []
+    const updated = { ...v }
+    if (changes.values !== undefined) updated.values = { ...changes.values }
+    if (changes.stock !== undefined) updated.stock = _sanitizeNumber(changes.stock)
+    if (changes.minStock !== undefined) updated.minStock = _sanitizeNumber(changes.minStock)
+    if (changes.extras !== undefined) updated.extras = { ...changes.extras }
+    if (changes.location !== undefined) updated.location = changes.location
+    if (changes.destinations !== undefined) updated.destinations = Array.isArray(changes.destinations) ? [...changes.destinations] : []
+    const result = await api.updateVariation(id, updated)
+    Object.assign(v, result)
     return { ok: true }
   }
 
-  function deleteVariation(id) {
+  async function deleteVariation(id) {
+    await api.deleteVariation(id)
     variations.value = variations.value.filter(v => v.id !== id)
   }
 
@@ -177,7 +184,8 @@ export function useItems() {
   }
 
   // ===== Seed (mass data) =====
-  function seedDatabase(seedItems, seedVars) {
+  async function seedDatabase(seedItems, seedVars) {
+    await api.seedPopulate(seedItems, seedVars)
     items.value = seedItems
     variations.value = seedVars
     activeGroup.value = null
@@ -323,41 +331,42 @@ export function useItems() {
   }
 
   // ===== Bulk: rename group/category/subcategory across items =====
-  function renameGroup(oldName, newName) {
-    for (const item of items.value) {
-      if (item.group === oldName) item.group = newName
-    }
+  async function renameGroup(oldName, newName) {
+    const affected = items.value.filter(i => i.group === oldName)
+    for (const item of affected) item.group = newName
+    await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
   }
 
-  function renameCategory(group, oldName, newName) {
-    for (const item of items.value) {
-      if (item.group === group && item.category === oldName) item.category = newName
-    }
+  async function renameCategory(group, oldName, newName) {
+    const affected = items.value.filter(i => i.group === group && i.category === oldName)
+    for (const item of affected) item.category = newName
+    await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
   }
 
-  function renameSubcategory(group, category, oldName, newName) {
-    for (const item of items.value) {
-      if (item.group === group && item.category === category && item.subcategory === oldName) {
-        item.subcategory = newName
-      }
-    }
+  async function renameSubcategory(group, category, oldName, newName) {
+    const affected = items.value.filter(i => i.group === group && i.category === category && i.subcategory === oldName)
+    for (const item of affected) item.subcategory = newName
+    await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
   }
 
   // ===== Bulk delete hierarchy =====
-  function deleteGroup(groupName) {
+  async function deleteGroup(groupName) {
     const ids = items.value.filter(i => i.group === groupName).map(i => i.id)
+    await Promise.all(ids.map(id => api.deleteItem(id)))
     items.value = items.value.filter(i => i.group !== groupName)
     variations.value = variations.value.filter(v => !ids.includes(v.itemId))
   }
 
-  function deleteCategory(group, categoryName) {
+  async function deleteCategory(group, categoryName) {
     const ids = items.value.filter(i => i.group === group && i.category === categoryName).map(i => i.id)
+    await Promise.all(ids.map(id => api.deleteItem(id)))
     items.value = items.value.filter(i => !(i.group === group && i.category === categoryName))
     variations.value = variations.value.filter(v => !ids.includes(v.itemId))
   }
 
-  function deleteSubcategory(group, category, subcategoryName) {
+  async function deleteSubcategory(group, category, subcategoryName) {
     const ids = items.value.filter(i => i.group === group && i.category === category && i.subcategory === subcategoryName).map(i => i.id)
+    await Promise.all(ids.map(id => api.deleteItem(id)))
     items.value = items.value.filter(i => !(i.group === group && i.category === category && i.subcategory === subcategoryName))
     variations.value = variations.value.filter(v => !ids.includes(v.itemId))
   }
@@ -379,38 +388,45 @@ export function useItems() {
     return items.value.filter(i => i.group === group && i.category === category && i.subcategory === subcategory)
   }
 
-  function renameAttribute(itemId, oldName, newName) {
+  async function renameAttribute(itemId, oldName, newName) {
     const item = items.value.find(i => i.id === itemId)
     if (!item) return
     const idx = item.attributes.indexOf(oldName)
     if (idx < 0) return
     item.attributes[idx] = newName
-    // Update all variations for this item
+    const affectedVars = []
     for (const v of variations.value) {
       if (v.itemId === itemId && oldName in v.values) {
         v.values[newName] = v.values[oldName]
         delete v.values[oldName]
+        affectedVars.push(v)
       }
     }
+    await api.updateItem(itemId, { ...item })
+    await Promise.all(affectedVars.map(v => api.updateVariation(v.id, { ...v })))
   }
 
-  function addAttribute(itemId, attrName) {
+  async function addAttribute(itemId, attrName) {
     const item = items.value.find(i => i.id === itemId)
     if (!item) return
     if (item.attributes.includes(attrName)) return
     item.attributes.push(attrName)
+    await api.updateItem(itemId, { ...item })
   }
 
-  function removeAttribute(itemId, attrName) {
+  async function removeAttribute(itemId, attrName) {
     const item = items.value.find(i => i.id === itemId)
     if (!item) return
     item.attributes = item.attributes.filter(a => a !== attrName)
-    // Clean up variation values
+    const affectedVars = []
     for (const v of variations.value) {
       if (v.itemId === itemId && attrName in v.values) {
         delete v.values[attrName]
+        affectedVars.push(v)
       }
     }
+    await api.updateItem(itemId, { ...item })
+    await Promise.all(affectedVars.map(v => api.updateVariation(v.id, { ...v })))
   }
 
   // ===== Reorder =====
@@ -421,32 +437,37 @@ export function useItems() {
     return r
   }
 
-  function reorderGroups(from, to) {
+  async function reorderGroups(from, to) {
     orderData.value = { ...orderData.value, groups: _splice(uniqueGroups.value, from, to) }
+    await api.saveDisplayOrder(orderData.value)
   }
 
-  function reorderCategories(group, from, to) {
+  async function reorderCategories(group, from, to) {
     const list = getCategoriesForGroup(group)
     orderData.value = { ...orderData.value, categories: { ...orderData.value.categories, [group]: _splice(list, from, to) } }
+    await api.saveDisplayOrder(orderData.value)
   }
 
-  function reorderSubcategories(group, category, from, to) {
+  async function reorderSubcategories(group, category, from, to) {
     const key = `${group}|||${category}`
     const list = getSubcategoriesForCategory(group, category)
     orderData.value = { ...orderData.value, subcategories: { ...orderData.value.subcategories, [key]: _splice(list, from, to) } }
+    await api.saveDisplayOrder(orderData.value)
   }
 
-  function reorderItemAttributes(itemId, from, to) {
+  async function reorderItemAttributes(itemId, from, to) {
     const item = items.value.find(i => i.id === itemId)
     if (!item) return
     item.attributes = _splice(item.attributes, from, to)
+    await api.updateItem(itemId, { ...item })
   }
 
   // ===== Reset =====
-  function resetAll() {
-    items.value = resetItems()
-    variations.value = resetVariations()
-    orderData.value = resetOrder()
+  async function resetAll() {
+    await api.seedReset()
+    items.value = []
+    variations.value = []
+    orderData.value = {}
     activeGroup.value = null
     activeFilters.value = {}
   }
@@ -627,6 +648,8 @@ export function useItems() {
     activeGroup,
     activeCategory,
     activeSubcategory,
+    // Init
+    loadData,
     // CRUD
     addItem, editItem, deleteItem,
     // Variations

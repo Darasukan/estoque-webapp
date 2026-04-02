@@ -16,14 +16,16 @@ function onSubmit() {
     errorMsg.value = 'Preencha usuário e senha.'
     return
   }
-  if (login(user.value.trim(), pass.value)) {
-    user.value = ''
-    pass.value = ''
-    errorMsg.value = ''
-    emit('close')
-  } else {
-    errorMsg.value = 'Usuário ou senha incorretos.'
-  }
+  login(user.value.trim(), pass.value).then(ok => {
+    if (ok) {
+      user.value = ''
+      pass.value = ''
+      errorMsg.value = ''
+      emit('close')
+    } else {
+      errorMsg.value = 'Usuário ou senha incorretos.'
+    }
+  })
 }
 
 function onCancel() {

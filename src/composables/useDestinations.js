@@ -1,18 +1,18 @@
-import { ref, computed, watch } from 'vue'
-import { generateId } from '../utils/id.js'
-import { loadDestinations, saveDestinations } from '../services/storageService.js'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
 // Singleton state
-const destinations = ref(loadDestinations())
-
-watch(destinations, (data) => saveDestinations(data), { deep: true })
+const destinations = ref([])
 
 export function useDestinations() {
+  async function loadData() {
+    destinations.value = await api.getDestinations()
+  }
+
   const activeDestinations = computed(() =>
     destinations.value.filter(d => d.active)
   )
 
-  /** Top-level destinations (no parent) */
   const topLevelDestinations = computed(() =>
     destinations.value.filter(d => !d.parentId)
   )
@@ -21,7 +21,6 @@ export function useDestinations() {
     destinations.value.filter(d => !d.parentId && d.active)
   )
 
-  /** Get children of a parent */
   function getDestChildren(parentId) {
     return destinations.value.filter(d => d.parentId === parentId)
   }
@@ -30,17 +29,15 @@ export function useDestinations() {
     return destinations.value.filter(d => d.parentId === parentId && d.active)
   }
 
-  /** Get full display name: "Parent > Child" or just "Name" */
   function getDestFullName(idOrName) {
     if (!idOrName) return ''
     const dest = destinations.value.find(d => d.id === idOrName)
-    if (!dest) return idOrName // fallback: return raw value (legacy text)
+    if (!dest) return idOrName
     if (!dest.parentId) return dest.name
     const parent = destinations.value.find(d => d.id === dest.parentId)
     return parent ? `${parent.name} > ${dest.name}` : dest.name
   }
 
-  /** Grouped structure for dropdowns: [{ parent, children[] }] */
   const groupedDestinations = computed(() => {
     const result = []
     for (const p of activeTopLevelDest.value) {
@@ -50,35 +47,32 @@ export function useDestinations() {
     return result
   })
 
-  function addDestination(name, description = '', parentId = null) {
+  async function addDestination(name, description = '', parentId = null) {
     const trimmed = name.trim()
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
 
-    // Enforce max 2 levels
     if (parentId) {
       const parent = destinations.value.find(d => d.id === parentId)
       if (!parent) return { ok: false, error: 'Destino pai não encontrado.' }
       if (parent.parentId) return { ok: false, error: 'Não é possível criar sub-destino de um sub-destino (máximo 2 níveis).' }
     }
 
-    // Unique name within same level
     const siblings = destinations.value.filter(d => (d.parentId || null) === (parentId || null))
     if (siblings.some(d => d.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe um destino com esse nome neste nível.' }
     }
 
-    const d = {
-      id: generateId('dest'),
+    const created = await api.createDestination({
       name: trimmed,
       description: description.trim(),
       active: true,
       parentId: parentId || null,
-    }
-    destinations.value.push(d)
-    return { ok: true, destination: d }
+    })
+    destinations.value.push(created)
+    return { ok: true, destination: created }
   }
 
-  function editDestination(id, changes) {
+  async function editDestination(id, changes) {
     const d = destinations.value.find(d => d.id === id)
     if (!d) return { ok: false, error: 'Destino não encontrado.' }
     if (changes.name !== undefined) {
@@ -88,26 +82,22 @@ export function useDestinations() {
       if (siblings.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe um destino com esse nome neste nível.' }
       }
-      d.name = trimmed
     }
-    if (changes.description !== undefined) d.description = changes.description.trim()
+    const updated = await api.updateDestination(id, { ...d, ...changes })
+    Object.assign(d, updated)
     return { ok: true }
   }
 
-  function toggleDestinationActive(id) {
+  async function toggleDestinationActive(id) {
     const d = destinations.value.find(d => d.id === id)
-    if (d) d.active = !d.active
+    if (!d) return
+    const updated = await api.updateDestination(id, { ...d, active: !d.active })
+    Object.assign(d, updated)
   }
 
-  function deleteDestination(id) {
-    // Also delete children
-    const children = destinations.value.filter(d => d.parentId === id)
-    for (const child of children) {
-      const cidx = destinations.value.findIndex(d => d.id === child.id)
-      if (cidx !== -1) destinations.value.splice(cidx, 1)
-    }
-    const idx = destinations.value.findIndex(d => d.id === id)
-    if (idx !== -1) destinations.value.splice(idx, 1)
+  async function deleteDestination(id) {
+    await api.deleteDestination(id)
+    destinations.value = destinations.value.filter(d => d.id !== id && d.parentId !== id)
   }
 
   function getDestinationById(id) {
@@ -120,6 +110,7 @@ export function useDestinations() {
 
   return {
     destinations,
+    loadData,
     activeDestinations,
     topLevelDestinations,
     activeTopLevelDest,

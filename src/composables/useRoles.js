@@ -1,34 +1,34 @@
-import { ref, computed, watch } from 'vue'
-import { generateId } from '../utils/id.js'
-import { loadRoles, saveRoles } from '../services/storageService.js'
+import { ref, computed } from 'vue'
+import * as api from '../services/api.js'
 
 // Singleton state
-const roles = ref(loadRoles())
-
-watch(roles, (data) => saveRoles(data), { deep: true })
+const roles = ref([])
 
 export function useRoles() {
+  async function loadData() {
+    roles.value = await api.getRoles()
+  }
+
   const activeRoles = computed(() =>
     roles.value.filter(r => r.active)
   )
 
-  function addRole(name, description = '') {
+  async function addRole(name, description = '') {
     const trimmed = name.trim()
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (roles.value.some(r => r.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe um cargo com esse nome.' }
     }
-    const r = {
-      id: generateId('role'),
+    const created = await api.createRole({
       name: trimmed,
       description: description.trim(),
       active: true,
-    }
-    roles.value.push(r)
-    return { ok: true, role: r }
+    })
+    roles.value.push(created)
+    return { ok: true, role: created }
   }
 
-  function editRole(id, changes) {
+  async function editRole(id, changes) {
     const r = roles.value.find(r => r.id === id)
     if (!r) return { ok: false, error: 'Cargo não encontrado.' }
     if (changes.name !== undefined) {
@@ -37,24 +37,27 @@ export function useRoles() {
       if (roles.value.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe um cargo com esse nome.' }
       }
-      r.name = trimmed
     }
-    if (changes.description !== undefined) r.description = changes.description.trim()
+    const updated = await api.updateRole(id, { ...r, ...changes })
+    Object.assign(r, updated)
     return { ok: true }
   }
 
-  function toggleRoleActive(id) {
+  async function toggleRoleActive(id) {
     const r = roles.value.find(r => r.id === id)
-    if (r) r.active = !r.active
+    if (!r) return
+    const updated = await api.updateRole(id, { ...r, active: !r.active })
+    Object.assign(r, updated)
   }
 
-  function deleteRole(id) {
-    const idx = roles.value.findIndex(r => r.id === id)
-    if (idx !== -1) roles.value.splice(idx, 1)
+  async function deleteRole(id) {
+    await api.deleteRole(id)
+    roles.value = roles.value.filter(r => r.id !== id)
   }
 
   return {
     roles,
+    loadData,
     activeRoles,
     addRole,
     editRole,
