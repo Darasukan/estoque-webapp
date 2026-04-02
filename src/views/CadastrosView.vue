@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import EditHierarchyView from './EditHierarchyView.vue'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
@@ -20,6 +20,42 @@ const collapsedLocais = reactive(new Set())
 const collapsedDests = reactive(new Set())
 function toggleCollapseLocal(id) { collapsedLocais.has(id) ? collapsedLocais.delete(id) : collapsedLocais.add(id) }
 function toggleCollapseDest(id) { collapsedDests.has(id) ? collapsedDests.delete(id) : collapsedDests.add(id) }
+
+// Collapse top-level locations by default.
+watch(topLevelLocais, (parents, prevParents = []) => {
+  const prevIds = new Set((prevParents || []).map(p => p.id))
+
+  // New parents start collapsed.
+  for (const p of parents) {
+    if (!prevIds.has(p.id) && !collapsedLocais.has(p.id)) {
+      collapsedLocais.add(p.id)
+    }
+  }
+
+  // Cleanup removed ids.
+  const currentIds = new Set(parents.map(p => p.id))
+  for (const id of [...collapsedLocais]) {
+    if (!currentIds.has(id)) collapsedLocais.delete(id)
+  }
+}, { immediate: true })
+
+// Collapse top-level destinations by default.
+watch(topLevelDestinations, (parents, prevParents = []) => {
+  const prevIds = new Set((prevParents || []).map(p => p.id))
+
+  // New parents start collapsed.
+  for (const p of parents) {
+    if (!prevIds.has(p.id) && !collapsedDests.has(p.id)) {
+      collapsedDests.add(p.id)
+    }
+  }
+
+  // Cleanup removed ids.
+  const currentIds = new Set(parents.map(p => p.id))
+  for (const id of [...collapsedDests]) {
+    if (!currentIds.has(id)) collapsedDests.delete(id)
+  }
+}, { immediate: true })
 
 // ===== Destinations CRUD state =====
 const newDestName = ref('')
