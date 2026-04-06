@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import os from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -47,9 +48,22 @@ app.get('/{*path}', (req, res) => {
 })
 
 // ===== Start =====
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
 app.listen(PORT, '0.0.0.0', () => {
+  const ip = getLocalIp();
   console.log(`✔ Servidor rodando em http://localhost:${PORT}`)
-  console.log(`  Acesso na rede: http://0.0.0.0:${PORT}`)
+  console.log(`  Acesso na rede: http://${ip}:${PORT}`)
   console.log(`  Banco de dados: server/estoque.db`)
   console.log(`  Login padrão: admin / admin123`)
 })
