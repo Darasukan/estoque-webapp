@@ -56,18 +56,16 @@ const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value)
 
 // Load all data from API
 async function loadAllData() {
-  try {
-    await Promise.all([
-      loadItems(),
-      loadMovements(),
-      loadLocations(),
-      loadDestinations(),
-      loadPeople(),
-      loadRoles(),
-    ])
-  } catch (e) {
-    console.error('Erro ao carregar dados:', e)
-  }
+  const results = await Promise.allSettled([
+    loadItems(),
+    loadMovements(),
+    loadLocations(),
+    loadDestinations(),
+    loadPeople(),
+    loadRoles(),
+  ])
+  const failed = results.filter(r => r.status === 'rejected')
+  if (failed.length) console.error('Erro ao carregar dados:', failed.map(r => r.reason))
   // Users requires admin auth — load separately, ignore failure
   try { await loadUsers() } catch {}
 }

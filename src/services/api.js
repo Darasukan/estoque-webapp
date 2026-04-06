@@ -7,9 +7,13 @@ function getToken() {
 async function request(path, options = {}) {
   const url = BASE + path
   const headers = {
-    'Content-Type': 'application/json',
     'x-auth-token': getToken(),
     ...options.headers
+  }
+
+  // Only set Content-Type for requests with a body (POST, PUT, etc.)
+  if (options.body) {
+    headers['Content-Type'] = 'application/json'
   }
 
   const res = await fetch(url, { ...options, headers })
