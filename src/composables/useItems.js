@@ -82,14 +82,14 @@ export function useItems() {
 
   // ===== Load from API =====
   async function loadData() {
-    const [itemsData, varsData, order] = await Promise.all([
+    const [itemsRes, varsRes, orderRes] = await Promise.allSettled([
       api.getItems(),
       api.getVariations(),
       api.getDisplayOrder()
     ])
-    items.value = itemsData
-    variations.value = varsData
-    orderData.value = order || {}
+    if (itemsRes.status === 'fulfilled') items.value = itemsRes.value
+    if (varsRes.status === 'fulfilled') variations.value = varsRes.value
+    if (orderRes.status === 'fulfilled') orderData.value = orderRes.value || {}
   }
 
   // ===== CRUD =====
