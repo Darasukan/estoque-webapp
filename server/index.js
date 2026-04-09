@@ -16,6 +16,7 @@ import destinationRoutes from './routes/destinations.js'
 import peopleRoutes from './routes/people.js'
 import roleRoutes from './routes/roles.js'
 import seedRoutes from './routes/seed.js'
+import workOrderRoutes from './routes/workOrders.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -38,6 +39,7 @@ app.use('/api/destinations', destinationRoutes)
 app.use('/api/people', peopleRoutes)
 app.use('/api/roles', roleRoutes)
 app.use('/api/seed', seedRoutes)
+app.use('/api/work-orders', workOrderRoutes)
 
 // ===== Serve frontend in production =====
 const distPath = join(__dirname, '..', 'dist')

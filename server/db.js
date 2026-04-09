@@ -106,6 +106,32 @@ db.exec(`
     active INTEGER NOT NULL DEFAULT 1
   );
 
+  CREATE TABLE IF NOT EXISTS work_orders (
+    id TEXT PRIMARY KEY,
+    number INTEGER NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    destination_id TEXT DEFAULT '',
+    destination_name TEXT DEFAULT '',
+    requested_by TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS work_order_items (
+    id TEXT PRIMARY KEY,
+    work_order_id TEXT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    variation_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    item_name TEXT DEFAULT '',
+    item_group TEXT DEFAULT '',
+    item_category TEXT DEFAULT '',
+    item_unit TEXT DEFAULT '',
+    variation_values TEXT DEFAULT '{}',
+    qty REAL NOT NULL,
+    movement_id TEXT DEFAULT '',
+    added_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS display_order (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     data TEXT NOT NULL DEFAULT '{}'

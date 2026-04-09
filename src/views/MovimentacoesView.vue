@@ -4,6 +4,7 @@ import { useItems } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
+import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useToast } from '../composables/useToast.js'
 
 const isAdmin = inject('isAdmin')
@@ -19,6 +20,7 @@ const {
 const { movements, addMovement, editMovement, deleteMovement } = useMovements()
 const { activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
+const { workOrders, linkMovement } = useWorkOrders()
 const { success, error } = useToast()
 
 const emit = defineEmits(['update:browsing', 'update:subTab'])
@@ -63,6 +65,7 @@ const form = ref({
 
 const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
+const selectedWorkOrderId = ref('') // optional OS link for saída
 
 function selectDocType(v) {
   docType.value = v
@@ -84,6 +87,7 @@ function resetFlow() {
   destSelectVal.value = ''
   docType.value = 'sem'
   confirmPending.value = false
+  selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
@@ -249,11 +253,22 @@ const canConfirm = computed(() => {
   return true
 })
 
+// Work orders filtered by the destination selected in the saída form
+const filteredWorkOrders = computed(() => {
+  const dest = form.value.destination.trim()
+  if (!dest) return workOrders.value
+  return workOrders.value.filter(wo =>
+    wo.destinationName === dest || wo.destinationId === dest
+  )
+})
+
 function confirm() {
   if (!canConfirm.value || !selectedVariation.value || !selectedItem.value) return
   // Find the live reactive variation object in the store
   const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
   if (!liveVar) { error('Variação não encontrada.'); return }
+
+  const woId = selectedWorkOrderId.value
 
   addMovement(
     activeSubTab.value,
@@ -269,7 +284,20 @@ function confirm() {
         : '',
       note: form.value.note,
     }
-  )
+  ).then(async () => {
+    // If a work order was selected on saída, link the movement to the OS
+    if (activeSubTab.value === 'saida' && woId) {
+      try {
+        // The most recent movement (just unshifted) is the one we created
+        const lastMov = movements.value[0]
+        if (lastMov) {
+          await linkMovement(woId, lastMov.id)
+        }
+      } catch (e) {
+        error('Saída criada, mas falha ao vincular à OS: ' + e.message)
+      }
+    }
+  })
 
   const typeLabel = activeSubTab.value === 'entrada' ? 'Entrada' : 'Saída'
   success(`${typeLabel} registrada com sucesso.`)
@@ -1260,6 +1288,22 @@ defineExpose({
               />
             </div>
           </template>
+
+          <!-- Ordem de Serviço (saída only, optional) -->
+          <div v-if="activeSubTab === 'saida'" class="md:col-span-2">
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Ordem de Serviço (opcional)</label>
+            <select
+              v-model="selectedWorkOrderId"
+              class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            >
+              <option value="">Nenhuma</option>
+              <option
+                v-for="wo in filteredWorkOrders"
+                :key="wo.id"
+                :value="wo.id"
+              >OS #{{ wo.number }} — {{ wo.title }}</option>
+            </select>
+          </div>
 
           <!-- Observação (both) -->
           <div class="md:col-span-2">

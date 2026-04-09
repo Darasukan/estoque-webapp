@@ -204,3 +204,40 @@ export async function seedPopulate(items, variations) {
 export async function seedReset() {
   return request('/seed/reset', { method: 'POST' })
 }
+
+// ===== Work Orders =====
+export async function getWorkOrders() {
+  return request('/work-orders')
+}
+
+export async function getWorkOrder(id) {
+  return request(`/work-orders/${id}`)
+}
+
+export async function createWorkOrder(data) {
+  return request('/work-orders', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateWorkOrder(id, data) {
+  return request(`/work-orders/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteWorkOrder(id) {
+  return request(`/work-orders/${id}`, { method: 'DELETE' })
+}
+
+export async function addWorkOrderItem(workOrderId, data) {
+  return request(`/work-orders/${workOrderId}/items`, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function removeWorkOrderItem(workOrderId, itemId) {
+  return request(`/work-orders/${workOrderId}/items/${itemId}`, { method: 'DELETE' })
+}
+
+export async function linkMovementToWorkOrder(workOrderId, movementId) {
+  return request(`/work-orders/${workOrderId}/items/link`, { method: 'POST', body: JSON.stringify({ movementId }) })
+}
+
+export async function getWorkOrderReport() {
+  return request('/work-orders/report/by-destination')
+}

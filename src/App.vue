@@ -4,6 +4,7 @@ import CatalogView from './views/CatalogView.vue'
 import CadastrosView from './views/CadastrosView.vue'
 import InventarioView from './views/InventarioView.vue'
 import MovimentacoesView from './views/MovimentacoesView.vue'
+import OrdensServicoView from './views/OrdensServicoView.vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
@@ -17,6 +18,7 @@ import { usePeople } from './composables/usePeople.js'
 import { useRoles } from './composables/useRoles.js'
 import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
+import { useWorkOrders } from './composables/useWorkOrders.js'
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
@@ -27,13 +29,14 @@ const { loadData: loadPeople } = usePeople()
 const { loadData: loadRoles } = useRoles()
 const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
+const { loadData: loadWorkOrders } = useWorkOrders()
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const showLoginModal = ref(false)
 const sidebarCollapsed = ref(false)
 const catalogSearch = ref('')
 const catalogRef = ref(null)
-const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes'
+const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes' | 'ordens'
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
 const movRef = ref(null)
@@ -50,7 +53,8 @@ const allTabs = [
   { id: 'catalogo', label: 'Catálogo' },
   { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
-  { id: 'movimentacoes', label: 'Movimentações' }
+  { id: 'movimentacoes', label: 'Movimentações' },
+  { id: 'ordens', label: 'Ordens de Serviço' }
 ]
 const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
 
@@ -63,6 +67,7 @@ async function loadAllData() {
     loadDestinations(),
     loadPeople(),
     loadRoles(),
+    loadWorkOrders(),
   ])
   const failed = results.filter(r => r.status === 'rejected')
   if (failed.length) console.error('Erro ao carregar dados:', failed.map(r => r.reason))
@@ -206,6 +211,9 @@ function onLoginClose() {
 
         <!-- Movimentações tab -->
         <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" ref="movRef" @update:browsing="v => movBrowsing = v" @update:sub-tab="v => movSubTab = v" />
+
+        <!-- Ordens de Serviço tab -->
+        <OrdensServicoView v-else-if="activeTab === 'ordens'" />
       </main>
     </div>
 
