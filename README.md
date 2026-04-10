@@ -18,6 +18,7 @@ Sistema de controle de estoque industrial com catálogo estilo McMaster-Carr, fi
 - **Editar Hierarquia** — Renomear/excluir grupos, categorias e subcategorias, editar atributos dos itens
 - **Inventário** — Tabela com filtros laterais, status de estoque (OK/Alerta/Crítico/Zero), ajuste de estoque inline, paginação e exportação CSV
 - **Movimentações** — Registro de entradas e saídas com histórico completo
+- **Ordens de Serviço** — Criação e gestão de ordens de serviço (protótipo)
 - **Autenticação** — Login com PIN, controle de sessão, roles (admin/operador)
 - **Acesso público** — Catálogo, inventário e histórico visíveis sem login; operações de escrita requerem autenticação
 - **Tema** — Claro/escuro com toggle
@@ -80,7 +81,8 @@ server/
     ├── destinations.js         # Destinos de saída
     ├── people.js               # Pessoas/solicitantes
     ├── roles.js                # Cargos/funções
-    └── seed.js                 # Seed de dados e ordem de exibição
+    ├── seed.js                 # Seed de dados e ordem de exibição
+    └── workOrders.js           # Ordens de serviço
 src/
 ├── App.vue                     # Layout principal com abas e sidebar
 ├── main.js                     # Entry point
@@ -94,10 +96,12 @@ src/
 │   ├── usePeople.js            # Pessoas
 │   ├── useRoles.js             # Cargos
 │   ├── useUsers.js             # Gestão de usuários
+│   ├── useWorkOrders.js        # Ordens de serviço
 │   ├── useTheme.js             # Tema claro/escuro
 │   └── useToast.js             # Notificações toast
 ├── services/
-│   └── api.js                  # Cliente HTTP para a API
+│   ├── api.js                  # Cliente HTTP para a API
+│   └── storageService.js       # Persistência local (localStorage)
 ├── data/
 │   └── seedData.js             # Gerador de dados de teste
 ├── utils/
@@ -110,7 +114,8 @@ src/
 │   ├── EditHierarchyView.vue   # Editor de hierarquia e atributos
 │   ├── InventarioView.vue      # Inventário com paginação
 │   ├── ManageView.vue          # Tabela de itens com filtros
-│   └── MovimentacoesView.vue   # Entradas, saídas e histórico
+│   ├── MovimentacoesView.vue   # Entradas, saídas e histórico
+│   └── OrdensServicoView.vue   # Ordens de serviço
 └── components/
     ├── ui/
     │   ├── AppModal.vue        # Modal genérico
