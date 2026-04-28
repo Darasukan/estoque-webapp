@@ -16,8 +16,8 @@ export function useWorkOrders() {
     report.value = await api.getWorkOrderReport()
   }
 
-  async function addWorkOrder({ title, destinationId, requestedBy, note }) {
-    const created = await api.createWorkOrder({ title, destinationId, requestedBy, note })
+  async function addWorkOrder(data) {
+    const created = await api.createWorkOrder(data)
     workOrders.value.unshift(created)
     return created
   }
@@ -30,9 +30,10 @@ export function useWorkOrders() {
   }
 
   async function deleteWorkOrder(id) {
-    await api.deleteWorkOrder(id)
+    const result = await api.deleteWorkOrder(id)
     const idx = workOrders.value.findIndex(o => o.id === id)
     if (idx !== -1) workOrders.value.splice(idx, 1)
+    return result
   }
 
   /**

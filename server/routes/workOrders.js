@@ -9,6 +9,61 @@ function genId(prefix) {
   return prefix + '_' + crypto.randomBytes(6).toString('hex')
 }
 
+function clean(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeServiceType(value) {
+  const normalized = clean(value).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  if (normalized === 'eletrica') return 'Elétrica'
+  if (normalized === 'mecanica') return 'Mecânica'
+  return 'Outros'
+}
+
+function parseOrderNumber(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null
+  const n = Number(value)
+  return Number.isInteger(n) && n > 0 ? n : NaN
+}
+
+function validateMaintenanceDates({
+  maintenanceStartDate,
+  maintenanceStartTime,
+  maintenanceEndDate,
+  maintenanceEndTime,
+}) {
+  const hasStartDate = !!clean(maintenanceStartDate)
+  const hasStartTime = !!clean(maintenanceStartTime)
+  const hasEndDate = !!clean(maintenanceEndDate)
+  const hasEndTime = !!clean(maintenanceEndTime)
+  if (hasStartDate !== hasStartTime) return 'Informe data e horário de início da manutenção'
+  if (hasEndDate !== hasEndTime) return 'Informe data e horário de término da manutenção'
+  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime)) return 'Informe início antes do término da manutenção'
+  if (hasStartDate && hasEndDate) {
+    const start = new Date(`${clean(maintenanceStartDate)}T${clean(maintenanceStartTime)}`)
+    const end = new Date(`${clean(maintenanceEndDate)}T${clean(maintenanceEndTime)}`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Datas de manutenção inválidas'
+    if (end < start) return 'Término não pode ser antes do início da manutenção'
+  }
+  return ''
+}
+
+function resolveDestinationName(destinationId) {
+  if (!destinationId) return ''
+  const dest = db.prepare('SELECT * FROM destinations WHERE id = ?').get(destinationId)
+  if (!dest) return ''
+  if (!dest.parent_id) return dest.name
+  const parent = db.prepare('SELECT name FROM destinations WHERE id = ?').get(dest.parent_id)
+  return parent ? `${parent.name} > ${dest.name}` : dest.name
+}
+
+function buildTitle({ title, serviceType, equipment, destinationName, number }) {
+  const typedTitle = clean(title)
+  if (typedTitle) return typedTitle
+  const subject = equipment || destinationName || `OS #${number}`
+  return `${serviceType || 'Outros'} - ${subject}`
+}
+
 function mapWorkOrder(r) {
   return {
     id: r.id,
@@ -16,8 +71,19 @@ function mapWorkOrder(r) {
     title: r.title,
     destinationId: r.destination_id,
     destinationName: r.destination_name,
+    equipment: r.equipment || r.destination_name || '',
+    serviceType: r.service_type || 'Outros',
+    requestDate: r.request_date || '',
+    requestTime: r.request_time || '',
     requestedBy: r.requested_by,
     note: r.note,
+    maintenanceStartDate: r.maintenance_start_date || '',
+    maintenanceStartTime: r.maintenance_start_time || '',
+    maintenanceEndDate: r.maintenance_end_date || '',
+    maintenanceEndTime: r.maintenance_end_time || '',
+    maintenanceProfessional: r.maintenance_professional || '',
+    maintenanceMaterials: r.maintenance_materials || '',
+    maintenanceNote: r.maintenance_note || '',
     createdAt: r.created_at,
   }
 }
@@ -141,39 +207,74 @@ router.get('/:id', (req, res) => {
 
 // POST /api/work-orders — create
 router.post('/', requireAuth, (req, res) => {
-  const { title, destinationId, requestedBy, note } = req.body
-  if (!title || !title.trim()) return res.status(400).json({ error: 'Título é obrigatório' })
+  const {
+    title,
+    number: rawNumber,
+    destinationId,
+    requestedBy,
+    note,
+    equipment,
+    serviceType,
+    requestDate,
+    requestTime,
+    maintenanceStartDate,
+    maintenanceStartTime,
+    maintenanceEndDate,
+    maintenanceEndTime,
+    maintenanceProfessional,
+    maintenanceMaterials,
+    maintenanceNote,
+  } = req.body
 
-  // Auto-generate sequential number
+  if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
+  if (!clean(requestDate)) return res.status(400).json({ error: 'Data é obrigatória' })
+  if (!clean(requestTime)) return res.status(400).json({ error: 'Horário é obrigatório' })
+  const maintenanceError = validateMaintenanceDates({ maintenanceStartDate, maintenanceStartTime, maintenanceEndDate, maintenanceEndTime })
+  if (maintenanceError) return res.status(400).json({ error: maintenanceError })
+
+  const parsedNumber = parseOrderNumber(rawNumber)
+  if (Number.isNaN(parsedNumber)) return res.status(400).json({ error: 'Número da ordem inválido' })
+
   const maxRow = db.prepare('SELECT MAX(number) as maxNum FROM work_orders').get()
-  const number = (maxRow.maxNum || 0) + 1
+  const number = parsedNumber || (maxRow.maxNum || 0) + 1
+  const numberExists = db.prepare('SELECT id FROM work_orders WHERE number = ?').get(number)
+  if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
-  // Denormalize destination name
-  let destinationName = ''
-  if (destinationId) {
-    const dest = db.prepare('SELECT * FROM destinations WHERE id = ?').get(destinationId)
-    if (dest) {
-      if (dest.parent_id) {
-        const parent = db.prepare('SELECT name FROM destinations WHERE id = ?').get(dest.parent_id)
-        destinationName = parent ? `${parent.name} › ${dest.name}` : dest.name
-      } else {
-        destinationName = dest.name
-      }
-    }
-  }
+  let destinationName = resolveDestinationName(destinationId)
+  const equipmentValue = clean(equipment) || destinationName
+  if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
+  if (!destinationName) destinationName = equipmentValue
+
+  const serviceTypeValue = normalizeServiceType(serviceType)
+  const titleValue = buildTitle({ title, serviceType: serviceTypeValue, equipment: equipmentValue, destinationName, number })
 
   const id = genId('os')
   const createdAt = new Date().toISOString()
 
-  db.prepare(`INSERT INTO work_orders (id, number, title, destination_id, destination_name, requested_by, note, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, number, title.trim(), destinationId || '', destinationName, requestedBy || '', note || '', createdAt
+  db.prepare(`INSERT INTO work_orders (
+    id, number, title, destination_id, destination_name, equipment, service_type, request_date, request_time,
+    requested_by, note, maintenance_start_date, maintenance_start_time, maintenance_end_date,
+    maintenance_end_time, maintenance_professional, maintenance_materials, maintenance_note, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, number, titleValue, destinationId || '', destinationName, equipmentValue, serviceTypeValue,
+    clean(requestDate), clean(requestTime), clean(requestedBy), note || '',
+    clean(maintenanceStartDate), clean(maintenanceStartTime), clean(maintenanceEndDate), clean(maintenanceEndTime),
+    clean(maintenanceProfessional), maintenanceMaterials || '', maintenanceNote || '', createdAt
   )
 
   res.json({
-    id, number, title: title.trim(),
+    id, number, title: titleValue,
     destinationId: destinationId || '', destinationName,
-    requestedBy: requestedBy || '', note: note || '',
+    equipment: equipmentValue, serviceType: serviceTypeValue,
+    requestDate: clean(requestDate), requestTime: clean(requestTime),
+    requestedBy: clean(requestedBy), note: note || '',
+    maintenanceStartDate: clean(maintenanceStartDate),
+    maintenanceStartTime: clean(maintenanceStartTime),
+    maintenanceEndDate: clean(maintenanceEndDate),
+    maintenanceEndTime: clean(maintenanceEndTime),
+    maintenanceProfessional: clean(maintenanceProfessional),
+    maintenanceMaterials: maintenanceMaterials || '',
+    maintenanceNote: maintenanceNote || '',
     createdAt, items: []
   })
 })
@@ -183,31 +284,84 @@ router.put('/:id', requireAuth, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 
-  const { title, destinationId, requestedBy, note } = req.body
+  const {
+    title,
+    number: rawNumber,
+    destinationId,
+    requestedBy,
+    note,
+    equipment,
+    serviceType,
+    requestDate,
+    requestTime,
+    maintenanceStartDate,
+    maintenanceStartTime,
+    maintenanceEndDate,
+    maintenanceEndTime,
+    maintenanceProfessional,
+    maintenanceMaterials,
+    maintenanceNote,
+  } = req.body
 
-  let destinationName = o.destination_name
   const newDestId = destinationId !== undefined ? destinationId : o.destination_id
-  if (destinationId !== undefined && destinationId !== o.destination_id) {
-    destinationName = ''
-    if (destinationId) {
-      const dest = db.prepare('SELECT * FROM destinations WHERE id = ?').get(destinationId)
-      if (dest) {
-        if (dest.parent_id) {
-          const parent = db.prepare('SELECT name FROM destinations WHERE id = ?').get(dest.parent_id)
-          destinationName = parent ? `${parent.name} › ${dest.name}` : dest.name
-        } else {
-          destinationName = dest.name
-        }
-      }
-    }
-  }
+  const parsedNumber = parseOrderNumber(rawNumber)
+  if (Number.isNaN(parsedNumber)) return res.status(400).json({ error: 'Número da ordem inválido' })
+  const nextNumber = parsedNumber || o.number
+  const numberExists = db.prepare('SELECT id FROM work_orders WHERE number = ? AND id != ?').get(nextNumber, req.params.id)
+  if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
-  db.prepare(`UPDATE work_orders SET title=?, destination_id=?, destination_name=?, requested_by=?, note=? WHERE id=?`).run(
-    title !== undefined ? title.trim() : o.title,
+  let destinationName = resolveDestinationName(newDestId)
+  const equipmentValue = equipment !== undefined ? clean(equipment) : (o.equipment || o.destination_name || '')
+  if (!destinationName) destinationName = equipmentValue || o.destination_name
+
+  const serviceTypeValue = serviceType !== undefined ? normalizeServiceType(serviceType) : (o.service_type || 'Outros')
+  const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
+  const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
+  const requestedByValue = requestedBy !== undefined ? clean(requestedBy) : o.requested_by
+
+  if (!requestedByValue) return res.status(400).json({ error: 'Solicitante é obrigatório' })
+  if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
+  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
+  if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
+  const maintenanceError = validateMaintenanceDates({
+    maintenanceStartDate: maintenanceStartDate !== undefined ? maintenanceStartDate : (o.maintenance_start_date || ''),
+    maintenanceStartTime: maintenanceStartTime !== undefined ? maintenanceStartTime : (o.maintenance_start_time || ''),
+    maintenanceEndDate: maintenanceEndDate !== undefined ? maintenanceEndDate : (o.maintenance_end_date || ''),
+    maintenanceEndTime: maintenanceEndTime !== undefined ? maintenanceEndTime : (o.maintenance_end_time || ''),
+  })
+  if (maintenanceError) return res.status(400).json({ error: maintenanceError })
+
+  const titleValue = buildTitle({
+    title: title !== undefined ? title : o.title,
+    serviceType: serviceTypeValue,
+    equipment: equipmentValue,
+    destinationName,
+    number: nextNumber,
+  })
+
+  db.prepare(`UPDATE work_orders SET
+    number=?, title=?, destination_id=?, destination_name=?, equipment=?, service_type=?,
+    request_date=?, request_time=?, requested_by=?, note=?,
+    maintenance_start_date=?, maintenance_start_time=?, maintenance_end_date=?,
+    maintenance_end_time=?, maintenance_professional=?, maintenance_materials=?, maintenance_note=?
+    WHERE id=?`).run(
+    nextNumber,
+    titleValue,
     newDestId,
     destinationName,
-    requestedBy !== undefined ? requestedBy : o.requested_by,
+    equipmentValue,
+    serviceTypeValue,
+    requestDateValue,
+    requestTimeValue,
+    requestedByValue,
     note !== undefined ? note : o.note,
+    maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || ''),
+    maintenanceStartTime !== undefined ? clean(maintenanceStartTime) : (o.maintenance_start_time || ''),
+    maintenanceEndDate !== undefined ? clean(maintenanceEndDate) : (o.maintenance_end_date || ''),
+    maintenanceEndTime !== undefined ? clean(maintenanceEndTime) : (o.maintenance_end_time || ''),
+    maintenanceProfessional !== undefined ? clean(maintenanceProfessional) : (o.maintenance_professional || ''),
+    maintenanceMaterials !== undefined ? maintenanceMaterials : (o.maintenance_materials || ''),
+    maintenanceNote !== undefined ? maintenanceNote : (o.maintenance_note || ''),
     req.params.id
   )
 
@@ -221,8 +375,37 @@ router.delete('/:id', requireAuth, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 
-  db.prepare('DELETE FROM work_orders WHERE id = ?').run(req.params.id)
-  res.json({ ok: true })
+  const workOrderItems = db.prepare('SELECT * FROM work_order_items WHERE work_order_id = ?').all(req.params.id)
+  const removedMovementIds = []
+  const restoredStockByVariation = new Map()
+
+  const tx = db.transaction(() => {
+    for (const item of workOrderItems) {
+      if (!item.movement_id) continue
+      const movement = db.prepare('SELECT doc_ref FROM movements WHERE id = ?').get(item.movement_id)
+      const isImplicit = movement?.doc_ref?.startsWith('OS #')
+      if (!isImplicit) continue
+
+      const variation = db.prepare('SELECT stock FROM variations WHERE id = ?').get(item.variation_id)
+      if (variation) {
+        const newStock = variation.stock + item.qty
+        db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, item.variation_id)
+        restoredStockByVariation.set(item.variation_id, newStock)
+      }
+      db.prepare('DELETE FROM movements WHERE id = ?').run(item.movement_id)
+      removedMovementIds.push(item.movement_id)
+    }
+
+    db.prepare('DELETE FROM work_orders WHERE id = ?').run(req.params.id)
+  })
+
+  tx()
+
+  res.json({
+    ok: true,
+    removedMovementIds,
+    restoredStock: Array.from(restoredStockByVariation.entries()).map(([variationId, newStock]) => ({ variationId, newStock })),
+  })
 })
 
 // POST /api/work-orders/:id/items — add material to work order
@@ -244,6 +427,7 @@ router.post('/:id/items', requireAuth, (req, res) => {
 
   const operatorId = req.user?.id || ''
   const operatorName = req.user?.name || ''
+  const withdrawnBy = o.maintenance_professional || o.requested_by || ''
 
   // Deduct stock + create implicit movement in a transaction
   const stockBefore = variation.stock
@@ -264,7 +448,7 @@ router.post('/:id/items', requireAuth, (req, res) => {
       item.name, item.group_name, item.category || '', item.subcategory || '', item.unit,
       variation.vals, variation.extras || '{}',
       qty, stockBefore, stockAfter, now,
-      '', o.requested_by || '', o.destination_name || '',
+      '', withdrawnBy, o.destination_name || '',
       `OS #${o.number}`, `Material adicionado via OS #${o.number}`,
       operatorId, operatorName
     )
@@ -298,7 +482,7 @@ router.post('/:id/items', requireAuth, (req, res) => {
       variationValues: JSON.parse(variation.vals || '{}'),
       variationExtras: JSON.parse(variation.extras || '{}'),
       qty, stockBefore, stockAfter, date: now,
-      supplier: '', requestedBy: o.requested_by || '',
+      supplier: '', requestedBy: withdrawnBy,
       destination: o.destination_name || '',
       docRef: `OS #${o.number}`,
       note: `Material adicionado via OS #${o.number}`,

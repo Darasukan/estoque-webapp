@@ -18,12 +18,17 @@ const {
   navigationItems, setViewingItem
 } = useItems()
 const { movements, addMovement, editMovement, deleteMovement } = useMovements()
-const { activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
+const { destinations, activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
 const { workOrders, linkMovement } = useWorkOrders()
 const { success, error } = useToast()
 
 const emit = defineEmits(['update:browsing', 'update:subTab'])
+
+function focusRef(target) {
+  const el = Array.isArray(target?.value) ? target.value[0] : target?.value
+  if (el && typeof el.focus === 'function') el.focus()
+}
 
 // ===== Sub-tabs =====
 const activeSubTab = ref('entrada') // 'entrada' | 'saida' | 'historico'
@@ -33,12 +38,13 @@ const visibleSubTabs = computed(() => {
     { id: 'entrada',   label: 'Entrada',   icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6' },
     { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+    { id: 'resumo',    label: 'Resumo por Destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
   ]
-  return isLoggedIn.value ? all : all.filter(t => t.id === 'historico')
+  return isLoggedIn.value ? all : all.filter(t => t.id === 'historico' || t.id === 'resumo')
 })
 
 // Force historico when visitor
-watch(isLoggedIn, (v) => { if (!v) activeSubTab.value = 'historico' }, { immediate: true })
+watch(isLoggedIn, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubTab.value = 'historico' }, { immediate: true })
 
 function switchSubTab(tab) {
   activeSubTab.value = tab
@@ -92,14 +98,14 @@ function resetFlow() {
   destDropdownOpen.value = false
   destSearch.value = ''
   docDropdownOpen.value = false
-  nextTick(() => searchInputEl.value?.focus())
+  nextTick(() => focusRef(searchInputEl))
 }
 
 watch(activeSubTab, () => resetFlow())
 
 // Emit browsing state and manage viewingItemId
 watch([step, activeSubTab], ([v, tab]) => {
-  emit('update:browsing', v <= 2 && tab !== 'historico')
+  emit('update:browsing', v <= 2 && (tab === 'entrada' || tab === 'saida'))
   emit('update:subTab', tab)
   if (v === 1) setViewingItem(null)
 }, { immediate: true })
@@ -163,7 +169,7 @@ function backToStep1() {
   selectedItem.value = null
   selectedVariation.value = null
   step.value = 1
-  nextTick(() => searchInputEl.value?.focus())
+  nextTick(() => focusRef(searchInputEl))
 }
 
 // ===== Variation picker (step 2) =====
@@ -174,7 +180,7 @@ const itemVariations = computed(() =>
 function selectVariation(v) {
   selectedVariation.value = v
   step.value = 3
-  nextTick(() => qtyInputEl.value?.focus())
+  nextTick(() => focusRef(qtyInputEl))
 }
 
 function backToStep2() {
@@ -195,6 +201,18 @@ const orderedActiveDestinations = computed(() => {
   for (const g of groupedDestinations.value) {
     list.push(g.parent)
     for (const c of g.children) list.push(c)
+  }
+  return list
+})
+
+const orderedRegisteredDestinations = computed(() => {
+  const list = []
+  const parents = destinations.value.filter(d => !d.parentId)
+  for (const parent of parents) {
+    list.push(parent)
+    for (const child of destinations.value.filter(d => d.parentId === parent.id)) {
+      list.push(child)
+    }
   }
   return list
 })
@@ -258,7 +276,7 @@ const filteredWorkOrders = computed(() => {
   const dest = form.value.destination.trim()
   if (!dest) return workOrders.value
   return workOrders.value.filter(wo =>
-    wo.destinationName === dest || wo.destinationId === dest
+    wo.destinationName === dest || wo.equipment === dest || wo.destinationId === dest
   )
 })
 
@@ -472,6 +490,105 @@ const histTotals = computed(() => {
   return { entradas, saidas }
 })
 
+// ===== Resumo por Destino =====
+const summarySearch = ref('')
+const expandedSummaryDestId = ref(null)
+
+function normalizeDestinationKey(value) {
+  return String(value || '')
+    .replace(/[›»]/g, '>')
+    .trim()
+    .toLowerCase()
+}
+
+function destinationMatchesValue(dest, value) {
+  const q = normalizeDestinationKey(value)
+  if (!q) return false
+  return q === normalizeDestinationKey(dest.id) ||
+    q === normalizeDestinationKey(dest.name) ||
+    q === normalizeDestinationKey(getDestFullName(dest.id))
+}
+
+function workOrderMatchesDestination(wo, dest) {
+  return wo.destinationId === dest.id ||
+    destinationMatchesValue(dest, wo.destinationName) ||
+    destinationMatchesValue(dest, wo.equipment)
+}
+
+function movementMatchesDestination(m, dest) {
+  return m.type === 'saida' && destinationMatchesValue(dest, m.destination)
+}
+
+function movementVariationLabel(m) {
+  const parts = []
+  for (const [key, val] of Object.entries(m.variationValues || {})) {
+    if (val) parts.push(`${key}: ${val}`)
+  }
+  for (const [key, val] of Object.entries(m.variationExtras || {})) {
+    if (val) parts.push(`${key}: ${val}`)
+  }
+  return parts.length ? parts.join(' - ') : '-'
+}
+
+const destinationSummaries = computed(() =>
+  orderedRegisteredDestinations.value.map(dest => {
+    const fullName = getDestFullName(dest.id)
+    const saidas = movements.value.filter(m => movementMatchesDestination(m, dest))
+    const orders = workOrders.value.filter(wo => workOrderMatchesDestination(wo, dest))
+    const materialMap = {}
+
+    for (const m of saidas) {
+      const key = `${m.itemId || m.itemName}||${JSON.stringify(m.variationValues || {})}||${JSON.stringify(m.variationExtras || {})}`
+      if (!materialMap[key]) {
+        materialMap[key] = {
+          itemName: m.itemName,
+          itemUnit: m.itemUnit,
+          variation: movementVariationLabel(m),
+          qty: 0,
+          moves: 0,
+          lastDate: m.date,
+        }
+      }
+      materialMap[key].qty += Number(m.qty) || 0
+      materialMap[key].moves += 1
+      if (new Date(m.date) > new Date(materialMap[key].lastDate)) materialMap[key].lastDate = m.date
+    }
+
+    const materials = Object.values(materialMap).sort((a, b) => b.qty - a.qty)
+    return {
+      id: dest.id,
+      name: dest.name,
+      fullName,
+      isChild: !!dest.parentId,
+      orders,
+      saidas,
+      materials,
+      totalQty: materials.reduce((sum, mat) => sum + mat.qty, 0),
+      lastDate: saidas.reduce((latest, m) => !latest || new Date(m.date) > new Date(latest) ? m.date : latest, ''),
+    }
+  })
+)
+
+const filteredDestinationSummaries = computed(() => {
+  const q = summarySearch.value.trim().toLowerCase()
+  if (!q) return destinationSummaries.value
+  return destinationSummaries.value.filter(d => {
+    const haystack = [
+      d.fullName,
+      ...d.orders.map(wo => `OS ${wo.number} ${wo.equipment || wo.title || ''} ${wo.requestedBy || ''}`),
+      ...d.materials.map(mat => `${mat.itemName} ${mat.variation}`),
+    ].join(' ').toLowerCase()
+    return haystack.includes(q)
+  })
+})
+
+const summaryTotals = computed(() => ({
+  destinations: destinationSummaries.value.length,
+  withMovement: destinationSummaries.value.filter(d => d.saidas.length || d.orders.length).length,
+  saidas: destinationSummaries.value.reduce((sum, d) => sum + d.saidas.length, 0),
+  orders: destinationSummaries.value.reduce((sum, d) => sum + d.orders.length, 0),
+}))
+
 // Delete with inline confirm
 const deletePendingId = ref(null)
 
@@ -565,7 +682,7 @@ defineExpose({
     <!-- ======================================================= -->
     <!-- ENTRADA / SAÍDA — step flow                             -->
     <!-- ======================================================= -->
-    <template v-if="activeSubTab !== 'historico'">
+    <template v-if="activeSubTab === 'entrada' || activeSubTab === 'saida'">
 
       <!-- Step indicator -->
       <div class="flex items-center gap-2">
@@ -1301,7 +1418,7 @@ defineExpose({
                 v-for="wo in filteredWorkOrders"
                 :key="wo.id"
                 :value="wo.id"
-              >OS #{{ wo.number }} — {{ wo.title }}</option>
+              >OS #{{ wo.number }} - {{ wo.equipment || wo.destinationName || wo.title }}</option>
             </select>
           </div>
 
@@ -1352,7 +1469,7 @@ defineExpose({
     <!-- ======================================================= -->
     <!-- HISTÓRICO                                               -->
     <!-- ======================================================= -->
-    <template v-else>
+    <template v-else-if="activeSubTab === 'historico'">
       <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         <!-- Table area -->
@@ -1513,6 +1630,141 @@ defineExpose({
             </div>
           </template>
 
+        </div>
+      </div>
+    </template>
+
+    <!-- ======================================================= -->
+    <!-- RESUMO POR DESTINO                                      -->
+    <!-- ======================================================= -->
+    <template v-else-if="activeSubTab === 'resumo'">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+          <p class="text-xs text-gray-400 dark:text-gray-500">Destinos</p>
+          <p class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ summaryTotals.destinations }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+          <p class="text-xs text-gray-400 dark:text-gray-500">Com movimento</p>
+          <p class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ summaryTotals.withMovement }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+          <p class="text-xs text-gray-400 dark:text-gray-500">Saídas</p>
+          <p class="text-xl font-semibold text-red-600 dark:text-red-400">{{ summaryTotals.saidas }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
+          <p class="text-xs text-gray-400 dark:text-gray-500">OS vinculadas</p>
+          <p class="text-xl font-semibold text-primary-700 dark:text-primary-400">{{ summaryTotals.orders }}</p>
+        </div>
+      </div>
+
+      <div class="relative max-w-lg">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+        <input
+          v-model="summarySearch"
+          type="text"
+          placeholder="Buscar destino, material ou OS..."
+          class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+        />
+      </div>
+
+      <div v-if="destinationSummaries.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
+        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.5-13.5h-7A2.25 2.25 0 0 0 6.25 6v12A2.25 2.25 0 0 0 8.5 20.25h7A2.25 2.25 0 0 0 17.75 18V6a2.25 2.25 0 0 0-2.25-2.25Z" /></svg>
+        <p class="text-sm">Nenhum destino cadastrado.</p>
+      </div>
+
+      <div v-else-if="filteredDestinationSummaries.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
+        Nenhum destino encontrado para a busca.
+      </div>
+
+      <div v-else class="space-y-2">
+        <div
+          v-for="dest in filteredDestinationSummaries"
+          :key="dest.id"
+          class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+          :class="dest.isChild ? 'ml-5 border-l-4 border-l-primary-200 dark:border-l-primary-800' : ''"
+        >
+          <button
+            type="button"
+            class="w-full flex flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+            @click="expandedSummaryDestId = expandedSummaryDestId === dest.id ? null : dest.id"
+          >
+            <svg
+              class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0"
+              :class="expandedSummaryDestId === dest.id ? 'rotate-90' : ''"
+              fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+            ><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+
+            <div class="flex-1 min-w-[180px]">
+              <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ dest.fullName }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ dest.lastDate ? 'Última saída: ' + formatDate(dest.lastDate) : 'Sem saída registrada' }}
+              </p>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs">
+              <span class="px-2 py-1 rounded bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">{{ dest.orders.length }} OS</span>
+              <span class="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">{{ dest.saidas.length }} saídas</span>
+              <span class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ dest.materials.length }} materiais</span>
+            </div>
+          </button>
+
+          <div v-if="expandedSummaryDestId === dest.id" class="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
+                <p class="text-xs text-gray-400 dark:text-gray-500">Quantidade total saída</p>
+                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.totalQty }}</p>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
+                <p class="text-xs text-gray-400 dark:text-gray-500">Materiais diferentes</p>
+                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.materials.length }}</p>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
+                <p class="text-xs text-gray-400 dark:text-gray-500">OS do destino</p>
+                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.orders.length }}</p>
+              </div>
+            </div>
+
+            <div>
+              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Materiais por saída</h4>
+              <div v-if="dest.materials.length" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                      <th class="pb-2 pr-3">Item</th>
+                      <th class="pb-2 pr-3">Variação</th>
+                      <th class="pb-2 pr-3 text-right">Qtd</th>
+                      <th class="pb-2 pr-3">Unid</th>
+                      <th class="pb-2">Última saída</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="mat in dest.materials" :key="mat.itemName + mat.variation" class="border-t border-gray-100 dark:border-gray-700/50">
+                      <td class="py-2 pr-3 text-gray-900 dark:text-gray-100">{{ mat.itemName }}</td>
+                      <td class="py-2 pr-3 text-gray-600 dark:text-gray-400">{{ mat.variation }}</td>
+                      <td class="py-2 pr-3 text-right font-semibold text-gray-900 dark:text-gray-100">{{ mat.qty }}</td>
+                      <td class="py-2 pr-3 text-gray-500 dark:text-gray-400">{{ mat.itemUnit }}</td>
+                      <td class="py-2 text-xs text-gray-400 dark:text-gray-500">{{ formatDate(mat.lastDate) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Sem materiais movimentados neste destino.</p>
+            </div>
+
+            <div>
+              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Ordens de Serviço</h4>
+              <div v-if="dest.orders.length" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div v-for="wo in dest.orders" :key="wo.id" class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ wo.equipment || wo.title }}</span>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ wo.requestedBy || '-' }} - {{ wo.serviceType || 'Outros' }}</p>
+                </div>
+              </div>
+              <p v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Sem OS vinculada a este destino.</p>
+            </div>
+          </div>
         </div>
       </div>
     </template>

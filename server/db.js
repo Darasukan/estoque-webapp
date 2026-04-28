@@ -112,8 +112,19 @@ db.exec(`
     title TEXT NOT NULL,
     destination_id TEXT DEFAULT '',
     destination_name TEXT DEFAULT '',
+    equipment TEXT DEFAULT '',
+    service_type TEXT DEFAULT 'Outros',
+    request_date TEXT DEFAULT '',
+    request_time TEXT DEFAULT '',
     requested_by TEXT DEFAULT '',
     note TEXT DEFAULT '',
+    maintenance_start_date TEXT DEFAULT '',
+    maintenance_start_time TEXT DEFAULT '',
+    maintenance_end_date TEXT DEFAULT '',
+    maintenance_end_time TEXT DEFAULT '',
+    maintenance_professional TEXT DEFAULT '',
+    maintenance_materials TEXT DEFAULT '',
+    maintenance_note TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -146,6 +157,26 @@ const movCols = db.prepare("PRAGMA table_info(movements)").all().map(c => c.name
 if (!movCols.includes('operator_id')) {
   db.prepare("ALTER TABLE movements ADD COLUMN operator_id TEXT DEFAULT ''").run()
   db.prepare("ALTER TABLE movements ADD COLUMN operator_name TEXT DEFAULT ''").run()
+}
+
+// Migration: add detailed OS fields if missing
+const workOrderCols = db.prepare("PRAGMA table_info(work_orders)").all().map(c => c.name)
+const workOrderMigrations = [
+  ['equipment', "ALTER TABLE work_orders ADD COLUMN equipment TEXT DEFAULT ''"],
+  ['service_type', "ALTER TABLE work_orders ADD COLUMN service_type TEXT DEFAULT 'Outros'"],
+  ['request_date', "ALTER TABLE work_orders ADD COLUMN request_date TEXT DEFAULT ''"],
+  ['request_time', "ALTER TABLE work_orders ADD COLUMN request_time TEXT DEFAULT ''"],
+  ['maintenance_start_date', "ALTER TABLE work_orders ADD COLUMN maintenance_start_date TEXT DEFAULT ''"],
+  ['maintenance_start_time', "ALTER TABLE work_orders ADD COLUMN maintenance_start_time TEXT DEFAULT ''"],
+  ['maintenance_end_date', "ALTER TABLE work_orders ADD COLUMN maintenance_end_date TEXT DEFAULT ''"],
+  ['maintenance_end_time', "ALTER TABLE work_orders ADD COLUMN maintenance_end_time TEXT DEFAULT ''"],
+  ['maintenance_professional', "ALTER TABLE work_orders ADD COLUMN maintenance_professional TEXT DEFAULT ''"],
+  ['maintenance_materials', "ALTER TABLE work_orders ADD COLUMN maintenance_materials TEXT DEFAULT ''"],
+  ['maintenance_note', "ALTER TABLE work_orders ADD COLUMN maintenance_note TEXT DEFAULT ''"],
+]
+
+for (const [col, sql] of workOrderMigrations) {
+  if (!workOrderCols.includes(col)) db.prepare(sql).run()
 }
 
 // Seed default admin if no users exist
