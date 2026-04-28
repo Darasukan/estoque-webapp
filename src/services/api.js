@@ -112,6 +112,10 @@ export async function createMovement(data) {
   return request('/movements', { method: 'POST', body: JSON.stringify(data) })
 }
 
+export async function createMovementBatch(data) {
+  return request('/movements/batch', { method: 'POST', body: JSON.stringify(data) })
+}
+
 export async function updateMovement(id, data) {
   return request(`/movements/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }

@@ -20,7 +20,7 @@ const {
   setActiveGroup, setActiveCategory, setActiveSubcategory,
   navigationItems, setViewingItem
 } = useItems()
-const { movements, addMovement, editMovement, deleteMovement } = useMovements()
+const { movements, addMovementBatch, editMovement, deleteMovement } = useMovements()
 const { destinations, activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
 const { workOrders, linkMovement } = useWorkOrders()
@@ -75,6 +75,7 @@ const form = ref({
 const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
+const batchItems = ref([])
 
 function selectDocType(v) {
   docType.value = v
@@ -101,6 +102,17 @@ function resetFlow() {
   destDropdownOpen.value = false
   destSearch.value = ''
   docDropdownOpen.value = false
+  batchItems.value = []
+  nextTick(() => focusRef(searchInputEl))
+}
+
+function resetCurrentItem() {
+  step.value = 1
+  itemSearch.value = ''
+  selectedItem.value = null
+  selectedVariation.value = null
+  form.value.qty = ''
+  confirmPending.value = false
   nextTick(() => focusRef(searchInputEl))
 }
 
@@ -246,11 +258,22 @@ const parsedQty = computed(() => {
   return isFinite(n) && n > 0 ? n : null
 })
 
+function batchQtyForVariation(variationId) {
+  return batchItems.value
+    .filter(i => i.variationId === variationId)
+    .reduce((sum, i) => sum + i.qty, 0)
+}
+
+const selectedAvailableStock = computed(() => {
+  if (activeSubTab.value !== 'saida' || !selectedVariation.value) return selectedVariation.value?.stock || 0
+  return selectedVariation.value.stock - batchQtyForVariation(selectedVariation.value.id)
+})
+
 const saidaExceedsStock = computed(() =>
   activeSubTab.value === 'saida' &&
   parsedQty.value !== null &&
   selectedVariation.value !== null &&
-  parsedQty.value > selectedVariation.value.stock
+  parsedQty.value > selectedAvailableStock.value
 )
 
 const canConfirm = computed(() => {
@@ -271,46 +294,79 @@ const filteredWorkOrders = computed(() => {
   )
 })
 
-function confirm() {
+function commonMovementFields() {
+  return {
+    supplier: form.value.supplier,
+    requestedBy: form.value.requestedBy,
+    destination: form.value.destination,
+    docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
+      ? `${docType.value === 'nf' ? 'NF' : 'PC'} ${form.value.docRef.trim()}`
+      : '',
+    note: form.value.note,
+  }
+}
+
+function addCurrentToBatch() {
   if (!canConfirm.value || !selectedVariation.value || !selectedItem.value) return
-  // Find the live reactive variation object in the store
   const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
   if (!liveVar) { error('Variação não encontrada.'); return }
 
-  const woId = selectedWorkOrderId.value
-
-  addMovement(
-    activeSubTab.value,
-    liveVar,
-    selectedItem.value,
-    parsedQty.value,
-    {
-      supplier: form.value.supplier,
-      requestedBy: form.value.requestedBy,
-      destination: form.value.destination,
-      docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
-        ? `${docType.value === 'nf' ? 'NF' : 'PC'} ${form.value.docRef.trim()}`
-        : '',
-      note: form.value.note,
-    }
-  ).then(async () => {
-    // If a work order was selected on saída, link the movement to the OS
-    if (activeSubTab.value === 'saida' && woId) {
-      try {
-        // The most recent movement (just unshifted) is the one we created
-        const lastMov = movements.value[0]
-        if (lastMov) {
-          await linkMovement(woId, lastMov.id)
-        }
-      } catch (e) {
-        error('Saída criada, mas falha ao vincular à OS: ' + e.message)
-      }
-    }
+  batchItems.value.push({
+    uid: `batch_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    variationId: liveVar.id,
+    itemId: selectedItem.value.id,
+    itemName: selectedItem.value.name,
+    itemGroup: selectedItem.value.group,
+    itemCategory: selectedItem.value.category || '',
+    itemSubcategory: selectedItem.value.subcategory || '',
+    itemUnit: selectedItem.value.unit,
+    variationValues: { ...(liveVar.values || {}) },
+    variationExtras: { ...(liveVar.extras || {}) },
+    qty: parsedQty.value,
   })
 
-  const typeLabel = activeSubTab.value === 'entrada' ? 'Entrada' : 'Saída'
-  success(`${typeLabel} registrada com sucesso.`)
-  resetFlow()
+  success('Item adicionado ao lote.')
+  resetCurrentItem()
+}
+
+function removeBatchItem(uid) {
+  batchItems.value = batchItems.value.filter(i => i.uid !== uid)
+}
+
+function clearBatch() {
+  batchItems.value = []
+}
+
+async function confirmBatch() {
+  if (!batchItems.value.length) return
+  if (activeSubTab.value === 'saida' && (!form.value.requestedBy.trim() || !form.value.destination.trim())) {
+    error('Preencha quem retirou e o local de destino.')
+    return
+  }
+
+  const woId = selectedWorkOrderId.value
+
+  try {
+    const created = await addMovementBatch(activeSubTab.value, batchItems.value, commonMovementFields())
+    for (const m of created) {
+      const liveVar = variations.value.find(v => v.id === m.variationId)
+      if (liveVar) liveVar.stock = m.stockAfter
+    }
+
+    if (activeSubTab.value === 'saida' && woId) {
+      try {
+        for (const movement of created) await linkMovement(woId, movement.id)
+      } catch (e) {
+        error('Lote criado, mas houve falha ao vincular algum item à OS: ' + e.message)
+      }
+    }
+
+    const typeLabel = activeSubTab.value === 'entrada' ? 'Entrada' : 'Saída'
+    success(`${typeLabel} em lote registrada com sucesso.`)
+    resetFlow()
+  } catch (e) {
+    error(e.message)
+  }
 }
 
 // ===== Helpers =====
@@ -326,6 +382,14 @@ function variationLabel(v, item) {
   for (const [k, val] of Object.entries(v.extras || {})) {
     if (val) parts.push(`${k}: ${val}`)
   }
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+function batchVariationLabel(line) {
+  const parts = [
+    ...Object.entries(line.variationValues || {}).map(([k, val]) => `${k}: ${val}`),
+    ...Object.entries(line.variationExtras || {}).filter(([, val]) => val).map(([k, val]) => `${k}: ${val}`),
+  ]
   return parts.length ? parts.join(' · ') : '—'
 }
 
@@ -492,6 +556,39 @@ defineExpose({
           <svg v-if="i < 2" class="w-4 h-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>
+        </div>
+      </div>
+
+      <!-- Batch cart -->
+      <div v-if="batchItems.length" class="rounded-xl border border-primary-200 dark:border-primary-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <div class="px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Lote de {{ activeSubTab === 'entrada' ? 'entrada' : 'saída' }}
+            </h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ batchItems.length }} item{{ batchItems.length !== 1 ? 's' : '' }} aguardando confirmação</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              @click="clearBatch"
+            >Limpar</button>
+            <button
+              class="px-4 py-2 text-sm font-medium rounded-lg text-white"
+              :class="activeSubTab === 'entrada' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'"
+              @click="confirmBatch"
+            >Confirmar lote</button>
+          </div>
+        </div>
+        <div class="divide-y divide-gray-100 dark:divide-gray-800">
+          <div v-for="line in batchItems" :key="line.uid" class="px-4 py-3 flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ line.itemName }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
+            </div>
+            <span class="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ line.qty }} {{ line.itemUnit }}</span>
+            <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>
+          </div>
         </div>
       </div>
 
@@ -871,15 +968,15 @@ defineExpose({
                 :class="saidaExceedsStock
                   ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
                   : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
-                @keydown.enter="canConfirm && confirm()"
+                @keydown.enter="canConfirm && addCurrentToBatch()"
               />
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ selectedItem?.unit }}</span>
             </div>
             <p v-if="saidaExceedsStock" class="text-xs text-red-500 dark:text-red-400 mt-1">
-              Quantidade excede o estoque disponível ({{ selectedVariation?.stock }} {{ selectedItem?.unit }}).
+              Quantidade excede o estoque disponível para este lote ({{ selectedAvailableStock }} {{ selectedItem?.unit }}).
             </p>
             <p v-else-if="activeSubTab === 'saida' && selectedVariation" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Disponível: {{ selectedVariation.stock }} {{ selectedItem?.unit }}
+              Disponível para este lote: {{ selectedAvailableStock }} {{ selectedItem?.unit }}
             </p>
           </div>
 
@@ -1223,13 +1320,13 @@ defineExpose({
                 : 'bg-red-600 hover:bg-red-700 text-white'
               : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
             :disabled="!canConfirm"
-            @click="confirm"
+            @click="addCurrentToBatch"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
               <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
             </svg>
-            Confirmar {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saída' }}
+            Adicionar ao lote
           </button>
           <button
             class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"

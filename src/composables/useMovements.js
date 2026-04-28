@@ -43,6 +43,13 @@ export function useMovements() {
     movements.value.unshift(created)
   }
 
+  async function addMovementBatch(type, lines, fields = {}) {
+    const result = await api.createMovementBatch({ type, items: lines, fields })
+    const created = result.movements || []
+    movements.value.unshift(...created)
+    return created
+  }
+
   async function deleteMovement(id) {
     const result = await api.deleteMovement(id)
     const idx = movements.value.findIndex(m => m.id === id)
@@ -93,6 +100,7 @@ export function useMovements() {
     movements,
     loadData,
     addMovement,
+    addMovementBatch,
     editMovement,
     deleteMovement,
     recentMovements,

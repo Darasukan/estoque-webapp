@@ -114,6 +114,96 @@ router.post('/', requireAuth, (req, res) => {
   })
 })
 
+// POST /api/movements/batch
+router.post('/batch', requireAuth, (req, res) => {
+  const { type, items = [], fields = {} } = req.body
+  const operatorId = req.user?.id || ''
+  const operatorName = req.user?.name || ''
+
+  if (!['entrada', 'saida'].includes(type)) {
+    return res.status(400).json({ error: 'Tipo de movimentacao invalido.' })
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Informe ao menos um item.' })
+  }
+
+  const liveStockByVariation = new Map()
+  const prepared = []
+
+  for (const item of items) {
+    const qty = parsePositiveQty(item.qty)
+    if (!item.variationId || !item.itemId || !qty) {
+      return res.status(400).json({ error: 'Itens do lote precisam de variationId, itemId e qty positiva.' })
+    }
+
+    const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ?').get(item.variationId)
+    if (!variation) return res.status(404).json({ error: `Variacao nao encontrada: ${item.variationId}` })
+    if (variation.item_id !== item.itemId) {
+      return res.status(400).json({ error: 'Variacao nao pertence ao item informado.' })
+    }
+
+    const stockBefore = liveStockByVariation.has(item.variationId)
+      ? liveStockByVariation.get(item.variationId)
+      : variation.stock
+    const stockAfter = type === 'entrada' ? stockBefore + qty : stockBefore - qty
+    if (stockAfter < 0) return res.status(400).json({ error: `Estoque insuficiente para ${item.itemName || 'item do lote'}.` })
+
+    liveStockByVariation.set(item.variationId, stockAfter)
+    prepared.push({ item, qty, stockBefore, stockAfter })
+  }
+
+  const date = fields.date || new Date().toISOString()
+  const created = []
+
+  const createBatch = db.transaction(() => {
+    for (const [variationId, stock] of liveStockByVariation.entries()) {
+      db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(stock, variationId)
+    }
+
+    for (const line of prepared) {
+      const m = line.item
+      const id = 'mov_' + crypto.randomBytes(6).toString('hex')
+      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, requested_by, destination, doc_ref, note, operator_id, operator_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        id, type, m.variationId, m.itemId,
+        m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
+        JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
+        line.qty, line.stockBefore, line.stockAfter,
+        date,
+        fields.supplier || '', fields.requestedBy || '', fields.destination || '', fields.docRef || '', fields.note || '',
+        operatorId, operatorName
+      )
+      created.push({
+        id,
+        type,
+        variationId: m.variationId,
+        itemId: m.itemId,
+        itemName: m.itemName || '',
+        itemGroup: m.itemGroup || '',
+        itemCategory: m.itemCategory || '',
+        itemSubcategory: m.itemSubcategory || '',
+        itemUnit: m.itemUnit || '',
+        variationValues: m.variationValues || {},
+        variationExtras: m.variationExtras || {},
+        qty: line.qty,
+        stockBefore: line.stockBefore,
+        stockAfter: line.stockAfter,
+        date,
+        supplier: fields.supplier || '',
+        requestedBy: fields.requestedBy || '',
+        destination: fields.destination || '',
+        docRef: fields.docRef || '',
+        note: fields.note || '',
+        operatorId,
+        operatorName,
+      })
+    }
+  })
+
+  createBatch()
+  res.json({ movements: created })
+})
+
 // PUT /api/movements/:id
 router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
   const m = db.prepare('SELECT * FROM movements WHERE id = ?').get(req.params.id)
