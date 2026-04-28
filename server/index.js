@@ -5,7 +5,8 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
 // Init DB (creates file + tables on first run)
-import './db.js'
+import db from './db.js'
+import { startBackupScheduler } from './backup.js'
 
 import { requireAuth, requireRole } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
@@ -63,6 +64,7 @@ function getLocalIp() {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
+  startBackupScheduler(db)
   const ip = getLocalIp();
   console.log(`✔ Servidor rodando em http://localhost:${PORT}`)
   console.log(`  Acesso na rede: http://${ip}:${PORT}`)

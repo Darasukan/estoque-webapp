@@ -6,6 +6,9 @@ import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useToast } from '../composables/useToast.js'
+import { useMovementHistory } from '../composables/useMovementHistory.js'
+import { useDestinationSummary } from '../composables/useDestinationSummary.js'
+import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -205,18 +208,6 @@ const orderedActiveDestinations = computed(() => {
   return list
 })
 
-const orderedRegisteredDestinations = computed(() => {
-  const list = []
-  const parents = destinations.value.filter(d => !d.parentId)
-  for (const parent of parents) {
-    list.push(parent)
-    for (const child of destinations.value.filter(d => d.parentId === parent.id)) {
-      list.push(child)
-    }
-  }
-  return list
-})
-
 const linkedDestinations = computed(() =>
   orderedActiveDestinations.value.filter(d => linkedDestinationIds.value.includes(d.id))
 )
@@ -344,251 +335,25 @@ function formatDate(iso) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-// ===== Histórico =====
-const histSearch = ref('')
-const histDateFrom = ref('')
-const histDateTo = ref('')
-const histFilters = ref({})   // { key: [val, val, ...] }
+const {
+  histSearch,
+  histDateFrom,
+  histDateTo,
+  histFacets,
+  hasHistFilters,
+  toggleHistFilter,
+  clearHistFilters,
+  filteredMovements,
+  histTotals,
+} = useMovementHistory(movements)
 
-// Build facets from movements for the sidebar
-const histFacets = computed(() => {
-  const ms = movements.value
-  if (!ms.length) return []
-
-  // Collect facet counts
-  const counts = {}
-  function inc(key, val) {
-    if (!val) return
-    if (!counts[key]) counts[key] = {}
-    counts[key][val] = (counts[key][val] || 0) + 1
-  }
-
-  for (const m of ms) {
-    inc('tipo', m.type === 'entrada' ? 'Entrada' : 'Saída')
-    inc('grupo', m.itemGroup)
-    inc('categoria', m.itemCategory)
-    inc('subcategoria', m.itemSubcategory)
-    inc('item', m.itemName)
-    for (const [k, v] of Object.entries(m.variationValues || {})) {
-      if (v) inc(`attr_${k}`, v)
-    }
-  }
-
-  const selected = histFilters.value
-  const result = []
-
-  const facetDefs = [
-    { key: 'tipo', label: 'Tipo' },
-    { key: 'grupo', label: 'Grupo' },
-    { key: 'categoria', label: 'Categoria' },
-    { key: 'subcategoria', label: 'Subcategoria' },
-    { key: 'item', label: 'Item' },
-  ]
-
-  for (const def of facetDefs) {
-    const vals = counts[def.key]
-    if (!vals) continue
-    const options = Object.entries(vals)
-      .sort((a, b) => b[1] - a[1])
-      .map(([value, count]) => ({ value, count }))
-    if (options.length) {
-      result.push({ key: def.key, label: def.label, options, selected: selected[def.key] || [] })
-    }
-  }
-
-  // Dynamic attribute facets
-  for (const key of Object.keys(counts)) {
-    if (!key.startsWith('attr_')) continue
-    const attrName = key.slice(5)
-    const vals = counts[key]
-    const options = Object.entries(vals)
-      .sort((a, b) => b[1] - a[1])
-      .map(([value, count]) => ({ value, count }))
-    if (options.length) {
-      result.push({ key, label: attrName, options, selected: selected[key] || [] })
-    }
-  }
-
-  return result
-})
-
-const hasHistFilters = computed(() =>
-  histSearch.value.trim().length > 0 ||
-  histDateFrom.value !== '' ||
-  histDateTo.value !== '' ||
-  Object.values(histFilters.value).some(arr => arr.length > 0)
-)
-
-function toggleHistFilter(key, value) {
-  const cur = histFilters.value[key] || []
-  const idx = cur.indexOf(value)
-  if (idx >= 0) {
-    cur.splice(idx, 1)
-  } else {
-    cur.push(value)
-  }
-  histFilters.value = { ...histFilters.value, [key]: cur }
-}
-
-function clearHistFilters() {
-  histSearch.value = ''
-  histDateFrom.value = ''
-  histDateTo.value = ''
-  histFilters.value = {}
-}
-
-const filteredMovements = computed(() => {
-  const q = histSearch.value.trim().toLowerCase()
-  const sf = histFilters.value
-  return movements.value.filter(m => {
-    // Sidebar facet filters
-    if (sf.tipo && sf.tipo.length) {
-      const typeLabel = m.type === 'entrada' ? 'Entrada' : 'Saída'
-      if (!sf.tipo.includes(typeLabel)) return false
-    }
-    if (sf.grupo && sf.grupo.length && !sf.grupo.includes(m.itemGroup)) return false
-    if (sf.categoria && sf.categoria.length && !sf.categoria.includes(m.itemCategory)) return false
-    if (sf.subcategoria && sf.subcategoria.length && !sf.subcategoria.includes(m.itemSubcategory)) return false
-    if (sf.item && sf.item.length && !sf.item.includes(m.itemName)) return false
-    // Dynamic attribute filters
-    for (const key of Object.keys(sf)) {
-      if (!key.startsWith('attr_') || !sf[key].length) continue
-      const attrName = key.slice(5)
-      const val = (m.variationValues || {})[attrName] || ''
-      if (!sf[key].includes(val)) return false
-    }
-    // Text search
-    if (q) {
-      const haystack = [
-        m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
-        m.supplier, m.requestedBy, m.destination, m.docRef, m.note,
-        m.operatorName || '',
-        ...Object.values(m.variationValues || {}),
-        ...Object.values(m.variationExtras || {}),
-      ].join(' ').toLowerCase()
-      if (!haystack.includes(q)) return false
-    }
-    if (histDateFrom.value) {
-      if (new Date(m.date) < new Date(histDateFrom.value)) return false
-    }
-    if (histDateTo.value) {
-      // include all of the "to" day
-      const to = new Date(histDateTo.value)
-      to.setDate(to.getDate() + 1)
-      if (new Date(m.date) >= to) return false
-    }
-    return true
-  })
-})
-
-const histTotals = computed(() => {
-  let entradas = 0, saidas = 0
-  for (const m of filteredMovements.value) {
-    if (m.type === 'entrada') entradas += m.qty
-    else saidas += m.qty
-  }
-  return { entradas, saidas }
-})
-
-// ===== Resumo por Destino =====
-const summarySearch = ref('')
-const expandedSummaryDestId = ref(null)
-
-function normalizeDestinationKey(value) {
-  return String(value || '')
-    .replace(/[›»]/g, '>')
-    .trim()
-    .toLowerCase()
-}
-
-function destinationMatchesValue(dest, value) {
-  const q = normalizeDestinationKey(value)
-  if (!q) return false
-  return q === normalizeDestinationKey(dest.id) ||
-    q === normalizeDestinationKey(dest.name) ||
-    q === normalizeDestinationKey(getDestFullName(dest.id))
-}
-
-function workOrderMatchesDestination(wo, dest) {
-  return wo.destinationId === dest.id ||
-    destinationMatchesValue(dest, wo.destinationName) ||
-    destinationMatchesValue(dest, wo.equipment)
-}
-
-function movementMatchesDestination(m, dest) {
-  return m.type === 'saida' && destinationMatchesValue(dest, m.destination)
-}
-
-function movementVariationLabel(m) {
-  const parts = []
-  for (const [key, val] of Object.entries(m.variationValues || {})) {
-    if (val) parts.push(`${key}: ${val}`)
-  }
-  for (const [key, val] of Object.entries(m.variationExtras || {})) {
-    if (val) parts.push(`${key}: ${val}`)
-  }
-  return parts.length ? parts.join(' - ') : '-'
-}
-
-const destinationSummaries = computed(() =>
-  orderedRegisteredDestinations.value.map(dest => {
-    const fullName = getDestFullName(dest.id)
-    const saidas = movements.value.filter(m => movementMatchesDestination(m, dest))
-    const orders = workOrders.value.filter(wo => workOrderMatchesDestination(wo, dest))
-    const materialMap = {}
-
-    for (const m of saidas) {
-      const key = `${m.itemId || m.itemName}||${JSON.stringify(m.variationValues || {})}||${JSON.stringify(m.variationExtras || {})}`
-      if (!materialMap[key]) {
-        materialMap[key] = {
-          itemName: m.itemName,
-          itemUnit: m.itemUnit,
-          variation: movementVariationLabel(m),
-          qty: 0,
-          moves: 0,
-          lastDate: m.date,
-        }
-      }
-      materialMap[key].qty += Number(m.qty) || 0
-      materialMap[key].moves += 1
-      if (new Date(m.date) > new Date(materialMap[key].lastDate)) materialMap[key].lastDate = m.date
-    }
-
-    const materials = Object.values(materialMap).sort((a, b) => b.qty - a.qty)
-    return {
-      id: dest.id,
-      name: dest.name,
-      fullName,
-      isChild: !!dest.parentId,
-      orders,
-      saidas,
-      materials,
-      totalQty: materials.reduce((sum, mat) => sum + mat.qty, 0),
-      lastDate: saidas.reduce((latest, m) => !latest || new Date(m.date) > new Date(latest) ? m.date : latest, ''),
-    }
-  })
-)
-
-const filteredDestinationSummaries = computed(() => {
-  const q = summarySearch.value.trim().toLowerCase()
-  if (!q) return destinationSummaries.value
-  return destinationSummaries.value.filter(d => {
-    const haystack = [
-      d.fullName,
-      ...d.orders.map(wo => `OS ${wo.number} ${wo.equipment || wo.title || ''} ${wo.requestedBy || ''}`),
-      ...d.materials.map(mat => `${mat.itemName} ${mat.variation}`),
-    ].join(' ').toLowerCase()
-    return haystack.includes(q)
-  })
-})
-
-const summaryTotals = computed(() => ({
-  destinations: destinationSummaries.value.length,
-  withMovement: destinationSummaries.value.filter(d => d.saidas.length || d.orders.length).length,
-  saidas: destinationSummaries.value.reduce((sum, d) => sum + d.saidas.length, 0),
-  orders: destinationSummaries.value.reduce((sum, d) => sum + d.orders.length, 0),
-}))
-
+const {
+  summarySearch,
+  expandedSummaryDestId,
+  destinationSummaries,
+  filteredDestinationSummaries,
+  summaryTotals,
+} = useDestinationSummary({ destinations, movements, workOrders, getDestFullName })
 // Delete with inline confirm
 const deletePendingId = ref(null)
 
@@ -1638,135 +1403,16 @@ defineExpose({
     <!-- RESUMO POR DESTINO                                      -->
     <!-- ======================================================= -->
     <template v-else-if="activeSubTab === 'resumo'">
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
-          <p class="text-xs text-gray-400 dark:text-gray-500">Destinos</p>
-          <p class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ summaryTotals.destinations }}</p>
-        </div>
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
-          <p class="text-xs text-gray-400 dark:text-gray-500">Com movimento</p>
-          <p class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ summaryTotals.withMovement }}</p>
-        </div>
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
-          <p class="text-xs text-gray-400 dark:text-gray-500">Saídas</p>
-          <p class="text-xl font-semibold text-red-600 dark:text-red-400">{{ summaryTotals.saidas }}</p>
-        </div>
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
-          <p class="text-xs text-gray-400 dark:text-gray-500">OS vinculadas</p>
-          <p class="text-xl font-semibold text-primary-700 dark:text-primary-400">{{ summaryTotals.orders }}</p>
-        </div>
-      </div>
-
-      <div class="relative max-w-lg">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
-        <input
-          v-model="summarySearch"
-          type="text"
-          placeholder="Buscar destino, material ou OS..."
-          class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        />
-      </div>
-
-      <div v-if="destinationSummaries.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
-        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.5-13.5h-7A2.25 2.25 0 0 0 6.25 6v12A2.25 2.25 0 0 0 8.5 20.25h7A2.25 2.25 0 0 0 17.75 18V6a2.25 2.25 0 0 0-2.25-2.25Z" /></svg>
-        <p class="text-sm">Nenhum destino cadastrado.</p>
-      </div>
-
-      <div v-else-if="filteredDestinationSummaries.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
-        Nenhum destino encontrado para a busca.
-      </div>
-
-      <div v-else class="space-y-2">
-        <div
-          v-for="dest in filteredDestinationSummaries"
-          :key="dest.id"
-          class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
-          :class="dest.isChild ? 'ml-5 border-l-4 border-l-primary-200 dark:border-l-primary-800' : ''"
-        >
-          <button
-            type="button"
-            class="w-full flex flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
-            @click="expandedSummaryDestId = expandedSummaryDestId === dest.id ? null : dest.id"
-          >
-            <svg
-              class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0"
-              :class="expandedSummaryDestId === dest.id ? 'rotate-90' : ''"
-              fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
-            ><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-
-            <div class="flex-1 min-w-[180px]">
-              <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ dest.fullName }}</p>
-              <p class="text-xs text-gray-400 dark:text-gray-500">
-                {{ dest.lastDate ? 'Última saída: ' + formatDate(dest.lastDate) : 'Sem saída registrada' }}
-              </p>
-            </div>
-
-            <div class="flex items-center gap-2 text-xs">
-              <span class="px-2 py-1 rounded bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">{{ dest.orders.length }} OS</span>
-              <span class="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">{{ dest.saidas.length }} saídas</span>
-              <span class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ dest.materials.length }} materiais</span>
-            </div>
-          </button>
-
-          <div v-if="expandedSummaryDestId === dest.id" class="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-                <p class="text-xs text-gray-400 dark:text-gray-500">Quantidade total saída</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.totalQty }}</p>
-              </div>
-              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-                <p class="text-xs text-gray-400 dark:text-gray-500">Materiais diferentes</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.materials.length }}</p>
-              </div>
-              <div class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-                <p class="text-xs text-gray-400 dark:text-gray-500">OS do destino</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ dest.orders.length }}</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Materiais por saída</h4>
-              <div v-if="dest.materials.length" class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <thead>
-                    <tr class="text-left text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                      <th class="pb-2 pr-3">Item</th>
-                      <th class="pb-2 pr-3">Variação</th>
-                      <th class="pb-2 pr-3 text-right">Qtd</th>
-                      <th class="pb-2 pr-3">Unid</th>
-                      <th class="pb-2">Última saída</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="mat in dest.materials" :key="mat.itemName + mat.variation" class="border-t border-gray-100 dark:border-gray-700/50">
-                      <td class="py-2 pr-3 text-gray-900 dark:text-gray-100">{{ mat.itemName }}</td>
-                      <td class="py-2 pr-3 text-gray-600 dark:text-gray-400">{{ mat.variation }}</td>
-                      <td class="py-2 pr-3 text-right font-semibold text-gray-900 dark:text-gray-100">{{ mat.qty }}</td>
-                      <td class="py-2 pr-3 text-gray-500 dark:text-gray-400">{{ mat.itemUnit }}</td>
-                      <td class="py-2 text-xs text-gray-400 dark:text-gray-500">{{ formatDate(mat.lastDate) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Sem materiais movimentados neste destino.</p>
-            </div>
-
-            <div>
-              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Ordens de Serviço</h4>
-              <div v-if="dest.orders.length" class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div v-for="wo in dest.orders" :key="wo.id" class="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3">
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
-                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ wo.equipment || wo.title }}</span>
-                  </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ wo.requestedBy || '-' }} - {{ wo.serviceType || 'Outros' }}</p>
-                </div>
-              </div>
-              <p v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Sem OS vinculada a este destino.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DestinationSummaryPanel
+        :summary-totals="summaryTotals"
+        :destination-summaries="destinationSummaries"
+        :filtered-destination-summaries="filteredDestinationSummaries"
+        :summary-search="summarySearch"
+        :expanded-summary-dest-id="expandedSummaryDestId"
+        :format-date="formatDate"
+        @update:summary-search="v => summarySearch = v"
+        @update:expanded-summary-dest-id="v => expandedSummaryDestId = v"
+      />
     </template>
 
   </div>

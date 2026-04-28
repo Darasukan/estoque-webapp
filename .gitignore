@@ -27,6 +27,7 @@ dist-ssr
 server/*.db
 server/*.db-shm
 server/*.db-wal
+server/backups/
 
 # Notas de features futuras
 features.md
