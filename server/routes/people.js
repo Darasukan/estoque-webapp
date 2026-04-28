@@ -41,7 +41,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/people/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM people WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

@@ -17,7 +17,7 @@ router.put('/order', requireAuth, (req, res) => {
 })
 
 // POST /api/seed/populate — load seed data (admin only)
-router.post('/populate', requireRole('admin'), (req, res) => {
+router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
   const { items: seedItems, variations: seedVars } = req.body
   if (!seedItems || !seedVars) return res.status(400).json({ error: 'items e variations obrigatórios' })
 
@@ -39,7 +39,7 @@ router.post('/populate', requireRole('admin'), (req, res) => {
 })
 
 // POST /api/seed/reset — clear all data (admin only)
-router.post('/reset', requireRole('admin'), (req, res) => {
+router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
   db.exec(`
     DELETE FROM movements;
     DELETE FROM variations;

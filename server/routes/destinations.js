@@ -40,7 +40,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/destinations/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM destinations WHERE parent_id = ?').run(req.params.id)
   db.prepare('DELETE FROM destinations WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
