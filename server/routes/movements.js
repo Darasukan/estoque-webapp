@@ -159,11 +159,36 @@ router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
 })
 
 // DELETE /api/movements/:id
-router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/:id', requireAuth, (req, res) => {
   const m = db.prepare('SELECT * FROM movements WHERE id = ?').get(req.params.id)
   if (!m) return res.status(404).json({ error: 'Movimentacao nao encontrada' })
-  db.prepare('DELETE FROM movements WHERE id = ?').run(req.params.id)
-  res.json({ ok: true })
+
+  const variation = db.prepare('SELECT stock FROM variations WHERE id = ?').get(m.variation_id)
+  if (!variation) return res.status(404).json({ error: 'Variacao nao encontrada' })
+
+  const newStock = m.type === 'entrada'
+    ? variation.stock - m.qty
+    : variation.stock + m.qty
+  if (newStock < 0) {
+    return res.status(400).json({ error: 'Nao e possivel excluir esta entrada porque o estoque ficaria negativo.' })
+  }
+
+  const linkedItems = db.prepare('SELECT id FROM work_order_items WHERE movement_id = ?').all(req.params.id)
+  const removedWorkOrderItemIds = linkedItems.map(i => i.id)
+
+  const removeMovement = db.transaction(() => {
+    db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, m.variation_id)
+    db.prepare('DELETE FROM work_order_items WHERE movement_id = ?').run(req.params.id)
+    db.prepare('DELETE FROM movements WHERE id = ?').run(req.params.id)
+  })
+  removeMovement()
+
+  res.json({
+    ok: true,
+    variationId: m.variation_id,
+    newStock,
+    removedWorkOrderItemIds,
+  })
 })
 
 export default router

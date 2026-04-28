@@ -65,10 +65,15 @@ function buildTitle({ title, serviceType, equipment, destinationName, number }) 
 }
 
 function mapWorkOrder(r) {
+  const motor = r.motor_id ? db.prepare('SELECT id, tag, name, status FROM motors WHERE id = ?').get(r.motor_id) : null
   return {
     id: r.id,
     number: r.number,
     title: r.title,
+    motorId: r.motor_id || '',
+    motorTag: motor?.tag || '',
+    motorName: motor?.name || '',
+    motorStatus: motor?.status || '',
     destinationId: r.destination_id,
     destinationName: r.destination_name,
     equipment: r.equipment || r.destination_name || '',
@@ -211,6 +216,7 @@ router.post('/', requireAuth, (req, res) => {
     title,
     number: rawNumber,
     destinationId,
+    motorId,
     requestedBy,
     note,
     equipment,
@@ -240,8 +246,11 @@ router.post('/', requireAuth, (req, res) => {
   const numberExists = db.prepare('SELECT id FROM work_orders WHERE number = ?').get(number)
   if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
+  const motor = clean(motorId) ? db.prepare('SELECT * FROM motors WHERE id = ?').get(clean(motorId)) : null
+  if (clean(motorId) && !motor) return res.status(400).json({ error: 'Motor nao encontrado' })
+
   let destinationName = resolveDestinationName(destinationId)
-  const equipmentValue = clean(equipment) || destinationName
+  const equipmentValue = clean(equipment) || motor?.tag || destinationName
   if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
   if (!destinationName) destinationName = equipmentValue
 
@@ -252,11 +261,11 @@ router.post('/', requireAuth, (req, res) => {
   const createdAt = new Date().toISOString()
 
   db.prepare(`INSERT INTO work_orders (
-    id, number, title, destination_id, destination_name, equipment, service_type, request_date, request_time,
+    id, number, title, motor_id, destination_id, destination_name, equipment, service_type, request_date, request_time,
     requested_by, note, maintenance_start_date, maintenance_start_time, maintenance_end_date,
     maintenance_end_time, maintenance_professional, maintenance_materials, maintenance_note, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, number, titleValue, destinationId || '', destinationName, equipmentValue, serviceTypeValue,
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, number, titleValue, clean(motorId), destinationId || '', destinationName, equipmentValue, serviceTypeValue,
     clean(requestDate), clean(requestTime), clean(requestedBy), note || '',
     clean(maintenanceStartDate), clean(maintenanceStartTime), clean(maintenanceEndDate), clean(maintenanceEndTime),
     clean(maintenanceProfessional), maintenanceMaterials || '', maintenanceNote || '', createdAt
@@ -264,6 +273,7 @@ router.post('/', requireAuth, (req, res) => {
 
   res.json({
     id, number, title: titleValue,
+    motorId: clean(motorId), motorTag: motor?.tag || '', motorName: motor?.name || '', motorStatus: motor?.status || '',
     destinationId: destinationId || '', destinationName,
     equipment: equipmentValue, serviceType: serviceTypeValue,
     requestDate: clean(requestDate), requestTime: clean(requestTime),
@@ -288,6 +298,7 @@ router.put('/:id', requireAuth, (req, res) => {
     title,
     number: rawNumber,
     destinationId,
+    motorId,
     requestedBy,
     note,
     equipment,
@@ -304,6 +315,9 @@ router.put('/:id', requireAuth, (req, res) => {
   } = req.body
 
   const newDestId = destinationId !== undefined ? destinationId : o.destination_id
+  const newMotorId = motorId !== undefined ? clean(motorId) : (o.motor_id || '')
+  const motor = newMotorId ? db.prepare('SELECT * FROM motors WHERE id = ?').get(newMotorId) : null
+  if (newMotorId && !motor) return res.status(400).json({ error: 'Motor nao encontrado' })
   const parsedNumber = parseOrderNumber(rawNumber)
   if (Number.isNaN(parsedNumber)) return res.status(400).json({ error: 'Número da ordem inválido' })
   const nextNumber = parsedNumber || o.number
@@ -311,7 +325,7 @@ router.put('/:id', requireAuth, (req, res) => {
   if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
   let destinationName = resolveDestinationName(newDestId)
-  const equipmentValue = equipment !== undefined ? clean(equipment) : (o.equipment || o.destination_name || '')
+  const equipmentValue = equipment !== undefined ? clean(equipment) : (o.equipment || motor?.tag || o.destination_name || '')
   if (!destinationName) destinationName = equipmentValue || o.destination_name
 
   const serviceTypeValue = serviceType !== undefined ? normalizeServiceType(serviceType) : (o.service_type || 'Outros')
@@ -340,13 +354,14 @@ router.put('/:id', requireAuth, (req, res) => {
   })
 
   db.prepare(`UPDATE work_orders SET
-    number=?, title=?, destination_id=?, destination_name=?, equipment=?, service_type=?,
+    number=?, title=?, motor_id=?, destination_id=?, destination_name=?, equipment=?, service_type=?,
     request_date=?, request_time=?, requested_by=?, note=?,
     maintenance_start_date=?, maintenance_start_time=?, maintenance_end_date=?,
     maintenance_end_time=?, maintenance_professional=?, maintenance_materials=?, maintenance_note=?
     WHERE id=?`).run(
     nextNumber,
     titleValue,
+    newMotorId,
     newDestId,
     destinationName,
     equipmentValue,

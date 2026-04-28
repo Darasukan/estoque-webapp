@@ -359,10 +359,24 @@ const deletePendingId = ref(null)
 
 function requestDelete(id) { deletePendingId.value = id }
 function cancelDelete() { deletePendingId.value = null }
-function confirmDelete(id) {
-  deleteMovement(id)
-  deletePendingId.value = null
-  success('Movimentação removida do histórico.')
+async function confirmDelete(id) {
+  try {
+    const result = await deleteMovement(id)
+    if (result?.variationId) {
+      const liveVar = variations.value.find(v => v.id === result.variationId)
+      if (liveVar) liveVar.stock = result.newStock
+    }
+    for (const itemId of result?.removedWorkOrderItemIds || []) {
+      for (const wo of workOrders.value) {
+        const idx = wo.items?.findIndex(i => i.id === itemId) ?? -1
+        if (idx !== -1) wo.items.splice(idx, 1)
+      }
+    }
+    deletePendingId.value = null
+    success('Movimentação excluída e estoque ajustado.')
+  } catch (e) {
+    error(e.message)
+  }
 }
 
 // Edit movement modal
@@ -1265,7 +1279,7 @@ defineExpose({
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Responsável / Local</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Doc</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Operador</th>
-                    <th v-if="isAdmin" class="px-3 py-2.5 w-16"></th>
+                    <th v-if="isLoggedIn" class="px-3 py-2.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1353,7 +1367,7 @@ defineExpose({
                     </td>
 
                     <!-- Actions: edit + delete -->
-                    <td v-if="isAdmin" class="px-3 py-2.5 text-center">
+                    <td v-if="isLoggedIn" class="px-3 py-2.5 text-center">
                       <div v-if="deletePendingId === m.id" class="flex items-center gap-1">
                         <button class="text-[10px] font-bold text-red-600 dark:text-red-400 hover:underline" @click="confirmDelete(m.id)">Sim</button>
                         <span class="text-gray-300 dark:text-gray-600">/</span>
@@ -1361,6 +1375,7 @@ defineExpose({
                       </div>
                       <div v-else class="flex items-center justify-center gap-0.5">
                         <button
+                          v-if="isAdmin"
                           class="p-1 text-gray-300 dark:text-gray-600 hover:text-amber-500 dark:hover:text-amber-400 transition-colors rounded"
                           title="Editar movimentação"
                           @click="startEditMovement(m)"

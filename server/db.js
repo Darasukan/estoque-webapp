@@ -110,6 +110,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     number INTEGER NOT NULL UNIQUE,
     title TEXT NOT NULL,
+    motor_id TEXT DEFAULT '',
     destination_id TEXT DEFAULT '',
     destination_name TEXT DEFAULT '',
     equipment TEXT DEFAULT '',
@@ -143,6 +144,36 @@ db.exec(`
     added_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS motors (
+    id TEXT PRIMARY KEY,
+    tag TEXT NOT NULL UNIQUE,
+    serial TEXT DEFAULT '',
+    name TEXT DEFAULT '',
+    manufacturer TEXT DEFAULT '',
+    power TEXT DEFAULT '',
+    voltage TEXT DEFAULT '',
+    rpm TEXT DEFAULT '',
+    destination_id TEXT DEFAULT '',
+    destination_name TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','em_manutencao','reserva','inativo')),
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS motor_events (
+    id TEXT PRIMARY KEY,
+    motor_id TEXT NOT NULL REFERENCES motors(id) ON DELETE CASCADE,
+    work_order_id TEXT DEFAULT '',
+    event_type TEXT NOT NULL CHECK(event_type IN ('rebobinado','reformado','revisado','instalado','removido','movimentado','inativado','reativado','observacao')),
+    event_date TEXT NOT NULL,
+    from_destination TEXT DEFAULT '',
+    to_destination TEXT DEFAULT '',
+    performed_by TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS display_order (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     data TEXT NOT NULL DEFAULT '{}'
@@ -162,6 +193,7 @@ if (!movCols.includes('operator_id')) {
 // Migration: add detailed OS fields if missing
 const workOrderCols = db.prepare("PRAGMA table_info(work_orders)").all().map(c => c.name)
 const workOrderMigrations = [
+  ['motor_id', "ALTER TABLE work_orders ADD COLUMN motor_id TEXT DEFAULT ''"],
   ['equipment', "ALTER TABLE work_orders ADD COLUMN equipment TEXT DEFAULT ''"],
   ['service_type', "ALTER TABLE work_orders ADD COLUMN service_type TEXT DEFAULT 'Outros'"],
   ['request_date', "ALTER TABLE work_orders ADD COLUMN request_date TEXT DEFAULT ''"],

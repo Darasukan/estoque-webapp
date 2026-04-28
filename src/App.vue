@@ -5,6 +5,7 @@ import CadastrosView from './views/CadastrosView.vue'
 import InventarioView from './views/InventarioView.vue'
 import MovimentacoesView from './views/MovimentacoesView.vue'
 import OrdensServicoView from './views/OrdensServicoView.vue'
+import MotoresView from './views/MotoresView.vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
@@ -19,6 +20,7 @@ import { useRoles } from './composables/useRoles.js'
 import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
 import { useWorkOrders } from './composables/useWorkOrders.js'
+import { useMotors } from './composables/useMotors.js'
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
@@ -30,6 +32,7 @@ const { loadData: loadRoles } = useRoles()
 const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
 const { loadData: loadWorkOrders } = useWorkOrders()
+const { loadData: loadMotors } = useMotors()
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const showLoginModal = ref(false)
@@ -54,7 +57,8 @@ const allTabs = [
   { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
   { id: 'movimentacoes', label: 'Movimentações' },
-  { id: 'ordens', label: 'Ordens de Serviço' }
+  { id: 'ordens', label: 'Ordens de Serviço' },
+  { id: 'motores', label: 'Motores' }
 ]
 const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
 
@@ -68,6 +72,7 @@ async function loadAllData() {
     loadPeople(),
     loadRoles(),
     loadWorkOrders(),
+    loadMotors(),
   ])
   const failed = results.filter(r => r.status === 'rejected')
   if (failed.length) console.error('Erro ao carregar dados:', failed.map(r => r.reason))
@@ -88,6 +93,7 @@ watch(user, (newUser, oldUser) => {
 function onLoginClose() {
   showLoginModal.value = false
 }
+
 </script>
 
 <template>
@@ -213,7 +219,13 @@ function onLoginClose() {
         <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" ref="movRef" @update:browsing="v => movBrowsing = v" @update:sub-tab="v => movSubTab = v" />
 
         <!-- Ordens de Serviço tab -->
-        <OrdensServicoView v-else-if="activeTab === 'ordens'" />
+        <OrdensServicoView
+          v-else-if="activeTab === 'ordens'"
+          mode="general"
+        />
+
+        <!-- Motores tab -->
+        <MotoresView v-else-if="activeTab === 'motores'" />
       </main>
     </div>
 

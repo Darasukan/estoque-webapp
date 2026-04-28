@@ -5,8 +5,16 @@ import { useItems } from '../composables/useItems.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
 import { useMovements } from '../composables/useMovements.js'
+import { useMotors, MOTOR_EVENT_TYPES } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
 
+const props = defineProps({
+  mode: { type: String, default: 'general' },
+  embedded: { type: Boolean, default: false },
+  prefillMotor: { type: Object, default: null },
+  scopedMotorId: { type: String, default: '' },
+})
+const emit = defineEmits(['prefill-consumed'])
 const isLoggedIn = inject('isLoggedIn')
 const {
   workOrders, report,
@@ -19,9 +27,23 @@ const { items, variations, getVariationsForItem } = useItems()
 const { groupedDestinations, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
 const { movements } = useMovements()
+const { motors, addMotorEvent } = useMotors()
 const { success, error: showError } = useToast()
 
 const serviceTypes = ['Elétrica', 'Mecânica', 'Outros']
+const isMotorMode = computed(() => props.mode === 'motor')
+const pageTitle = computed(() => isMotorMode.value ? 'OS de Motor' : 'Ordens de Serviço')
+const pageSubtitle = computed(() =>
+  isMotorMode.value
+    ? 'Manutenção de motores com histórico do ativo e baixa de peças do estoque'
+    : 'Manutenção geral, sem vínculo obrigatório com motor'
+)
+const newButtonLabel = computed(() => isMotorMode.value ? 'Nova OS de Motor' : 'Nova OS')
+const formTitle = computed(() => isMotorMode.value ? 'Nova OS de Motor' : 'Nova Ordem de Serviço')
+const emptyOrdersText = computed(() =>
+  isMotorMode.value ? 'Nenhuma OS de motor cadastrada' : 'Nenhuma ordem de serviço geral cadastrada'
+)
+const scopedMotor = computed(() => props.scopedMotorId ? motors.value.find(m => m.id === props.scopedMotorId) || null : null)
 
 function focusRef(target) {
   const el = Array.isArray(target?.value) ? target.value[0] : target?.value
@@ -50,6 +72,17 @@ function todayDate() {
 function currentTime() {
   const d = new Date()
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function emptyMotorEventForm(order = null) {
+  return {
+    eventType: 'revisado',
+    eventDate: todayDate(),
+    performedBy: order?.maintenanceProfessional || '',
+    toDestinationId: '',
+    toDestination: '',
+    notes: '',
+  }
 }
 
 function splitIsoDateTime(iso) {
@@ -83,6 +116,7 @@ function createEmptyOsForm(order = null) {
       requestDate: valueFromOrder(order, 'requestDate', 'request_date') || fallback.date,
       requestTime: valueFromOrder(order, 'requestTime', 'request_time') || fallback.time,
       equipment: inferEquipment(order),
+      motorId: valueFromOrder(order, 'motorId', 'motor_id'),
       destinationId: valueFromOrder(order, 'destinationId', 'destination_id'),
       serviceType: valueFromOrder(order, 'serviceType', 'service_type') || 'Outros',
       note: valueFromOrder(order, 'note'),
@@ -102,6 +136,7 @@ function createEmptyOsForm(order = null) {
     requestDate: todayDate(),
     requestTime: currentTime(),
     equipment: '',
+    motorId: '',
     destinationId: '',
     serviceType: 'Outros',
     note: '',
@@ -117,9 +152,12 @@ function createEmptyOsForm(order = null) {
 
 // ===== New/Edit OS form =====
 const osForm = ref(createEmptyOsForm())
+const motorEventOrderId = ref(null)
+const motorEventForm = ref(emptyMotorEventForm())
 
 function resetOsForm() {
   osForm.value = createEmptyOsForm()
+  applyScopedMotorToOsForm()
 }
 
 // ===== "Add Material" flow inside an OS =====
@@ -161,6 +199,32 @@ const destinationOptions = computed(() =>
   orderedDestinations.value.map(d => ({ id: d.id, name: getDestFullName(d.id) }))
 )
 
+const motorOptions = computed(() =>
+  motors.value
+    .filter(m => !props.scopedMotorId || m.id === props.scopedMotorId)
+    .map(m => ({
+    id: m.id,
+    label: `${m.tag}${m.name ? ` - ${m.name}` : ''}${m.destinationName ? ` (${m.destinationName})` : ''}`,
+    motor: m,
+  }))
+)
+
+const selectedOsMotor = computed(() =>
+  motors.value.find(m => m.id === osForm.value.motorId) || null
+)
+
+function applyMotorToOsForm(motor = selectedOsMotor.value) {
+  if (!motor) return
+  osForm.value.motorId = motor.id
+  osForm.value.equipment = motor.tag
+  osForm.value.destinationId = motor.destinationId || ''
+  if (!osForm.value.note.trim() && motor.name) osForm.value.note = `Motor: ${motor.name}`
+}
+
+function applyScopedMotorToOsForm() {
+  if (isMotorMode.value && scopedMotor.value) applyMotorToOsForm(scopedMotor.value)
+}
+
 function normalizeText(value) {
   return String(value || '')
     .replace(/[›»]/g, '>')
@@ -180,6 +244,26 @@ function destinationIdForEquipment(form, equipment) {
   const currentDestName = form.destinationId ? getDestFullName(form.destinationId) : ''
   return normalizeText(currentDestName) === normalizeText(equipment) ? form.destinationId : ''
 }
+
+watch(() => props.prefillMotor, (motor) => {
+  if (!motor || !isMotorMode.value) return
+  showNewForm.value = true
+  editingOrderId.value = null
+  osForm.value = createEmptyOsForm()
+  applyMotorToOsForm(motor)
+  emit('prefill-consumed')
+}, { immediate: true })
+
+watch(scopedMotor, () => {
+  if (!showNewForm.value && !editingOrderId.value) return
+  applyScopedMotorToOsForm()
+}, { immediate: true })
+
+watch(isMotorMode, () => {
+  showNewForm.value = false
+  editingOrderId.value = null
+  resetOsForm()
+})
 
 // ===== Item search for material =====
 const matSearchNorm = computed(() => matSearch.value.trim().toLowerCase())
@@ -217,12 +301,19 @@ const matExceedsStock = computed(() =>
 
 // ===== Filtered OS list =====
 const filteredOrders = computed(() => {
+  const baseOrders = workOrders.value.filter(o => {
+    if (!isMotorMode.value) return !o.motorId
+    if (!o.motorId) return false
+    return !props.scopedMotorId || o.motorId === props.scopedMotorId
+  })
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return workOrders.value
-  return workOrders.value.filter(o => {
+  if (!q) return baseOrders
+  return baseOrders.filter(o => {
     const haystack = [
       o.number,
       orderDisplayTitle(o),
+      o.motorTag,
+      o.motorName,
       o.destinationName,
       o.requestedBy,
       o.serviceType,
@@ -241,6 +332,7 @@ function validateOsForm() {
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
+  if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
   if (!osForm.value.equipment.trim()) { showError('Equipamento é obrigatório'); return false }
   if (!serviceTypes.includes(osForm.value.serviceType)) { showError('Tipo da OS é obrigatório'); return false }
 
@@ -271,6 +363,7 @@ function buildOsPayload() {
   return {
     number: numberText ? Number(numberText) : '',
     title: buildOrderTitle(form),
+    motorId: isMotorMode.value ? form.motorId : '',
     destinationId: destinationIdForEquipment(form, equipment),
     requestedBy: form.requestedBy.trim(),
     requestDate: form.requestDate,
@@ -364,6 +457,28 @@ async function handleRemoveMaterial(workOrderId, woiId) {
     }
     success('Material removido da OS')
     confirmRemoveItemId.value = null
+  } catch (e) { showError(e.message) }
+}
+
+function startMotorEvent(order, type = 'revisado') {
+  motorEventOrderId.value = order.id
+  motorEventForm.value = { ...emptyMotorEventForm(order), eventType: type }
+}
+
+function cancelMotorEvent() {
+  motorEventOrderId.value = null
+  motorEventForm.value = emptyMotorEventForm()
+}
+
+async function handleMotorEvent(order) {
+  if (!order.motorId) return
+  try {
+    await addMotorEvent(order.motorId, {
+      ...motorEventForm.value,
+      workOrderId: order.id,
+    })
+    success('Evento do motor registrado')
+    cancelMotorEvent()
   } catch (e) { showError(e.message) }
 }
 
@@ -469,9 +584,9 @@ function matBackToStep2() {
     </datalist>
 
     <!-- Header -->
-    <div>
-      <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Ordens de Serviço</h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Abertura, manutenção e materiais usados em cada OS</p>
+    <div v-if="!embedded">
+      <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ pageTitle }}</h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ pageSubtitle }}</p>
     </div>
 
     <!-- Sub-tabs -->
@@ -517,14 +632,14 @@ function matBackToStep2() {
           @click="showNewForm = !showNewForm; editingOrderId = null; if (showNewForm) resetOsForm()"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          Nova OS
+          {{ newButtonLabel }}
         </button>
       </div>
 
       <!-- New OS form -->
       <div v-if="showNewForm" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
         <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Nova Ordem de Serviço</h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formTitle }}</h3>
           <span class="text-xs text-gray-400">Campos com * são obrigatórios</span>
         </div>
 
@@ -563,6 +678,13 @@ function matBackToStep2() {
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
               <input v-model="osForm.equipment" list="os-equipment-options" type="text" placeholder="Máquina, linha, setor ou equipamento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+            </div>
+            <div v-if="isMotorMode" class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
+              <select v-model="osForm.motorId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="applyMotorToOsForm()">
+                <option value="">Sem motor</option>
+                <option v-for="opt in motorOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+              </select>
             </div>
             <div class="md:col-span-4">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações</label>
@@ -614,7 +736,7 @@ function matBackToStep2() {
       <!-- Orders list -->
       <div v-if="filteredOrders.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
         <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
-        <p class="text-sm">{{ searchQuery ? 'Nenhuma OS encontrada' : 'Nenhuma ordem de serviço cadastrada' }}</p>
+        <p class="text-sm">{{ searchQuery ? 'Nenhuma OS encontrada' : emptyOrdersText }}</p>
       </div>
 
       <div v-else class="space-y-2">
@@ -638,6 +760,9 @@ function matBackToStep2() {
             </span>
             <span class="text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap" :class="serviceTypeClass(order.serviceType)">
               {{ order.serviceType || 'Outros' }}
+            </span>
+            <span v-if="order.motorTag" class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap">
+              Motor {{ order.motorTag }}
             </span>
             <span class="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 min-w-[180px] truncate">{{ orderDisplayTitle(order) }}</span>
             <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ order.requestedBy || 'Sem solicitante' }}</span>
@@ -685,6 +810,13 @@ function matBackToStep2() {
                     <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
                       <input v-model="osForm.equipment" list="os-equipment-options" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                    </div>
+                    <div v-if="isMotorMode" class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
+                      <select v-model="osForm.motorId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="applyMotorToOsForm()">
+                        <option value="">Sem motor</option>
+                        <option v-for="opt in motorOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+                      </select>
                     </div>
                     <div class="md:col-span-4">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações</label>
@@ -755,6 +887,10 @@ function matBackToStep2() {
                       <span class="text-xs text-gray-400 dark:text-gray-500">Equipamento</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</p>
                     </div>
+                    <div v-if="order.motorTag">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Motor</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ order.motorTag }}{{ order.motorName ? ` - ${order.motorName}` : '' }}</p>
+                    </div>
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Tipo</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ order.serviceType || 'Outros' }}</p>
@@ -798,6 +934,9 @@ function matBackToStep2() {
                   <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
                   Editar
                 </button>
+                <button v-if="isMotorMode && order.motorId" class="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors" @click="startMotorEvent(order)">
+                  Registrar evento do motor
+                </button>
                 <button
                   v-if="confirmDeleteId !== order.id"
                   class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
@@ -811,6 +950,25 @@ function matBackToStep2() {
                   <button class="px-2 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded" @click="handleDeleteOS(order.id)">Sim</button>
                   <button class="px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" @click="confirmDeleteId = null">Não</button>
                 </template>
+              </div>
+
+              <div v-if="motorEventOrderId === order.id" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-3">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <select v-model="motorEventForm.eventType" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                    <option v-for="t in MOTOR_EVENT_TYPES" :key="t.id" :value="t.id">{{ t.label }}</option>
+                  </select>
+                  <input v-model="motorEventForm.eventDate" type="date" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                  <input v-model="motorEventForm.performedBy" list="os-people-options" placeholder="Executado por" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                  <select v-model="motorEventForm.toDestinationId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                    <option value="">Sem mudanca de local</option>
+                    <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
+                  </select>
+                </div>
+                <textarea v-model="motorEventForm.notes" rows="2" placeholder="Observacoes do evento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"></textarea>
+                <div class="flex justify-end gap-2">
+                  <button class="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" @click="cancelMotorEvent">Cancelar</button>
+                  <button class="px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors" @click="handleMotorEvent(order)">Salvar evento</button>
+                </div>
               </div>
 
               <div class="flex items-center justify-between gap-3 border-t border-gray-200 dark:border-gray-700 pt-3">

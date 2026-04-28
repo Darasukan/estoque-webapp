@@ -241,3 +241,36 @@ export async function linkMovementToWorkOrder(workOrderId, movementId) {
 export async function getWorkOrderReport() {
   return request('/work-orders/report/by-destination')
 }
+
+// ===== Motors =====
+export async function getMotors() {
+  return request('/motors')
+}
+
+export async function createMotor(data) {
+  return request('/motors', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateMotor(id, data) {
+  return request(`/motors/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteMotor(id) {
+  return request(`/motors/${id}`, { method: 'DELETE' })
+}
+
+export async function getMotorEvents(id) {
+  return request(`/motors/${id}/events`)
+}
+
+export async function createMotorEvent(id, data) {
+  return request(`/motors/${id}/events`, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateMotorEvent(motorId, eventId, data) {
+  return request(`/motors/${motorId}/events/${eventId}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteMotorEvent(motorId, eventId) {
+  return request(`/motors/${motorId}/events/${eventId}`, { method: 'DELETE' })
+}

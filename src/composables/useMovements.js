@@ -44,9 +44,10 @@ export function useMovements() {
   }
 
   async function deleteMovement(id) {
-    await api.deleteMovement(id)
+    const result = await api.deleteMovement(id)
     const idx = movements.value.findIndex(m => m.id === id)
     if (idx !== -1) movements.value.splice(idx, 1)
+    return result
   }
 
   /**
