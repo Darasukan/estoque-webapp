@@ -202,7 +202,7 @@ function onLoginClose() {
       </nav>
 
       <!-- Page content -->
-      <main class="flex-1 p-5">
+      <main class="flex-1 p-4 sm:p-5 lg:p-6">
         <!-- Catálogo tab -->
         <CatalogView v-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
 

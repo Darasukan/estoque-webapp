@@ -107,6 +107,14 @@ const selectedWorkOrders = computed(() =>
   selectedMotor.value ? workOrders.value.filter(wo => wo.motorId === selectedMotor.value.id) : []
 )
 
+const motorStats = computed(() => ({
+  total: motors.value.length,
+  active: motors.value.filter(m => m.status === 'ativo').length,
+  maintenance: motors.value.filter(m => m.status === 'em_manutencao').length,
+  reserve: motors.value.filter(m => m.status === 'reserva').length,
+  inactive: motors.value.filter(m => m.status === 'inativo').length,
+}))
+
 watch(selectedMotor, (motor) => {
   if (motor) loadEvents(motor.id).catch(() => {})
 }, { immediate: true })
@@ -254,12 +262,43 @@ function formatDate(value) {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
+  <div class="ds-page-stack">
+    <div class="ds-page-header">
+      <div>
+        <p class="ds-page-kicker">Ativos físicos</p>
+        <h1 class="ds-page-title">Motores</h1>
+        <p class="ds-page-subtitle">Ficha técnica, localização atual, histórico vitalício e OS de motor em um só lugar.</p>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 min-w-full sm:min-w-[36rem]">
+        <div class="ds-metric">
+          <p class="ds-metric-label">Total</p>
+          <p class="ds-metric-value">{{ motorStats.total }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Ativos</p>
+          <p class="ds-metric-value">{{ motorStats.active }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Manutenção</p>
+          <p class="ds-metric-value">{{ motorStats.maintenance }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Reserva</p>
+          <p class="ds-metric-value">{{ motorStats.reserve }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Inativos</p>
+          <p class="ds-metric-value">{{ motorStats.inactive }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
     <aside class="space-y-3">
-      <div class="flex items-center justify-between">
+      <div class="ds-toolbar justify-between">
         <div>
-          <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Motores</h2>
-          <p class="text-xs text-gray-400 dark:text-gray-500">{{ motors.length }} motor{{ motors.length !== 1 ? 'es' : '' }}</p>
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Lista de motores</h2>
+          <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredMotors.length }} de {{ motors.length }} motor{{ motors.length !== 1 ? 'es' : '' }}</p>
         </div>
         <AppButton
           v-if="isLoggedIn"
@@ -269,11 +308,11 @@ function formatDate(value) {
         >Novo</AppButton>
       </div>
 
-      <div class="grid grid-cols-[1fr_150px] gap-2">
+      <div class="ds-toolbar grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-2">
         <input
           v-model="search"
           type="text"
-          placeholder="Buscar tag, serie, local..."
+          placeholder="Buscar tag, série, local..."
           class="ds-input"
         />
         <select v-model="statusFilter" class="ds-input">
@@ -282,19 +321,19 @@ function formatDate(value) {
         </select>
       </div>
 
-      <div class="ds-panel overflow-hidden">
+      <div class="ds-list-panel">
         <button
           v-for="motor in filteredMotors"
           :key="motor.id"
-          class="w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
-          :class="selectedMotor?.id === motor.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
+          class="ds-list-row text-left px-4 py-3"
+          :class="selectedMotor?.id === motor.id ? 'ds-list-row-active' : ''"
           @click="selectMotor(motor)"
         >
           <div class="flex items-center justify-between gap-2">
             <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">{{ motor.tag }}</span>
             <StatusBadge domain="motor" :status="motor.status" :label="motorStatusLabel(motor.status)" />
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ motor.name || motor.manufacturer || 'Sem descricao' }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ motor.name || motor.manufacturer || 'Sem descrição' }}</p>
           <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ motor.destinationName || 'Sem local' }}</p>
         </button>
         <EmptyState
@@ -312,12 +351,12 @@ function formatDate(value) {
           <AppButton variant="ghost" size="xs" @click="cancelMotorForm">Cancelar</AppButton>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input v-model="motorForm.tag" placeholder="Tag/patrimonio *" class="ds-input" />
-          <input v-model="motorForm.serial" placeholder="Serie" class="ds-input" />
-          <input v-model="motorForm.name" placeholder="Descricao/nome" class="ds-input" />
+          <input v-model="motorForm.tag" placeholder="Tag/patrimônio *" class="ds-input" />
+          <input v-model="motorForm.serial" placeholder="Série" class="ds-input" />
+          <input v-model="motorForm.name" placeholder="Descrição/nome" class="ds-input" />
           <input v-model="motorForm.manufacturer" placeholder="Fabricante" class="ds-input" />
-          <input v-model="motorForm.power" placeholder="Potencia" class="ds-input" />
-          <input v-model="motorForm.voltage" placeholder="Tensao" class="ds-input" />
+          <input v-model="motorForm.power" placeholder="Potência" class="ds-input" />
+          <input v-model="motorForm.voltage" placeholder="Tensão" class="ds-input" />
           <input v-model="motorForm.rpm" placeholder="RPM" class="ds-input" />
           <select v-model="motorForm.destinationId" class="ds-input">
             <option value="">Sem local</option>
@@ -327,17 +366,25 @@ function formatDate(value) {
             <option v-for="s in MOTOR_STATUSES" :key="s.id" :value="s.id">{{ s.label }}</option>
           </select>
         </div>
-        <textarea v-model="motorForm.notes" rows="2" placeholder="Observacoes" class="ds-input"></textarea>
+        <textarea v-model="motorForm.notes" rows="2" placeholder="Observações" class="ds-input"></textarea>
         <div class="flex justify-end">
           <AppButton variant="primary" @click="saveMotor">Salvar</AppButton>
         </div>
       </div>
 
       <div v-if="selectedMotor" class="ds-panel overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.tag }}</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ selectedMotor.name || 'Motor sem descricao' }}</p>
+        <div class="px-5 py-4 border-b border-gray-200 dark:border-white/[0.06] flex flex-wrap items-start justify-between gap-3 bg-gray-50/70 dark:bg-white/[0.02]">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.tag }}</h2>
+              <StatusBadge domain="motor" :status="selectedMotor.status" :label="motorStatusLabel(selectedMotor.status)" />
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ selectedMotor.name || selectedMotor.manufacturer || 'Motor sem descrição' }}</p>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <span class="ds-chip">{{ selectedMotor.destinationName || 'Sem local' }}</span>
+              <span v-if="selectedMotor.serial" class="ds-chip">Série {{ selectedMotor.serial }}</span>
+              <span v-if="selectedWorkOrders.length" class="ds-chip">{{ selectedWorkOrders.length }} OS</span>
+            </div>
           </div>
           <div class="flex flex-wrap gap-2">
             <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
@@ -361,9 +408,9 @@ function formatDate(value) {
         <div class="p-5 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
           <div class="space-y-4">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Serie</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.serial || '-' }}</p></div>
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Potencia</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.power || '-' }}</p></div>
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Tensao</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.voltage || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Série</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.serial || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Potência</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.power || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Tensão</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.voltage || '-' }}</p></div>
               <div class="ds-surface p-3"><p class="text-xs text-gray-400">RPM</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.rpm || '-' }}</p></div>
             </div>
 
@@ -387,11 +434,11 @@ function formatDate(value) {
                   <option v-for="wo in selectedWorkOrders" :key="wo.id" :value="wo.id">OS #{{ wo.number }} - {{ wo.title }}</option>
                 </select>
                 <select v-model="eventForm.toDestinationId" class="ds-input">
-                  <option value="">Sem mudanca de local</option>
+                  <option value="">Sem mudança de local</option>
                   <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
                 </select>
               </div>
-              <textarea v-model="eventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
+              <textarea v-model="eventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
               <div class="flex justify-end gap-2">
                 <AppButton variant="secondary" @click="eventFormOpen = false">Cancelar</AppButton>
                 <AppButton variant="warning" @click="saveEvent">Salvar evento</AppButton>
@@ -399,7 +446,7 @@ function formatDate(value) {
             </div>
 
             <div>
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Historico</h3>
+              <h3 class="ds-section-heading mb-2">Histórico do motor</h3>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden">
                 <div v-for="ev in selectedEvents" :key="ev.id" class="px-4 py-3">
                   <div v-if="editingEventId === ev.id" class="space-y-3">
@@ -420,7 +467,7 @@ function formatDate(value) {
                         <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
                       </select>
                     </div>
-                    <textarea v-model="editEventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
+                    <textarea v-model="editEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
                     <div class="flex justify-end gap-2">
                       <AppButton variant="secondary" size="sm" @click="cancelEditEvent">Cancelar</AppButton>
                       <AppButton variant="primary" size="sm" @click="saveEditEvent(ev)">Salvar</AppButton>
@@ -453,7 +500,7 @@ function formatDate(value) {
                 <EmptyState
                   v-if="!selectedEvents.length"
                   title="Sem eventos registrados."
-                  text="Registre revisoes, rebobinagens, movimentacoes e observacoes do motor."
+                  text="Registre revisões, rebobinagens, movimentações e observações do motor."
                 />
               </div>
             </div>
@@ -469,7 +516,7 @@ function formatDate(value) {
               <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.manufacturer || '-' }}</p>
             </div>
             <div class="ds-surface p-4">
-              <p class="text-xs text-gray-400">Observacoes</p>
+              <p class="text-xs text-gray-400">Observações</p>
               <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ selectedMotor.notes || '-' }}</p>
             </div>
             <div class="ds-surface p-4">
@@ -494,7 +541,7 @@ function formatDate(value) {
               <EmptyState
                 v-if="!selectedWorkOrders.length"
                 title="Nenhuma OS vinculada."
-                text="Crie uma OS de motor para registrar servicos e materiais."
+                text="Crie uma OS de motor para registrar serviços e materiais."
               />
             </div>
           </aside>
@@ -518,6 +565,7 @@ function formatDate(value) {
         />
       </div>
     </section>
+    </div>
 
     <datalist id="motor-people-options">
       <option v-for="p in activePeople" :key="p.id" :value="p.name" />

@@ -7,6 +7,7 @@ import { usePeople } from '../composables/usePeople.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useMotors, MOTOR_EVENT_TYPES } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
+import AppButton from '../components/ui/AppButton.vue'
 
 const props = defineProps({
   mode: { type: String, default: 'general' },
@@ -328,6 +329,18 @@ const visibleOrdersBase = computed(() =>
   })
 )
 
+const orderStats = computed(() => {
+  const orders = visibleOrdersBase.value
+  const finished = orders.filter(o => o.maintenanceEndDate && o.maintenanceEndTime).length
+  const withMaterials = orders.filter(o => (o.items || []).length).length
+  return {
+    total: orders.length,
+    open: orders.length - finished,
+    finished,
+    withMaterials,
+  }
+})
+
 const filteredOrders = computed(() => {
   const baseOrders = visibleOrdersBase.value
   const q = searchQuery.value.trim().toLowerCase()
@@ -594,6 +607,16 @@ function maintenanceEndLabel(order) {
   return 'Em aberto'
 }
 
+function orderStatusLabel(order) {
+  return order.maintenanceEndDate && order.maintenanceEndTime ? 'Finalizada' : 'Aberta'
+}
+
+function orderStatusClass(order) {
+  return order.maintenanceEndDate && order.maintenanceEndTime
+    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+}
+
 function maintenanceObservation(order) {
   return order.maintenanceNote || order.note || '-'
 }
@@ -679,7 +702,7 @@ function matBackToStep2() {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="ds-page-stack">
     <datalist id="os-people-options">
       <option v-for="p in activePeople" :key="p.id" :value="p.name" />
     </datalist>
@@ -688,81 +711,74 @@ function matBackToStep2() {
     </datalist>
 
     <!-- Header -->
-    <div v-if="!embedded">
-      <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ pageTitle }}</h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ pageSubtitle }}</p>
+    <div v-if="!embedded" class="ds-page-header">
+      <div>
+        <p class="ds-page-kicker">Manutenção</p>
+        <h1 class="ds-page-title">{{ pageTitle }}</h1>
+        <p class="ds-page-subtitle">{{ pageSubtitle }}</p>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-full sm:min-w-[28rem]">
+        <div class="ds-metric">
+          <p class="ds-metric-label">Total</p>
+          <p class="ds-metric-value">{{ orderStats.total }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Abertas</p>
+          <p class="ds-metric-value">{{ orderStats.open }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Finalizadas</p>
+          <p class="ds-metric-value">{{ orderStats.finished }}</p>
+        </div>
+        <div class="ds-metric">
+          <p class="ds-metric-label">Com material</p>
+          <p class="ds-metric-value">{{ orderStats.withMaterials }}</p>
+        </div>
+      </div>
     </div>
 
-    <div class="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+    <div class="ds-segmented">
       <button
         v-for="tab in visibleSubTabs"
         :key="tab.id"
-        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative whitespace-nowrap"
-        :class="activeSubTab === tab.id
-          ? 'text-primary-700 dark:text-primary-400'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        class="ds-segmented-item"
+        :class="activeSubTab === tab.id ? 'ds-segmented-item-active' : ''"
         @click="activeSubTab = tab.id"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
         </svg>
         {{ tab.label }}
-        <span
-          v-if="activeSubTab === tab.id"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
-        ></span>
-      </button>
-    </div>
-
-    <!-- Sub-tabs -->
-    <div class="hidden">
-      <button
-        v-for="tab in [
-          { id: 'ordens', label: 'Ordens de Serviço', icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' },
-          { id: 'resumo', label: 'Resumo por Equipamento', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605' }
-        ]"
-        :key="tab.id"
-        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative whitespace-nowrap"
-        :class="activeSubTab === tab.id
-          ? 'text-primary-700 dark:text-primary-400'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-        @click="activeSubTab = tab.id"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
-        </svg>
-        {{ tab.label }}
-        <span
-          v-if="activeSubTab === tab.id"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
-        ></span>
       </button>
     </div>
 
     <!-- TAB: Ordens de Serviço -->
     <template v-if="activeSubTab === 'ordens'">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div class="ds-toolbar">
         <div class="relative flex-1">
           <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
           <input
             v-model="searchQuery"
             type="text"
             placeholder="Buscar por número, solicitante, equipamento, tipo ou profissional..."
-            class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            class="ds-input pl-9"
           />
         </div>
-        <button
+        <AppButton
           v-if="isLoggedIn"
-          class="flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
+          variant="primary"
+          size="lg"
           @click="showNewForm = !showNewForm; editingOrderId = null; if (showNewForm) resetOsForm()"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          <template #icon>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          </template>
           {{ newButtonLabel }}
-        </button>
+        </AppButton>
       </div>
 
       <!-- New OS form -->
-      <div v-if="showNewForm" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
+      <div v-if="showNewForm" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between gap-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formTitle }}</h3>
           <span class="text-xs text-gray-400">Campos com * são obrigatórios</span>
@@ -864,14 +880,14 @@ function matBackToStep2() {
         <p class="text-sm">{{ searchQuery ? 'Nenhuma OS encontrada' : emptyOrdersText }}</p>
       </div>
 
-      <div v-else class="space-y-2">
+      <div v-else class="ds-list-panel">
         <div
           v-for="order in filteredOrders"
           :key="order.id"
-          class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+          class="ds-list-row"
         >
           <div
-            class="flex flex-wrap items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+            class="flex flex-wrap items-center gap-3 px-4 py-3 cursor-pointer transition-colors"
             @click="toggleOrder(order.id)"
           >
             <svg
@@ -885,6 +901,9 @@ function matBackToStep2() {
             </span>
             <span class="text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap" :class="serviceTypeClass(order.serviceType)">
               {{ order.serviceType || 'Outros' }}
+            </span>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap" :class="orderStatusClass(order)">
+              {{ orderStatusLabel(order) }}
             </span>
             <span v-if="order.motorTag" class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap">
               Motor {{ order.motorTag }}
@@ -1270,14 +1289,14 @@ function matBackToStep2() {
     <!-- TAB: Histórico de Ordens de Serviço -->
     <template v-if="activeSubTab === 'historico'">
       <div class="space-y-3">
-        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+        <div class="ds-toolbar grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
           <div class="relative">
             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
             <input
               v-model="historySearch"
               type="text"
               placeholder="Buscar por número, solicitante, equipamento ou observação..."
-              class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              class="ds-input pl-9"
             />
           </div>
 
@@ -1287,7 +1306,7 @@ function matBackToStep2() {
               <input
                 v-model="historyDateFrom"
                 type="date"
-                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                class="ds-input"
               />
             </div>
             <div>
@@ -1295,7 +1314,7 @@ function matBackToStep2() {
               <input
                 v-model="historyDateTo"
                 type="date"
-                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                class="ds-input"
               />
             </div>
           </div>
@@ -1325,10 +1344,10 @@ function matBackToStep2() {
           <p class="text-sm">Nenhuma OS encontrada no histórico</p>
         </div>
 
-        <div v-else class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div v-else class="ds-table-wrap">
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[900px] text-sm">
-              <thead class="bg-gray-50 dark:bg-gray-900/40">
+            <table class="ds-table min-w-[900px]">
+              <thead>
                 <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   <th class="px-4 py-3">Nº da Ordem</th>
                   <th class="px-4 py-3">Data</th>
