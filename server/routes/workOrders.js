@@ -13,6 +13,44 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function addWorkOrderEvent(workOrderId, eventType, req, fields = {}) {
+  const eventDate = fields.eventDate || nowIso()
+  db.prepare(`INSERT INTO work_order_events (
+    id, work_order_id, event_type, event_date, operator_id, operator_name,
+    from_value, to_value, notes, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    genId('woe'),
+    workOrderId,
+    eventType,
+    eventDate,
+    req?.user?.id || '',
+    req?.user?.name || '',
+    fields.fromValue || '',
+    fields.toValue || '',
+    fields.notes || '',
+    nowIso()
+  )
+}
+
+function mapWorkOrderEvent(r) {
+  return {
+    id: r.id,
+    workOrderId: r.work_order_id,
+    eventType: r.event_type,
+    eventDate: r.event_date,
+    operatorId: r.operator_id || '',
+    operatorName: r.operator_name || '',
+    fromValue: r.from_value || '',
+    toValue: r.to_value || '',
+    notes: r.notes || '',
+    createdAt: r.created_at,
+  }
+}
+
 function normalizeServiceType(value) {
   const normalized = clean(value).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
   if (normalized === 'eletrica') return 'Elétrica'
@@ -110,6 +148,33 @@ function mapWorkOrderItem(r) {
   }
 }
 
+function changedNotes(changes) {
+  return changes.map(c => `${c.label}: ${c.from || '-'} -> ${c.to || '-'}`).join('\n')
+}
+
+function collectWorkOrderChanges(oldOrder, nextValues) {
+  const fields = [
+    ['Numero', oldOrder.number, nextValues.number],
+    ['Titulo', oldOrder.title, nextValues.title],
+    ['Motor', oldOrder.motor_id || '', nextValues.motorId || ''],
+    ['Equipamento', oldOrder.equipment || '', nextValues.equipment || ''],
+    ['Local', oldOrder.destination_name || '', nextValues.destinationName || ''],
+    ['Tipo', oldOrder.service_type || '', nextValues.serviceType || ''],
+    ['Data solicitacao', oldOrder.request_date || '', nextValues.requestDate || ''],
+    ['Horario solicitacao', oldOrder.request_time || '', nextValues.requestTime || ''],
+    ['Solicitante', oldOrder.requested_by || '', nextValues.requestedBy || ''],
+    ['Observacoes abertura', oldOrder.note || '', nextValues.note || ''],
+    ['Inicio manutencao', `${oldOrder.maintenance_start_date || ''} ${oldOrder.maintenance_start_time || ''}`.trim(), `${nextValues.maintenanceStartDate || ''} ${nextValues.maintenanceStartTime || ''}`.trim()],
+    ['Termino manutencao', `${oldOrder.maintenance_end_date || ''} ${oldOrder.maintenance_end_time || ''}`.trim(), `${nextValues.maintenanceEndDate || ''} ${nextValues.maintenanceEndTime || ''}`.trim()],
+    ['Profissional', oldOrder.maintenance_professional || '', nextValues.maintenanceProfessional || ''],
+    ['Materiais adicionais', oldOrder.maintenance_materials || '', nextValues.maintenanceMaterials || ''],
+    ['Observacoes manutencao', oldOrder.maintenance_note || '', nextValues.maintenanceNote || ''],
+  ]
+  return fields
+    .filter(([, from, to]) => String(from ?? '') !== String(to ?? ''))
+    .map(([label, from, to]) => ({ label, from: String(from ?? ''), to: String(to ?? '') }))
+}
+
 // GET /api/work-orders — list all with items
 router.get('/', (req, res) => {
   const orders = db.prepare('SELECT * FROM work_orders ORDER BY created_at DESC').all()
@@ -133,15 +198,6 @@ router.get('/report/by-destination', (req, res) => {
   const orders = db.prepare('SELECT * FROM work_orders ORDER BY created_at DESC').all()
   const allWoItems = db.prepare('SELECT * FROM work_order_items ORDER BY added_at ASC').all()
 
-  // All saida movements
-  const allSaidas = db.prepare("SELECT * FROM movements WHERE type = 'saida' ORDER BY date DESC").all()
-
-  // Build set of movement_ids that are linked to work orders
-  const linkedMovementIds = new Set()
-  for (const it of allWoItems) {
-    if (it.movement_id) linkedMovementIds.add(it.movement_id)
-  }
-
   // Group orders by destination_name
   const destMap = {} // { destinationName: { destinationId, orders: [...], looseSaidas: [...] } }
 
@@ -152,48 +208,26 @@ router.get('/report/by-destination', (req, res) => {
     destMap[key].orders.push({ ...mapWorkOrder(o), items: woItems })
   }
 
-  // Add loose saidas (not linked to any work order)
-  for (const m of allSaidas) {
-    if (linkedMovementIds.has(m.id)) continue // skip linked ones
-    const dest = m.destination || 'Sem destino'
-    if (!destMap[dest]) destMap[dest] = { destinationId: '', destinationName: dest, orders: [], looseSaidas: [] }
-    destMap[dest].looseSaidas.push({
-      id: m.id,
-      variationId: m.variation_id,
-      itemId: m.item_id,
-      itemName: m.item_name,
-      itemGroup: m.item_group,
-      itemCategory: m.item_category,
-      itemUnit: m.item_unit,
-      variationValues: JSON.parse(m.variation_values || '{}'),
-      qty: m.qty,
-      date: m.date,
-      requestedBy: m.requested_by,
-      docRef: m.doc_ref,
-    })
-  }
-
-  // Build material totals per destination
+  // Build material totals per destination using only items linked to work orders.
   const result = Object.values(destMap).map(d => {
-    const totals = {}
-    // From work order items
+    const osTotals = {}
+
     for (const o of d.orders) {
       for (const it of o.items) {
         const key = `${it.itemId}||${JSON.stringify(it.variationValues)}`
-        if (!totals[key]) totals[key] = { itemId: it.itemId, itemName: it.itemName, itemUnit: it.itemUnit, variationValues: it.variationValues, qty: 0 }
-        totals[key].qty += it.qty
+        if (!osTotals[key]) osTotals[key] = { itemId: it.itemId, itemName: it.itemName, itemUnit: it.itemUnit, variationValues: it.variationValues, qty: 0 }
+        osTotals[key].qty += it.qty
       }
     }
-    // From loose saidas
-    for (const s of d.looseSaidas) {
-      const key = `${s.itemId}||${JSON.stringify(s.variationValues)}`
-      if (!totals[key]) totals[key] = { itemId: s.itemId, itemName: s.itemName, itemUnit: s.itemUnit, variationValues: s.variationValues, qty: 0 }
-      totals[key].qty += s.qty
-    }
+
+    const osMaterialTotals = Object.values(osTotals)
 
     return {
       ...d,
-      materialTotals: Object.values(totals),
+      osMaterialTotals,
+      looseMaterialTotals: [],
+      looseSaidas: [],
+      materialTotals: osMaterialTotals,
     }
   })
 
@@ -208,6 +242,19 @@ router.get('/:id', (req, res) => {
 
   const items = db.prepare('SELECT * FROM work_order_items WHERE work_order_id = ? ORDER BY added_at ASC').all(o.id)
   res.json({ ...mapWorkOrder(o), items: items.map(mapWorkOrderItem) })
+})
+
+// GET /api/work-orders/:id/events — timeline for a work order
+router.get('/:id/events', (req, res) => {
+  const o = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id)
+  if (!o) return res.status(404).json({ error: 'Ordem de servico nao encontrada' })
+
+  const rows = db.prepare(`
+    SELECT * FROM work_order_events
+    WHERE work_order_id = ?
+    ORDER BY event_date DESC, created_at DESC
+  `).all(req.params.id)
+  res.json(rows.map(mapWorkOrderEvent))
 })
 
 // POST /api/work-orders — create
@@ -258,18 +305,27 @@ router.post('/', requireAuth, (req, res) => {
   const titleValue = buildTitle({ title, serviceType: serviceTypeValue, equipment: equipmentValue, destinationName, number })
 
   const id = genId('os')
-  const createdAt = new Date().toISOString()
+  const createdAt = nowIso()
 
-  db.prepare(`INSERT INTO work_orders (
-    id, number, title, motor_id, destination_id, destination_name, equipment, service_type, request_date, request_time,
-    requested_by, note, maintenance_start_date, maintenance_start_time, maintenance_end_date,
-    maintenance_end_time, maintenance_professional, maintenance_materials, maintenance_note, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, number, titleValue, clean(motorId), destinationId || '', destinationName, equipmentValue, serviceTypeValue,
-    clean(requestDate), clean(requestTime), clean(requestedBy), note || '',
-    clean(maintenanceStartDate), clean(maintenanceStartTime), clean(maintenanceEndDate), clean(maintenanceEndTime),
-    clean(maintenanceProfessional), maintenanceMaterials || '', maintenanceNote || '', createdAt
-  )
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO work_orders (
+      id, number, title, motor_id, destination_id, destination_name, equipment, service_type, request_date, request_time,
+      requested_by, note, maintenance_start_date, maintenance_start_time, maintenance_end_date,
+      maintenance_end_time, maintenance_professional, maintenance_materials, maintenance_note, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, number, titleValue, clean(motorId), destinationId || '', destinationName, equipmentValue, serviceTypeValue,
+      clean(requestDate), clean(requestTime), clean(requestedBy), note || '',
+      clean(maintenanceStartDate), clean(maintenanceStartTime), clean(maintenanceEndDate), clean(maintenanceEndTime),
+      clean(maintenanceProfessional), maintenanceMaterials || '', maintenanceNote || '', createdAt
+    )
+
+    addWorkOrderEvent(id, 'criada', req, {
+      eventDate: createdAt,
+      toValue: `OS #${number}`,
+      notes: `${titleValue} criada para ${equipmentValue}.`,
+    })
+  })
+  tx()
 
   res.json({
     id, number, title: titleValue,
@@ -353,32 +409,71 @@ router.put('/:id', requireAuth, (req, res) => {
     number: nextNumber,
   })
 
-  db.prepare(`UPDATE work_orders SET
-    number=?, title=?, motor_id=?, destination_id=?, destination_name=?, equipment=?, service_type=?,
-    request_date=?, request_time=?, requested_by=?, note=?,
-    maintenance_start_date=?, maintenance_start_time=?, maintenance_end_date=?,
-    maintenance_end_time=?, maintenance_professional=?, maintenance_materials=?, maintenance_note=?
-    WHERE id=?`).run(
-    nextNumber,
-    titleValue,
-    newMotorId,
-    newDestId,
+  const nextValues = {
+    number: nextNumber,
+    title: titleValue,
+    motorId: newMotorId,
+    destinationId: newDestId,
     destinationName,
-    equipmentValue,
-    serviceTypeValue,
-    requestDateValue,
-    requestTimeValue,
-    requestedByValue,
-    note !== undefined ? note : o.note,
-    maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || ''),
-    maintenanceStartTime !== undefined ? clean(maintenanceStartTime) : (o.maintenance_start_time || ''),
-    maintenanceEndDate !== undefined ? clean(maintenanceEndDate) : (o.maintenance_end_date || ''),
-    maintenanceEndTime !== undefined ? clean(maintenanceEndTime) : (o.maintenance_end_time || ''),
-    maintenanceProfessional !== undefined ? clean(maintenanceProfessional) : (o.maintenance_professional || ''),
-    maintenanceMaterials !== undefined ? maintenanceMaterials : (o.maintenance_materials || ''),
-    maintenanceNote !== undefined ? maintenanceNote : (o.maintenance_note || ''),
-    req.params.id
-  )
+    equipment: equipmentValue,
+    serviceType: serviceTypeValue,
+    requestDate: requestDateValue,
+    requestTime: requestTimeValue,
+    requestedBy: requestedByValue,
+    note: note !== undefined ? note : o.note,
+    maintenanceStartDate: maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || ''),
+    maintenanceStartTime: maintenanceStartTime !== undefined ? clean(maintenanceStartTime) : (o.maintenance_start_time || ''),
+    maintenanceEndDate: maintenanceEndDate !== undefined ? clean(maintenanceEndDate) : (o.maintenance_end_date || ''),
+    maintenanceEndTime: maintenanceEndTime !== undefined ? clean(maintenanceEndTime) : (o.maintenance_end_time || ''),
+    maintenanceProfessional: maintenanceProfessional !== undefined ? clean(maintenanceProfessional) : (o.maintenance_professional || ''),
+    maintenanceMaterials: maintenanceMaterials !== undefined ? maintenanceMaterials : (o.maintenance_materials || ''),
+    maintenanceNote: maintenanceNote !== undefined ? maintenanceNote : (o.maintenance_note || ''),
+  }
+  const changes = collectWorkOrderChanges(o, nextValues)
+  const wasOpenEnded = !(o.maintenance_end_date && o.maintenance_end_time)
+  const isNowFinished = nextValues.maintenanceEndDate && nextValues.maintenanceEndTime
+
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE work_orders SET
+      number=?, title=?, motor_id=?, destination_id=?, destination_name=?, equipment=?, service_type=?,
+      request_date=?, request_time=?, requested_by=?, note=?,
+      maintenance_start_date=?, maintenance_start_time=?, maintenance_end_date=?,
+      maintenance_end_time=?, maintenance_professional=?, maintenance_materials=?, maintenance_note=?
+      WHERE id=?`).run(
+      nextValues.number,
+      nextValues.title,
+      nextValues.motorId,
+      nextValues.destinationId,
+      nextValues.destinationName,
+      nextValues.equipment,
+      nextValues.serviceType,
+      nextValues.requestDate,
+      nextValues.requestTime,
+      nextValues.requestedBy,
+      nextValues.note,
+      nextValues.maintenanceStartDate,
+      nextValues.maintenanceStartTime,
+      nextValues.maintenanceEndDate,
+      nextValues.maintenanceEndTime,
+      nextValues.maintenanceProfessional,
+      nextValues.maintenanceMaterials,
+      nextValues.maintenanceNote,
+      req.params.id
+    )
+
+    if (changes.length) {
+      addWorkOrderEvent(req.params.id, 'atualizada', req, {
+        notes: changedNotes(changes),
+      })
+    }
+    if (wasOpenEnded && isNowFinished) {
+      addWorkOrderEvent(req.params.id, 'finalizada', req, {
+        toValue: `${nextValues.maintenanceEndDate} ${nextValues.maintenanceEndTime}`,
+        notes: 'Data e horario de termino da manutencao foram preenchidos.',
+      })
+    }
+  })
+  tx()
 
   const updated = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   const items = db.prepare('SELECT * FROM work_order_items WHERE work_order_id = ? ORDER BY added_at ASC').all(req.params.id)
@@ -475,6 +570,12 @@ router.post('/:id/items', requireAuth, (req, res) => {
       item.name, item.group_name, item.category || '', item.unit,
       variation.vals, qty, movId, now
     )
+
+    addWorkOrderEvent(o.id, 'material_adicionado', req, {
+      eventDate: now,
+      toValue: `${item.name} (${qty} ${item.unit})`,
+      notes: `Material adicionado com baixa no estoque. Movimento ${movId}.`,
+    })
   })
 
   tx()
@@ -529,6 +630,13 @@ router.delete('/:id/items/:itemId', requireAuth, (req, res) => {
 
     // Remove the work order item
     db.prepare('DELETE FROM work_order_items WHERE id = ?').run(woi.id)
+
+    addWorkOrderEvent(req.params.id, 'material_removido', req, {
+      fromValue: `${woi.item_name} (${woi.qty} ${woi.item_unit})`,
+      notes: isImplicit
+        ? 'Material removido da OS e estoque restaurado.'
+        : 'Material desvinculado da OS. Movimento original preservado.',
+    })
   })
 
   tx()
@@ -557,12 +665,21 @@ router.post('/:id/items/link', requireAuth, (req, res) => {
   const woiId = genId('osi')
   const now = new Date().toISOString()
 
-  db.prepare(`INSERT INTO work_order_items (id, work_order_id, variation_id, item_id, item_name, item_group, item_category, item_unit, variation_values, qty, movement_id, added_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    woiId, o.id, mov.variation_id, mov.item_id,
-    mov.item_name || '', mov.item_group || '', mov.item_category || '', mov.item_unit || '',
-    mov.variation_values || '{}', mov.qty, mov.id, now
-  )
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO work_order_items (id, work_order_id, variation_id, item_id, item_name, item_group, item_category, item_unit, variation_values, qty, movement_id, added_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      woiId, o.id, mov.variation_id, mov.item_id,
+      mov.item_name || '', mov.item_group || '', mov.item_category || '', mov.item_unit || '',
+      mov.variation_values || '{}', mov.qty, mov.id, now
+    )
+
+    addWorkOrderEvent(o.id, 'movimento_vinculado', req, {
+      eventDate: now,
+      toValue: `${mov.item_name || 'Movimento'} (${mov.qty} ${mov.item_unit || ''})`,
+      notes: `Movimento ${mov.id} vinculado a OS #${o.number}.`,
+    })
+  })
+  tx()
 
   res.json({
     id: woiId,

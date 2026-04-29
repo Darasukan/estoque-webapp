@@ -17,8 +17,8 @@ const props = defineProps({
 const emit = defineEmits(['prefill-consumed'])
 const isLoggedIn = inject('isLoggedIn')
 const {
-  workOrders, report,
-  loadReport,
+  workOrders, report, workOrderEvents,
+  loadReport, loadEvents,
   addWorkOrder, editWorkOrder, deleteWorkOrder,
   addMaterial, removeMaterial
 } = useWorkOrders()
@@ -52,9 +52,29 @@ function focusRef(target) {
 
 // ===== Sub-tabs =====
 const activeSubTab = ref('ordens')
+const visibleSubTabs = computed(() => [
+  {
+    id: 'ordens',
+    label: isMotorMode.value ? 'OS de Motor' : 'Ordens',
+    icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z',
+  },
+  {
+    id: 'historico',
+    label: 'Histórico',
+    icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  },
+  {
+    id: 'resumo',
+    label: 'Resumo',
+    icon: 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M9 9.75l2.25-2.25 2.25 2.25 3.75-4.5',
+  },
+])
 
 // ===== OS List =====
 const searchQuery = ref('')
+const historySearch = ref('')
+const historyDateFrom = ref('')
+const historyDateTo = ref('')
 const expandedOrderId = ref(null)
 const showNewForm = ref(false)
 const editingOrderId = ref(null)
@@ -300,12 +320,16 @@ const matExceedsStock = computed(() =>
 )
 
 // ===== Filtered OS list =====
-const filteredOrders = computed(() => {
-  const baseOrders = workOrders.value.filter(o => {
+const visibleOrdersBase = computed(() =>
+  workOrders.value.filter(o => {
     if (!isMotorMode.value) return !o.motorId
     if (!o.motorId) return false
     return !props.scopedMotorId || o.motorId === props.scopedMotorId
   })
+)
+
+const filteredOrders = computed(() => {
+  const baseOrders = visibleOrdersBase.value
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return baseOrders
   return baseOrders.filter(o => {
@@ -324,6 +348,42 @@ const filteredOrders = computed(() => {
     ].join(' ').toLowerCase()
     return haystack.includes(q)
   })
+})
+
+const historyOrders = computed(() => {
+  const q = historySearch.value.trim().toLowerCase()
+  const from = historyDateFrom.value ? new Date(`${historyDateFrom.value}T00:00:00`) : null
+  const to = historyDateTo.value ? new Date(`${historyDateTo.value}T23:59:59`) : null
+
+  return visibleOrdersBase.value
+    .filter(o => {
+      const requestDate = o.requestDate ? new Date(`${o.requestDate}T00:00:00`) : null
+      if (from && requestDate && requestDate < from) return false
+      if (to && requestDate && requestDate > to) return false
+
+      if (!q) return true
+      const haystack = [
+        o.number,
+        formatDateOnly(o.requestDate),
+        formatDateTimeParts(o.maintenanceEndDate, o.maintenanceEndTime, ''),
+        o.requestedBy,
+        orderDisplayTitle(o),
+        o.destinationName,
+        o.motorTag,
+        o.motorName,
+        o.serviceType,
+        o.note,
+        o.maintenanceProfessional,
+        o.maintenanceMaterials,
+        o.maintenanceNote,
+      ].join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+    .sort((a, b) => {
+      const bDate = `${b.maintenanceEndDate || b.requestDate || ''} ${b.maintenanceEndTime || b.requestTime || ''}`
+      const aDate = `${a.maintenanceEndDate || a.requestDate || ''} ${a.maintenanceEndTime || a.requestTime || ''}`
+      return bDate.localeCompare(aDate)
+    })
 })
 
 function validateOsForm() {
@@ -477,6 +537,7 @@ async function handleMotorEvent(order) {
       ...motorEventForm.value,
       workOrderId: order.id,
     })
+    await loadEvents(order.id).catch(() => {})
     success('Evento do motor registrado')
     cancelMotorEvent()
   } catch (e) { showError(e.message) }
@@ -525,6 +586,18 @@ function maintenancePeriod(order) {
   return `${start} até ${end}`
 }
 
+function maintenanceEndLabel(order) {
+  if (order.maintenanceEndDate && order.maintenanceEndTime) {
+    return formatDateTimeParts(order.maintenanceEndDate, order.maintenanceEndTime, '')
+  }
+  if (order.maintenanceEndDate) return formatDateOnly(order.maintenanceEndDate)
+  return 'Em aberto'
+}
+
+function maintenanceObservation(order) {
+  return order.maintenanceNote || order.note || '-'
+}
+
 function orderDisplayTitle(order) {
   return order.equipment || order.destinationName || order.title || 'Sem equipamento'
 }
@@ -533,6 +606,26 @@ function serviceTypeClass(type) {
   if (type === 'Elétrica') return 'bg-amber-100 text-amber-800 dark:bg-amber-900/35 dark:text-amber-300'
   if (type === 'Mecânica') return 'bg-sky-100 text-sky-800 dark:bg-sky-900/35 dark:text-sky-300'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+}
+
+function workOrderEventLabel(type) {
+  return {
+    criada: 'OS criada',
+    atualizada: 'OS atualizada',
+    finalizada: 'OS finalizada',
+    material_adicionado: 'Material adicionado',
+    material_removido: 'Material removido',
+    movimento_vinculado: 'Movimento vinculado',
+    evento_motor_registrado: 'Evento do motor',
+  }[type] || type
+}
+
+function workOrderEventTone(type) {
+  if (['criada', 'movimento_vinculado', 'evento_motor_registrado'].includes(type)) return 'bg-primary-500'
+  if (type === 'finalizada') return 'bg-emerald-500'
+  if (type === 'material_adicionado') return 'bg-green-500'
+  if (type === 'material_removido') return 'bg-red-500'
+  return 'bg-gray-400 dark:bg-gray-500'
 }
 
 function variationLabel(v) {
@@ -547,6 +640,17 @@ function hierarchyLabel(item) {
 
 function toggleOrder(id) {
   expandedOrderId.value = expandedOrderId.value === id ? null : id
+  if (expandedOrderId.value === id && !workOrderEvents.value[id]) {
+    loadEvents(id).catch(() => {})
+  }
+}
+
+function openOrderFromHistory(order) {
+  activeSubTab.value = 'ordens'
+  expandedOrderId.value = order.id
+  if (!workOrderEvents.value[order.id]) {
+    loadEvents(order.id).catch(() => {})
+  }
 }
 
 function selectMatItem(item) {
@@ -587,6 +691,27 @@ function matBackToStep2() {
     <div v-if="!embedded">
       <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ pageTitle }}</h1>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ pageSubtitle }}</p>
+    </div>
+
+    <div class="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <button
+        v-for="tab in visibleSubTabs"
+        :key="tab.id"
+        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative whitespace-nowrap"
+        :class="activeSubTab === tab.id
+          ? 'text-primary-700 dark:text-primary-400'
+          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        @click="activeSubTab = tab.id"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
+        </svg>
+        {{ tab.label }}
+        <span
+          v-if="activeSubTab === tab.id"
+          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
+        ></span>
+      </button>
     </div>
 
     <!-- Sub-tabs -->
@@ -1100,7 +1225,157 @@ function matBackToStep2() {
                 </div>
               </div>
               <div v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Nenhum material do estoque vinculado a esta OS</div>
+
+              <div class="border-t border-gray-200 dark:border-gray-700 pt-3">
+                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Histórico da OS</h4>
+                <div v-if="!workOrderEvents[order.id]" class="text-sm text-gray-400 dark:text-gray-500 italic">
+                  Carregando histórico...
+                </div>
+                <div v-else-if="!workOrderEvents[order.id].length" class="text-sm text-gray-400 dark:text-gray-500 italic">
+                  Nenhum evento registrado para esta OS.
+                </div>
+                <div v-else class="space-y-3">
+                  <div
+                    v-for="event in workOrderEvents[order.id]"
+                    :key="event.id"
+                    class="relative pl-6"
+                  >
+                    <span
+                      class="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full ring-4 ring-white dark:ring-gray-800"
+                      :class="workOrderEventTone(event.eventType)"
+                    ></span>
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ workOrderEventLabel(event.eventType) }}</p>
+                        <p v-if="event.operatorName || event.toValue || event.fromValue" class="text-xs text-gray-500 dark:text-gray-400">
+                          <span v-if="event.operatorName">{{ event.operatorName }}</span>
+                          <span v-if="event.fromValue || event.toValue">
+                            <span v-if="event.operatorName"> · </span>
+                            <span v-if="event.fromValue">{{ event.fromValue }} -> </span>{{ event.toValue }}
+                          </span>
+                        </p>
+                      </div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{{ formatDate(event.eventDate) }}</span>
+                    </div>
+                    <p v-if="event.notes" class="mt-1 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{{ event.notes }}</p>
+                  </div>
+                </div>
+              </div>
             </template>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- TAB: Histórico de Ordens de Serviço -->
+    <template v-if="activeSubTab === 'historico'">
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+            <input
+              v-model="historySearch"
+              type="text"
+              placeholder="Buscar por número, solicitante, equipamento ou observação..."
+              class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">De</label>
+              <input
+                v-model="historyDateFrom"
+                type="date"
+                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Até</label>
+              <input
+                v-model="historyDateTo"
+                type="date"
+                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="historySearch || historyDateFrom || historyDateTo"
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span v-if="historySearch" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
+            Busca: {{ historySearch }}
+          </span>
+          <span v-if="historyDateFrom || historyDateTo" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
+            Período: {{ historyDateFrom ? formatDateOnly(historyDateFrom) : 'início' }} - {{ historyDateTo ? formatDateOnly(historyDateTo) : 'hoje' }}
+          </span>
+          <button
+            type="button"
+            class="text-xs font-medium text-primary-700 dark:text-primary-400 hover:underline"
+            @click="historySearch = ''; historyDateFrom = ''; historyDateTo = ''"
+          >
+            Limpar filtros
+          </button>
+        </div>
+
+        <div v-if="historyOrders.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
+          <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+          <p class="text-sm">Nenhuma OS encontrada no histórico</p>
+        </div>
+
+        <div v-else class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[900px] text-sm">
+              <thead class="bg-gray-50 dark:bg-gray-900/40">
+                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  <th class="px-4 py-3">Nº da Ordem</th>
+                  <th class="px-4 py-3">Data</th>
+                  <th class="px-4 py-3">Solicitante</th>
+                  <th class="px-4 py-3">Equipamento</th>
+                  <th class="px-4 py-3">Data término</th>
+                  <th class="px-4 py-3">Observações da manutenção</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                <tr
+                  v-for="order in historyOrders"
+                  :key="order.id"
+                  class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                  title="Abrir detalhes da OS"
+                  @click="openOrderFromHistory(order)"
+                >
+                  <td class="px-4 py-3 align-top">
+                    <span class="font-semibold text-gray-900 dark:text-gray-100">#{{ order.number }}</span>
+                  </td>
+                  <td class="px-4 py-3 align-top whitespace-nowrap text-gray-600 dark:text-gray-300">
+                    {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}
+                  </td>
+                  <td class="px-4 py-3 align-top text-gray-700 dark:text-gray-200">
+                    {{ order.requestedBy || '-' }}
+                  </td>
+                  <td class="px-4 py-3 align-top">
+                    <div class="font-medium text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</div>
+                    <div v-if="order.motorTag || order.destinationName" class="mt-0.5 flex flex-wrap gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      <span v-if="order.motorTag" class="rounded-full bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 text-primary-700 dark:text-primary-300">
+                        {{ order.motorTag }}
+                      </span>
+                      <span v-if="order.destinationName">{{ order.destinationName }}</span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3 align-top whitespace-nowrap text-gray-600 dark:text-gray-300">
+                    {{ maintenanceEndLabel(order) }}
+                  </td>
+                  <td class="px-4 py-3 align-top text-gray-600 dark:text-gray-300">
+                    <p class="max-w-[360px] whitespace-pre-wrap break-words line-clamp-3">{{ maintenanceObservation(order) }}</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="border-t border-gray-200 dark:border-gray-700 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ historyOrders.length }} OS no histórico
           </div>
         </div>
       </div>
@@ -1131,25 +1406,25 @@ function matBackToStep2() {
 
             <span class="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1">{{ dest.destinationName }}</span>
             <span class="text-xs text-gray-400 dark:text-gray-500">
-              {{ dest.orders.length }} OS - {{ dest.looseSaidas.length }} saídas avulsas - {{ dest.materialTotals.length }} materiais
+              {{ dest.orders.length }} OS - {{ (dest.osMaterialTotals || []).length }} materiais em OS
             </span>
           </div>
 
           <div v-if="expandedReportDest === dest.destinationName" class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-4">
-            <div v-if="dest.materialTotals.length">
-              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Total de Materiais</h4>
+            <div v-if="(dest.osMaterialTotals || []).length">
+              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Resumo por destino de OS</h4>
               <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="text-left text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                       <th class="pb-2 pr-3">Item</th>
                       <th class="pb-2 pr-3">Variação</th>
-                      <th class="pb-2 pr-3 text-right">Qtd Total</th>
+                      <th class="pb-2 pr-3 text-right">Qtd em OS</th>
                       <th class="pb-2">Unid</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(mt, idx) in dest.materialTotals" :key="idx" class="border-t border-gray-100 dark:border-gray-700/50">
+                    <tr v-for="(mt, idx) in dest.osMaterialTotals" :key="idx" class="border-t border-gray-100 dark:border-gray-700/50">
                       <td class="py-1.5 pr-3 text-gray-900 dark:text-gray-100">{{ mt.itemName }}</td>
                       <td class="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{{ variationLabel(mt) }}</td>
                       <td class="py-1.5 pr-3 text-right font-semibold text-gray-900 dark:text-gray-100">{{ mt.qty }}</td>
@@ -1188,35 +1463,7 @@ function matBackToStep2() {
               </div>
             </div>
 
-            <div v-if="dest.looseSaidas.length">
-              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Saídas Avulsas (sem OS)</h4>
-              <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <thead>
-                    <tr class="text-left text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                      <th class="pb-2 pr-3">Item</th>
-                      <th class="pb-2 pr-3">Variação</th>
-                      <th class="pb-2 pr-3 text-right">Qtd</th>
-                      <th class="pb-2 pr-3">Unid</th>
-                      <th class="pb-2 pr-3">Solicitante</th>
-                      <th class="pb-2">Data</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="s in dest.looseSaidas" :key="s.id" class="border-t border-gray-100 dark:border-gray-700/50">
-                      <td class="py-1.5 pr-3 text-gray-900 dark:text-gray-100">{{ s.itemName }}</td>
-                      <td class="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{{ variationLabel(s) }}</td>
-                      <td class="py-1.5 pr-3 text-right font-medium text-gray-900 dark:text-gray-100">{{ s.qty }}</td>
-                      <td class="py-1.5 pr-3 text-gray-500 dark:text-gray-400">{{ s.itemUnit }}</td>
-                      <td class="py-1.5 pr-3 text-gray-600 dark:text-gray-400">{{ s.requestedBy || '-' }}</td>
-                      <td class="py-1.5 text-gray-400 dark:text-gray-500 text-xs">{{ formatDate(s.date) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <p v-if="!dest.materialTotals.length" class="text-sm text-gray-400 italic">Nenhum material registrado para este equipamento</p>
+            <p v-if="!(dest.osMaterialTotals || []).length" class="text-sm text-gray-400 italic">Nenhum material de OS registrado para este destino</p>
           </div>
         </div>
       </div>

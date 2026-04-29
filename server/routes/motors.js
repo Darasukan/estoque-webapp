@@ -16,6 +16,26 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function addWorkOrderEvent(workOrderId, eventType, req, fields = {}) {
+  if (!workOrderId) return
+  const eventDate = fields.eventDate || nowIso()
+  db.prepare(`INSERT INTO work_order_events (
+    id, work_order_id, event_type, event_date, operator_id, operator_name,
+    from_value, to_value, notes, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    genId('woe'),
+    workOrderId,
+    eventType,
+    eventDate,
+    req?.user?.id || '',
+    req?.user?.name || '',
+    fields.fromValue || '',
+    fields.toValue || '',
+    fields.notes || '',
+    nowIso()
+  )
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
@@ -250,6 +270,14 @@ router.post('/:id/events', requireAuth, (req, res) => {
     )
 
     applyEventEffect(req.params.id, payload, now)
+
+    if (payload.workOrderId) {
+      addWorkOrderEvent(payload.workOrderId, 'evento_motor_registrado', req, {
+        eventDate: payload.eventDate,
+        toValue: payload.eventType,
+        notes: payload.notes || `Evento ${payload.eventType} registrado para o motor ${motor.tag}.`,
+      })
+    }
   })
   tx()
 

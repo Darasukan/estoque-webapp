@@ -4,6 +4,7 @@ import * as api from '../services/api.js'
 // ===== Singleton state =====
 const workOrders = ref([])
 const report = ref([])
+const workOrderEvents = ref({})
 
 // ===== Composable =====
 export function useWorkOrders() {
@@ -16,9 +17,16 @@ export function useWorkOrders() {
     report.value = await api.getWorkOrderReport()
   }
 
+  async function loadEvents(workOrderId) {
+    const events = await api.getWorkOrderEvents(workOrderId)
+    workOrderEvents.value = { ...workOrderEvents.value, [workOrderId]: events }
+    return events
+  }
+
   async function addWorkOrder(data) {
     const created = await api.createWorkOrder(data)
     workOrders.value.unshift(created)
+    await loadEvents(created.id).catch(() => {})
     return created
   }
 
@@ -26,6 +34,7 @@ export function useWorkOrders() {
     const updated = await api.updateWorkOrder(id, changes)
     const idx = workOrders.value.findIndex(o => o.id === id)
     if (idx !== -1) workOrders.value.splice(idx, 1, updated)
+    await loadEvents(id).catch(() => {})
     return updated
   }
 
@@ -33,6 +42,9 @@ export function useWorkOrders() {
     const result = await api.deleteWorkOrder(id)
     const idx = workOrders.value.findIndex(o => o.id === id)
     if (idx !== -1) workOrders.value.splice(idx, 1)
+    const next = { ...workOrderEvents.value }
+    delete next[id]
+    workOrderEvents.value = next
     return result
   }
 
@@ -49,6 +61,7 @@ export function useWorkOrders() {
       if (!wo.items) wo.items = []
       wo.items.push(result.workOrderItem)
     }
+    await loadEvents(workOrderId).catch(() => {})
     return result
   }
 
@@ -65,6 +78,7 @@ export function useWorkOrders() {
       const idx = wo.items.findIndex(i => i.id === workOrderItemId)
       if (idx !== -1) wo.items.splice(idx, 1)
     }
+    await loadEvents(workOrderId).catch(() => {})
     return result
   }
 
@@ -95,14 +109,17 @@ export function useWorkOrders() {
       if (!wo.items) wo.items = []
       wo.items.push(woItem)
     }
+    await loadEvents(workOrderId).catch(() => {})
     return woItem
   }
 
   return {
     workOrders,
     report,
+    workOrderEvents,
     loadData,
     loadReport,
+    loadEvents,
     addWorkOrder,
     editWorkOrder,
     deleteWorkOrder,

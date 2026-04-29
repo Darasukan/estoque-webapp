@@ -218,6 +218,10 @@ export async function getWorkOrder(id) {
   return request(`/work-orders/${id}`)
 }
 
+export async function getWorkOrderEvents(id) {
+  return request(`/work-orders/${id}/events`)
+}
+
 export async function createWorkOrder(data) {
   return request('/work-orders', { method: 'POST', body: JSON.stringify(data) })
 }

@@ -144,6 +144,19 @@ db.exec(`
     added_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS work_order_events (
+    id TEXT PRIMARY KEY,
+    work_order_id TEXT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    operator_id TEXT DEFAULT '',
+    operator_name TEXT DEFAULT '',
+    from_value TEXT DEFAULT '',
+    to_value TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS motors (
     id TEXT PRIMARY KEY,
     tag TEXT NOT NULL UNIQUE,
@@ -210,6 +223,21 @@ const workOrderMigrations = [
 for (const [col, sql] of workOrderMigrations) {
   if (!workOrderCols.includes(col)) db.prepare(sql).run()
 }
+
+db.prepare(`
+  INSERT INTO work_order_events (id, work_order_id, event_type, event_date, notes, created_at)
+  SELECT
+    'woe_' || lower(hex(randomblob(6))),
+    wo.id,
+    'criada',
+    COALESCE(NULLIF(wo.created_at, ''), datetime('now')),
+    'Evento inicial criado automaticamente para OS existente.',
+    datetime('now')
+  FROM work_orders wo
+  WHERE NOT EXISTS (
+    SELECT 1 FROM work_order_events ev WHERE ev.work_order_id = wo.id
+  )
+`).run()
 
 // Seed default admin if no users exist
 import bcryptjs from 'bcryptjs'

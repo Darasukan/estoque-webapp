@@ -42,21 +42,26 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
       q === normalizeDestinationKey(getDestFullName(dest.id))
   }
 
-  function workOrderMatchesDestination(wo, dest) {
-    return wo.destinationId === dest.id ||
-      destinationMatchesValue(dest, wo.destinationName) ||
-      destinationMatchesValue(dest, wo.equipment)
+  function movementMatchesDestination(m, dest) {
+    return m.type === 'saida' &&
+      !linkedWorkOrderMovementIds.value.has(m.id) &&
+      destinationMatchesValue(dest, m.destination)
   }
 
-  function movementMatchesDestination(m, dest) {
-    return m.type === 'saida' && destinationMatchesValue(dest, m.destination)
-  }
+  const linkedWorkOrderMovementIds = computed(() => {
+    const ids = new Set()
+    for (const wo of workOrders.value) {
+      for (const item of wo.items || []) {
+        if (item.movementId) ids.add(item.movementId)
+      }
+    }
+    return ids
+  })
 
   const destinationSummaries = computed(() =>
     orderedRegisteredDestinations.value.map(dest => {
       const fullName = getDestFullName(dest.id)
       const saidas = movements.value.filter(m => movementMatchesDestination(m, dest))
-      const orders = workOrders.value.filter(wo => workOrderMatchesDestination(wo, dest))
       const materialMap = {}
 
       for (const m of saidas) {
@@ -82,7 +87,7 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
         name: dest.name,
         fullName,
         isChild: !!dest.parentId,
-        orders,
+        orders: [],
         saidas,
         materials,
         totalQty: materials.reduce((sum, mat) => sum + mat.qty, 0),
@@ -97,7 +102,6 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
     return destinationSummaries.value.filter(d => {
       const haystack = [
         d.fullName,
-        ...d.orders.map(wo => `OS ${wo.number} ${wo.equipment || wo.title || ''} ${wo.requestedBy || ''}`),
         ...d.materials.map(mat => `${mat.itemName} ${mat.variation}`),
       ].join(' ').toLowerCase()
       return haystack.includes(q)
@@ -106,9 +110,9 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
 
   const summaryTotals = computed(() => ({
     destinations: destinationSummaries.value.length,
-    withMovement: destinationSummaries.value.filter(d => d.saidas.length || d.orders.length).length,
+    withMovement: destinationSummaries.value.filter(d => d.saidas.length).length,
     saidas: destinationSummaries.value.reduce((sum, d) => sum + d.saidas.length, 0),
-    orders: destinationSummaries.value.reduce((sum, d) => sum + d.orders.length, 0),
+    orders: 0,
   }))
 
   return {
