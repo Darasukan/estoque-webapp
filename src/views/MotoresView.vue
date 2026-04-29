@@ -259,10 +259,41 @@ function formatDate(value) {
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleDateString('pt-BR')
 }
+
+function workOrderStatusLabel(order) {
+  return order.maintenanceEndDate && order.maintenanceEndTime ? 'Finalizada' : 'Aberta'
+}
+
+function workOrderLocationLabel(order) {
+  return order.maintenanceLocationName ||
+    order.maintenanceDestinationName ||
+    order.maintenanceExternalLocation ||
+    order.destinationName ||
+    '-'
+}
 </script>
 
 <template>
-  <div class="ds-page-stack">
+  <div v-if="selectedMotor && osPanelOpen" class="ds-page-stack">
+    <div class="ds-page-header">
+      <div>
+        <p class="ds-page-kicker">OS de Motor</p>
+        <h1 class="ds-page-title">{{ selectedMotor.tag }}</h1>
+        <p class="ds-page-subtitle">Ordens, materiais e eventos vinculados a este motor.</p>
+      </div>
+      <AppButton variant="secondary" @click="osPanelOpen = false; osPrefillMotor = null">Voltar ao motor</AppButton>
+    </div>
+
+    <OrdensServicoView
+      mode="motor"
+      embedded
+      :scoped-motor-id="selectedMotor.id"
+      :prefill-motor="osPrefillMotor"
+      @prefill-consumed="osPrefillMotor = null"
+    />
+  </div>
+
+  <div v-else class="ds-page-stack">
     <div class="ds-page-header">
       <div>
         <p class="ds-page-kicker">Ativos físicos</p>
@@ -358,10 +389,13 @@ function formatDate(value) {
           <input v-model="motorForm.power" placeholder="Potência" class="ds-input" />
           <input v-model="motorForm.voltage" placeholder="Tensão" class="ds-input" />
           <input v-model="motorForm.rpm" placeholder="RPM" class="ds-input" />
-          <select v-model="motorForm.destinationId" class="ds-input">
+          <select v-if="!editingMotorId" v-model="motorForm.destinationId" class="ds-input">
             <option value="">Sem local</option>
             <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
           </select>
+          <div v-else class="ds-input bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+            {{ selectedMotor?.destinationName || 'Sem local' }}
+          </div>
           <select v-model="motorForm.status" class="ds-input">
             <option v-for="s in MOTOR_STATUSES" :key="s.id" :value="s.id">{{ s.label }}</option>
           </select>
@@ -389,7 +423,6 @@ function formatDate(value) {
           <div class="flex flex-wrap gap-2">
             <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
             <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Criar OS de Motor</AppButton>
-            <AppButton v-if="isLoggedIn" variant="warning" size="sm" @click="openEventForm('revisado')">Registrar evento</AppButton>
             <AppButton
               v-if="isLoggedIn && confirmDeleteMotorId !== selectedMotor.id"
               variant="danger"
@@ -420,87 +453,25 @@ function formatDate(value) {
               <div class="ds-surface p-3"><p class="text-xs text-gray-400">Revisado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.revisado || 0 }}</p></div>
             </div>
 
-            <div v-if="eventFormOpen" class="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-900/10 p-4 space-y-3">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <select v-model="eventForm.eventType" class="ds-input">
-                  <option v-for="t in MOTOR_EVENT_TYPES" :key="t.id" :value="t.id">{{ t.label }}</option>
-                </select>
-                <input v-model="eventForm.eventDate" type="date" class="ds-input" />
-                <input v-model="eventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="ds-input" />
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select v-model="eventForm.workOrderId" class="ds-input">
-                  <option value="">Sem OS vinculada</option>
-                  <option v-for="wo in selectedWorkOrders" :key="wo.id" :value="wo.id">OS #{{ wo.number }} - {{ wo.title }}</option>
-                </select>
-                <select v-model="eventForm.toDestinationId" class="ds-input">
-                  <option value="">Sem mudança de local</option>
-                  <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                </select>
-              </div>
-              <textarea v-model="eventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
-              <div class="flex justify-end gap-2">
-                <AppButton variant="secondary" @click="eventFormOpen = false">Cancelar</AppButton>
-                <AppButton variant="warning" @click="saveEvent">Salvar evento</AppButton>
-              </div>
-            </div>
-
             <div>
               <h3 class="ds-section-heading mb-2">Histórico do motor</h3>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden">
                 <div v-for="ev in selectedEvents" :key="ev.id" class="px-4 py-3">
-                  <div v-if="editingEventId === ev.id" class="space-y-3">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <select v-model="editEventForm.eventType" class="ds-input">
-                        <option v-for="t in MOTOR_EVENT_TYPES" :key="t.id" :value="t.id">{{ t.label }}</option>
-                      </select>
-                      <input v-model="editEventForm.eventDate" type="date" class="ds-input" />
-                      <input v-model="editEventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="ds-input" />
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <select v-model="editEventForm.workOrderId" class="ds-input">
-                        <option value="">Sem OS vinculada</option>
-                        <option v-for="wo in selectedWorkOrders" :key="wo.id" :value="wo.id">OS #{{ wo.number }} - {{ wo.title }}</option>
-                      </select>
-                      <select v-model="editEventForm.toDestinationId" class="ds-input">
-                        <option value="">Manter local registrado</option>
-                        <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                      </select>
-                    </div>
-                    <textarea v-model="editEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
-                    <div class="flex justify-end gap-2">
-                      <AppButton variant="secondary" size="sm" @click="cancelEditEvent">Cancelar</AppButton>
-                      <AppButton variant="primary" size="sm" @click="saveEditEvent(ev)">Salvar</AppButton>
-                    </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ motorEventLabel(ev.eventType) }}</p>
+                    <span class="text-xs text-gray-400">{{ formatDate(ev.eventDate) }}</span>
                   </div>
-                  <template v-else>
-                    <div class="flex items-center justify-between gap-3">
-                      <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ motorEventLabel(ev.eventType) }}</p>
-                      <span class="text-xs text-gray-400">{{ formatDate(ev.eventDate) }}</span>
-                    </div>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                      <span v-if="ev.performedBy">{{ ev.performedBy }}</span>
-                      <span v-if="ev.workOrderId"> · OS vinculada</span>
-                      <span v-if="ev.fromDestination || ev.toDestination"> · {{ ev.fromDestination || '-' }} -> {{ ev.toDestination || '-' }}</span>
-                    </p>
-                    <p v-if="ev.notes" class="text-sm text-gray-600 dark:text-gray-300 mt-1">{{ ev.notes }}</p>
-                    <div v-if="isLoggedIn" class="flex justify-end gap-2 mt-2">
-                      <AppButton variant="ghost" size="xs" @click="startEditEvent(ev)">Editar</AppButton>
-                      <template v-if="confirmDeleteEventId === ev.id">
-                        <ConfirmInline
-                          message="Excluir?"
-                          @confirm="deleteEvent(ev)"
-                          @cancel="confirmDeleteEventId = null"
-                        />
-                      </template>
-                      <AppButton v-else variant="danger" size="xs" @click="confirmDeleteEventId = ev.id">Excluir</AppButton>
-                    </div>
-                  </template>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <span v-if="ev.performedBy">{{ ev.performedBy }}</span>
+                    <span v-if="ev.workOrderId"> · OS vinculada</span>
+                    <span v-if="ev.fromDestination || ev.toDestination"> · {{ ev.fromDestination || '-' }} -> {{ ev.toDestination || '-' }}</span>
+                  </p>
+                  <p v-if="ev.notes" class="text-sm text-gray-600 dark:text-gray-300 mt-1">{{ ev.notes }}</p>
                 </div>
                 <EmptyState
                   v-if="!selectedEvents.length"
                   title="Sem eventos registrados."
-                  text="Registre revisões, rebobinagens, movimentações e observações do motor."
+                  text="Eventos entram pela OS de Motor."
                 />
               </div>
             </div>
@@ -530,8 +501,12 @@ function formatDate(value) {
                 >Abrir</AppButton>
               </div>
               <div v-for="wo in selectedWorkOrders" :key="wo.id" class="py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">OS #{{ wo.number }}</p>
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-sm font-medium text-gray-900 dark:text-gray-100">OS #{{ wo.number }}</p>
+                  <span class="text-[11px] rounded-full px-2 py-0.5" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ wo.serviceType }} · {{ wo.requestDate }}</p>
+                <p class="text-[11px] text-gray-400 dark:text-gray-500">Local/oficina: {{ workOrderLocationLabel(wo) }}</p>
                 <div v-if="wo.items?.length" class="mt-1 space-y-0.5">
                   <p v-for="mat in wo.items" :key="mat.id" class="text-[11px] text-gray-500 dark:text-gray-400">
                     {{ mat.itemName }} - {{ mat.qty }} {{ mat.itemUnit }}
@@ -548,22 +523,6 @@ function formatDate(value) {
         </div>
       </div>
 
-      <div v-if="selectedMotor && osPanelOpen" class="ds-panel p-4 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">OS de Motor - {{ selectedMotor.tag }}</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Serviços e materiais consumidos neste motor</p>
-          </div>
-          <AppButton variant="ghost" size="xs" @click="osPanelOpen = false; osPrefillMotor = null">Fechar</AppButton>
-        </div>
-        <OrdensServicoView
-          mode="motor"
-          embedded
-          :scoped-motor-id="selectedMotor.id"
-          :prefill-motor="osPrefillMotor"
-          @prefill-consumed="osPrefillMotor = null"
-        />
-      </div>
     </section>
     </div>
 

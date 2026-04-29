@@ -323,6 +323,7 @@ function addCurrentToBatch() {
     variationValues: { ...(liveVar.values || {}) },
     variationExtras: { ...(liveVar.extras || {}) },
     qty: parsedQty.value,
+    ...commonMovementFields(),
   })
 
   success('Item adicionado ao lote.')
@@ -339,15 +340,15 @@ function clearBatch() {
 
 async function confirmBatch() {
   if (!batchItems.value.length) return
-  if (activeSubTab.value === 'saida' && (!form.value.requestedBy.trim() || !form.value.destination.trim())) {
-    error('Preencha quem retirou e o local de destino.')
+  if (activeSubTab.value === 'saida' && batchItems.value.some(i => !String(i.requestedBy || '').trim() || !String(i.destination || '').trim())) {
+    error('Preencha quem retirou e o local de destino em todos os itens do lote.')
     return
   }
 
   const woId = selectedWorkOrderId.value
 
   try {
-    const created = await addMovementBatch(activeSubTab.value, batchItems.value, commonMovementFields())
+    const created = await addMovementBatch(activeSubTab.value, batchItems.value, {})
     for (const m of created) {
       const liveVar = variations.value.find(v => v.id === m.variationId)
       if (liveVar) liveVar.stock = m.stockAfter
@@ -391,6 +392,14 @@ function batchVariationLabel(line) {
     ...Object.entries(line.variationExtras || {}).filter(([, val]) => val).map(([k, val]) => `${k}: ${val}`),
   ]
   return parts.length ? parts.join(' · ') : '—'
+}
+
+function batchLineDetails(line) {
+  const details = activeSubTab.value === 'entrada'
+    ? [line.supplier && `Fornecedor: ${line.supplier}`, line.docRef && `Doc: ${line.docRef}`]
+    : [line.requestedBy && `Retirado por: ${line.requestedBy}`, line.destination && `Destino: ${line.destination}`, line.docRef && `Doc: ${line.docRef}`]
+  if (line.note) details.push(`Obs: ${line.note}`)
+  return details.filter(Boolean).join(' · ')
 }
 
 function formatDate(iso) {
@@ -585,6 +594,7 @@ defineExpose({
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ line.itemName }}</p>
               <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
+              <p v-if="batchLineDetails(line)" class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ batchLineDetails(line) }}</p>
             </div>
             <span class="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ line.qty }} {{ line.itemUnit }}</span>
             <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>

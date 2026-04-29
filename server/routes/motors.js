@@ -124,10 +124,10 @@ function buildEventPayload(body, motor) {
   if (!EVENT_TYPES.has(eventType)) return { error: 'Tipo de evento invalido.' }
 
   const workOrderId = clean(body.workOrderId)
-  if (workOrderId) {
-    const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(workOrderId)
-    if (!wo) return { error: 'OS nao encontrada.' }
-  }
+  if (!workOrderId) return { error: 'Evento de motor precisa estar vinculado a uma OS de motor.' }
+  const wo = db.prepare('SELECT id, motor_id FROM work_orders WHERE id = ?').get(workOrderId)
+  if (!wo) return { error: 'OS nao encontrada.' }
+  if (wo.motor_id !== motor.id) return { error: 'OS nao pertence a este motor.' }
 
   const toDestinationId = clean(body.toDestinationId)
   const resolvedToDestination = toDestinationId ? resolveDestinationName(toDestinationId) : ''
@@ -200,7 +200,9 @@ router.put('/:id', requireAuth, (req, res) => {
   const fromDestination = existing.destination_name || ''
   const toDestination = payload.destinationName || ''
   const destinationChanged = fromDestination !== toDestination
-  const statusChanged = existing.status !== payload.status
+  if (destinationChanged) {
+    return res.status(400).json({ error: 'Mudanca de local do motor deve ser registrada em uma OS de motor.' })
+  }
 
   const tx = db.transaction(() => {
     db.prepare(`UPDATE motors SET
@@ -211,19 +213,6 @@ router.put('/:id', requireAuth, (req, res) => {
       payload.destinationId, payload.destinationName, payload.status, payload.notes, now, req.params.id
     )
 
-    if (destinationChanged) {
-      db.prepare(`INSERT INTO motor_events (id, motor_id, event_type, event_date, from_destination, to_destination, notes, created_at)
-        VALUES (?, ?, 'movimentado', ?, ?, ?, ?, ?)`).run(
-        genId('mev'), req.params.id, now, fromDestination, toDestination, 'Local do motor atualizado.', now
-      )
-    }
-    if (statusChanged && ['inativo', 'ativo'].includes(payload.status)) {
-      db.prepare(`INSERT INTO motor_events (id, motor_id, event_type, event_date, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)`).run(
-        genId('mev'), req.params.id, payload.status === 'inativo' ? 'inativado' : 'reativado',
-        now, `Status alterado de ${existing.status} para ${payload.status}.`, now
-      )
-    }
   })
   tx()
 

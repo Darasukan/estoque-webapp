@@ -5,6 +5,10 @@ import { requireAuth, requireRole } from '../middleware/auth.js'
 
 const router = Router()
 
+function movementField(line, fields, key) {
+  return line[key] !== undefined ? line[key] : (fields[key] || '')
+}
+
 function toMovement(row) {
   return {
     id: row.id,
@@ -163,6 +167,11 @@ router.post('/batch', requireAuth, (req, res) => {
     for (const line of prepared) {
       const m = line.item
       const id = 'mov_' + crypto.randomBytes(6).toString('hex')
+      const supplier = movementField(m, fields, 'supplier')
+      const requestedBy = movementField(m, fields, 'requestedBy')
+      const destination = movementField(m, fields, 'destination')
+      const docRef = movementField(m, fields, 'docRef')
+      const note = movementField(m, fields, 'note')
       db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, requested_by, destination, doc_ref, note, operator_id, operator_name)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         id, type, m.variationId, m.itemId,
@@ -170,7 +179,7 @@ router.post('/batch', requireAuth, (req, res) => {
         JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         line.qty, line.stockBefore, line.stockAfter,
         date,
-        fields.supplier || '', fields.requestedBy || '', fields.destination || '', fields.docRef || '', fields.note || '',
+        supplier, requestedBy, destination, docRef, note,
         operatorId, operatorName
       )
       created.push({
@@ -189,11 +198,11 @@ router.post('/batch', requireAuth, (req, res) => {
         stockBefore: line.stockBefore,
         stockAfter: line.stockAfter,
         date,
-        supplier: fields.supplier || '',
-        requestedBy: fields.requestedBy || '',
-        destination: fields.destination || '',
-        docRef: fields.docRef || '',
-        note: fields.note || '',
+        supplier,
+        requestedBy,
+        destination,
+        docRef,
+        note,
         operatorId,
         operatorName,
       })
