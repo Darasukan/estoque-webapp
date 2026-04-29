@@ -10,6 +10,7 @@ import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
+import AppButton from './components/ui/AppButton.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
 import { useMovements } from './composables/useMovements.js'
@@ -97,7 +98,7 @@ function onLoginClose() {
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <div class="ds-page">
     <!-- Catalog Sidebar -->
     <AppSidebar
       v-if="showCatalogSidebar"
@@ -138,17 +139,15 @@ function onLoginClose() {
       :class="anySidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
     >
       <!-- Navbar -->
-      <nav class="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+      <nav class="sticky top-0 z-30 ds-nav">
         <div class="flex items-center justify-between px-5 h-12">
           <!-- Tabs -->
           <div class="flex items-center gap-1">
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="px-4 py-2.5 text-sm font-medium transition-colors relative"
-              :class="activeTab === tab.id
-                ? 'text-primary-700 dark:text-primary-400'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+              class="ds-tab"
+              :class="activeTab === tab.id ? 'ds-tab-active' : ''"
               @click="activeTab = tab.id"
             >
               {{ tab.label }}
@@ -156,19 +155,15 @@ function onLoginClose() {
                 v-if="tab.id === 'movimentacoes' && recentMovements.length > 0"
                 class="ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400"
               >{{ recentMovements.length }}</span>
-              <!-- Active indicator -->
-              <span
-                v-if="activeTab === tab.id"
-                class="absolute bottom-0 left-2 right-2 h-0.5 bg-primary-700 dark:bg-primary-400 rounded-full"
-              ></span>
             </button>
           </div>
 
           <!-- Auth + Theme -->
           <div class="flex items-center gap-1">
-          <button
+          <AppButton
             v-if="isLoggedIn"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            variant="ghost"
+            size="sm"
             title="Sair"
             @click="logout(); activeTab = 'catalogo'"
           >
@@ -176,10 +171,11 @@ function onLoginClose() {
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
             </svg>
             {{ user.name }}
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             v-else
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            variant="ghost"
+            size="sm"
             title="Entrar"
             @click="showLoginModal = true"
           >
@@ -187,9 +183,10 @@ function onLoginClose() {
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
             Entrar
-          </button>
-          <button
-            class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          </AppButton>
+          <AppButton
+            variant="ghost"
+            size="icon"
             title="Alternar tema claro/escuro"
             @click="toggleTheme"
           >
@@ -199,7 +196,7 @@ function onLoginClose() {
             <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
             </svg>
-          </button>
+          </AppButton>
           </div>
         </div>
       </nav>

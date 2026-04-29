@@ -6,6 +6,10 @@ import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { usePeople } from '../composables/usePeople.js'
 import { useToast } from '../composables/useToast.js'
 import OrdensServicoView from './OrdensServicoView.vue'
+import AppButton from '../components/ui/AppButton.vue'
+import ConfirmInline from '../components/ui/ConfirmInline.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
+import StatusBadge from '../components/ui/StatusBadge.vue'
 
 const isLoggedIn = inject('isLoggedIn')
 
@@ -257,11 +261,12 @@ function formatDate(value) {
           <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Motores</h2>
           <p class="text-xs text-gray-400 dark:text-gray-500">{{ motors.length }} motor{{ motors.length !== 1 ? 'es' : '' }}</p>
         </div>
-        <button
+        <AppButton
           v-if="isLoggedIn"
-          class="px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+          variant="primary"
+          size="sm"
           @click="startNewMotor"
-        >Novo</button>
+        >Novo</AppButton>
       </div>
 
       <div class="grid grid-cols-[1fr_150px] gap-2">
@@ -269,15 +274,15 @@ function formatDate(value) {
           v-model="search"
           type="text"
           placeholder="Buscar tag, serie, local..."
-          class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          class="ds-input"
         />
-        <select v-model="statusFilter" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+        <select v-model="statusFilter" class="ds-input">
           <option value="">Todos</option>
           <option v-for="s in MOTOR_STATUSES" :key="s.id" :value="s.id">{{ s.label }}</option>
         </select>
       </div>
 
-      <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+      <div class="ds-panel overflow-hidden">
         <button
           v-for="motor in filteredMotors"
           :key="motor.id"
@@ -287,113 +292,109 @@ function formatDate(value) {
         >
           <div class="flex items-center justify-between gap-2">
             <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">{{ motor.tag }}</span>
-            <span
-              class="text-[11px] px-2 py-0.5 rounded-full"
-              :class="{
-                'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300': motor.status === 'ativo',
-                'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300': motor.status === 'em_manutencao',
-                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300': motor.status === 'reserva',
-                'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300': motor.status === 'inativo',
-              }"
-            >{{ motorStatusLabel(motor.status) }}</span>
+            <StatusBadge domain="motor" :status="motor.status" :label="motorStatusLabel(motor.status)" />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ motor.name || motor.manufacturer || 'Sem descricao' }}</p>
           <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ motor.destinationName || 'Sem local' }}</p>
         </button>
-        <div v-if="!filteredMotors.length" class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-          Nenhum motor encontrado.
-        </div>
+        <EmptyState
+          v-if="!filteredMotors.length"
+          title="Nenhum motor encontrado."
+          text="Ajuste os filtros ou cadastre um novo motor."
+        />
       </div>
     </aside>
 
     <section class="space-y-4">
-      <div v-if="showForm" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
+      <div v-if="showForm" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ editingMotorId ? 'Editar motor' : 'Novo motor' }}</h3>
-          <button class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" @click="cancelMotorForm">Cancelar</button>
+          <AppButton variant="ghost" size="xs" @click="cancelMotorForm">Cancelar</AppButton>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input v-model="motorForm.tag" placeholder="Tag/patrimonio *" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.serial" placeholder="Serie" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.name" placeholder="Descricao/nome" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.manufacturer" placeholder="Fabricante" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.power" placeholder="Potencia" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.voltage" placeholder="Tensao" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <input v-model="motorForm.rpm" placeholder="RPM" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-          <select v-model="motorForm.destinationId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+          <input v-model="motorForm.tag" placeholder="Tag/patrimonio *" class="ds-input" />
+          <input v-model="motorForm.serial" placeholder="Serie" class="ds-input" />
+          <input v-model="motorForm.name" placeholder="Descricao/nome" class="ds-input" />
+          <input v-model="motorForm.manufacturer" placeholder="Fabricante" class="ds-input" />
+          <input v-model="motorForm.power" placeholder="Potencia" class="ds-input" />
+          <input v-model="motorForm.voltage" placeholder="Tensao" class="ds-input" />
+          <input v-model="motorForm.rpm" placeholder="RPM" class="ds-input" />
+          <select v-model="motorForm.destinationId" class="ds-input">
             <option value="">Sem local</option>
             <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
           </select>
-          <select v-model="motorForm.status" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+          <select v-model="motorForm.status" class="ds-input">
             <option v-for="s in MOTOR_STATUSES" :key="s.id" :value="s.id">{{ s.label }}</option>
           </select>
         </div>
-        <textarea v-model="motorForm.notes" rows="2" placeholder="Observacoes" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"></textarea>
+        <textarea v-model="motorForm.notes" rows="2" placeholder="Observacoes" class="ds-input"></textarea>
         <div class="flex justify-end">
-          <button class="px-4 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors" @click="saveMotor">Salvar</button>
+          <AppButton variant="primary" @click="saveMotor">Salvar</AppButton>
         </div>
       </div>
 
-      <div v-if="selectedMotor" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div v-if="selectedMotor" class="ds-panel overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.tag }}</h2>
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ selectedMotor.name || 'Motor sem descricao' }}</p>
           </div>
           <div class="flex flex-wrap gap-2">
-            <button v-if="isLoggedIn" class="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200" @click="startEditMotor(selectedMotor)">Editar</button>
-            <button v-if="isLoggedIn" class="px-3 py-2 text-sm rounded-lg bg-primary-600 text-white" @click="createWorkOrderForMotor">Criar OS de Motor</button>
-            <button v-if="isLoggedIn" class="px-3 py-2 text-sm rounded-lg bg-amber-600 text-white" @click="openEventForm('revisado')">Registrar evento</button>
-            <button
+            <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
+            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Criar OS de Motor</AppButton>
+            <AppButton v-if="isLoggedIn" variant="warning" size="sm" @click="openEventForm('revisado')">Registrar evento</AppButton>
+            <AppButton
               v-if="isLoggedIn && confirmDeleteMotorId !== selectedMotor.id"
-              class="px-3 py-2 text-sm rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300"
+              variant="danger"
+              size="sm"
               @click="confirmDeleteMotorId = selectedMotor.id"
-            >Excluir</button>
-            <template v-else-if="isLoggedIn">
-              <span class="self-center text-xs text-red-600 dark:text-red-400">Excluir este motor?</span>
-              <button class="px-3 py-2 text-sm rounded-lg bg-red-600 text-white" @click="deleteSelectedMotor">Sim</button>
-              <button class="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200" @click="confirmDeleteMotorId = null">Nao</button>
-            </template>
+            >Excluir</AppButton>
+            <ConfirmInline
+              v-else-if="isLoggedIn"
+              message="Excluir este motor?"
+              @confirm="deleteSelectedMotor"
+              @cancel="confirmDeleteMotorId = null"
+            />
           </div>
         </div>
 
         <div class="p-5 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
           <div class="space-y-4">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-3"><p class="text-xs text-gray-400">Serie</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.serial || '-' }}</p></div>
-              <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-3"><p class="text-xs text-gray-400">Potencia</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.power || '-' }}</p></div>
-              <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-3"><p class="text-xs text-gray-400">Tensao</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.voltage || '-' }}</p></div>
-              <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-3"><p class="text-xs text-gray-400">RPM</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.rpm || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Serie</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.serial || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Potencia</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.power || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Tensao</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.voltage || '-' }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">RPM</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.rpm || '-' }}</p></div>
             </div>
 
             <div class="grid grid-cols-3 gap-3">
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3"><p class="text-xs text-gray-400">Rebobinado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.rebobinado || 0 }}</p></div>
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3"><p class="text-xs text-gray-400">Reformado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.reformado || 0 }}</p></div>
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3"><p class="text-xs text-gray-400">Revisado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.revisado || 0 }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Rebobinado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.rebobinado || 0 }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Reformado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.reformado || 0 }}</p></div>
+              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Revisado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.revisado || 0 }}</p></div>
             </div>
 
             <div v-if="eventFormOpen" class="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-900/10 p-4 space-y-3">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <select v-model="eventForm.eventType" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                <select v-model="eventForm.eventType" class="ds-input">
                   <option v-for="t in MOTOR_EVENT_TYPES" :key="t.id" :value="t.id">{{ t.label }}</option>
                 </select>
-                <input v-model="eventForm.eventDate" type="date" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-                <input v-model="eventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                <input v-model="eventForm.eventDate" type="date" class="ds-input" />
+                <input v-model="eventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="ds-input" />
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select v-model="eventForm.workOrderId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                <select v-model="eventForm.workOrderId" class="ds-input">
                   <option value="">Sem OS vinculada</option>
                   <option v-for="wo in selectedWorkOrders" :key="wo.id" :value="wo.id">OS #{{ wo.number }} - {{ wo.title }}</option>
                 </select>
-                <select v-model="eventForm.toDestinationId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                <select v-model="eventForm.toDestinationId" class="ds-input">
                   <option value="">Sem mudanca de local</option>
                   <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
                 </select>
               </div>
-              <textarea v-model="eventForm.notes" rows="2" placeholder="Observacoes do evento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"></textarea>
+              <textarea v-model="eventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
               <div class="flex justify-end gap-2">
-                <button class="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200" @click="eventFormOpen = false">Cancelar</button>
-                <button class="px-3 py-2 text-sm rounded-lg bg-amber-600 text-white" @click="saveEvent">Salvar evento</button>
+                <AppButton variant="secondary" @click="eventFormOpen = false">Cancelar</AppButton>
+                <AppButton variant="warning" @click="saveEvent">Salvar evento</AppButton>
               </div>
             </div>
 
@@ -403,26 +404,26 @@ function formatDate(value) {
                 <div v-for="ev in selectedEvents" :key="ev.id" class="px-4 py-3">
                   <div v-if="editingEventId === ev.id" class="space-y-3">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <select v-model="editEventForm.eventType" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                      <select v-model="editEventForm.eventType" class="ds-input">
                         <option v-for="t in MOTOR_EVENT_TYPES" :key="t.id" :value="t.id">{{ t.label }}</option>
                       </select>
-                      <input v-model="editEventForm.eventDate" type="date" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
-                      <input v-model="editEventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                      <input v-model="editEventForm.eventDate" type="date" class="ds-input" />
+                      <input v-model="editEventForm.performedBy" list="motor-people-options" placeholder="Executado por" class="ds-input" />
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <select v-model="editEventForm.workOrderId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                      <select v-model="editEventForm.workOrderId" class="ds-input">
                         <option value="">Sem OS vinculada</option>
                         <option v-for="wo in selectedWorkOrders" :key="wo.id" :value="wo.id">OS #{{ wo.number }} - {{ wo.title }}</option>
                       </select>
-                      <select v-model="editEventForm.toDestinationId" class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                      <select v-model="editEventForm.toDestinationId" class="ds-input">
                         <option value="">Manter local registrado</option>
                         <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
                       </select>
                     </div>
-                    <textarea v-model="editEventForm.notes" rows="2" placeholder="Observacoes do evento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"></textarea>
+                    <textarea v-model="editEventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
                     <div class="flex justify-end gap-2">
-                      <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200" @click="cancelEditEvent">Cancelar</button>
-                      <button class="px-3 py-1.5 text-xs rounded-lg bg-primary-600 text-white" @click="saveEditEvent(ev)">Salvar</button>
+                      <AppButton variant="secondary" size="sm" @click="cancelEditEvent">Cancelar</AppButton>
+                      <AppButton variant="primary" size="sm" @click="saveEditEvent(ev)">Salvar</AppButton>
                     </div>
                   </div>
                   <template v-else>
@@ -437,42 +438,49 @@ function formatDate(value) {
                     </p>
                     <p v-if="ev.notes" class="text-sm text-gray-600 dark:text-gray-300 mt-1">{{ ev.notes }}</p>
                     <div v-if="isLoggedIn" class="flex justify-end gap-2 mt-2">
-                      <button class="text-xs text-gray-500 hover:text-primary-600 dark:hover:text-primary-400" @click="startEditEvent(ev)">Editar</button>
+                      <AppButton variant="ghost" size="xs" @click="startEditEvent(ev)">Editar</AppButton>
                       <template v-if="confirmDeleteEventId === ev.id">
-                        <span class="text-xs text-red-500">Excluir?</span>
-                        <button class="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline" @click="deleteEvent(ev)">Sim</button>
-                        <button class="text-xs text-gray-500 hover:underline" @click="confirmDeleteEventId = null">Nao</button>
+                        <ConfirmInline
+                          message="Excluir?"
+                          @confirm="deleteEvent(ev)"
+                          @cancel="confirmDeleteEventId = null"
+                        />
                       </template>
-                      <button v-else class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="confirmDeleteEventId = ev.id">Excluir</button>
+                      <AppButton v-else variant="danger" size="xs" @click="confirmDeleteEventId = ev.id">Excluir</AppButton>
                     </div>
                   </template>
                 </div>
-                <div v-if="!selectedEvents.length" class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">Sem eventos registrados.</div>
+                <EmptyState
+                  v-if="!selectedEvents.length"
+                  title="Sem eventos registrados."
+                  text="Registre revisoes, rebobinagens, movimentacoes e observacoes do motor."
+                />
               </div>
             </div>
           </div>
 
           <aside class="space-y-3">
-            <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+            <div class="ds-surface p-4">
               <p class="text-xs text-gray-400">Local atual</p>
               <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.destinationName || 'Sem local' }}</p>
             </div>
-            <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+            <div class="ds-surface p-4">
               <p class="text-xs text-gray-400">Fabricante</p>
               <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.manufacturer || '-' }}</p>
             </div>
-            <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 p-4">
+            <div class="ds-surface p-4">
               <p class="text-xs text-gray-400">Observacoes</p>
               <p class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ selectedMotor.notes || '-' }}</p>
             </div>
-            <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <div class="ds-surface p-4">
               <div class="flex items-center justify-between gap-2 mb-2">
                 <p class="text-xs font-semibold uppercase text-gray-400">OS do motor</p>
-                <button
+                <AppButton
                   v-if="isLoggedIn"
-                  class="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                  variant="ghost"
+                  size="xs"
                   @click="osPanelOpen = true; osPrefillMotor = null"
-                >Abrir</button>
+                >Abrir</AppButton>
               </div>
               <div v-for="wo in selectedWorkOrders" :key="wo.id" class="py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
                 <p class="text-sm font-medium text-gray-900 dark:text-gray-100">OS #{{ wo.number }}</p>
@@ -483,19 +491,23 @@ function formatDate(value) {
                   </p>
                 </div>
               </div>
-              <p v-if="!selectedWorkOrders.length" class="text-sm text-gray-400 dark:text-gray-500">Nenhuma OS vinculada.</p>
+              <EmptyState
+                v-if="!selectedWorkOrders.length"
+                title="Nenhuma OS vinculada."
+                text="Crie uma OS de motor para registrar servicos e materiais."
+              />
             </div>
           </aside>
         </div>
       </div>
 
-      <div v-if="selectedMotor && osPanelOpen" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
+      <div v-if="selectedMotor && osPanelOpen" class="ds-panel p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">OS de Motor - {{ selectedMotor.tag }}</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400">Serviços e materiais consumidos neste motor</p>
           </div>
-          <button class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" @click="osPanelOpen = false; osPrefillMotor = null">Fechar</button>
+          <AppButton variant="ghost" size="xs" @click="osPanelOpen = false; osPrefillMotor = null">Fechar</AppButton>
         </div>
         <OrdensServicoView
           mode="motor"

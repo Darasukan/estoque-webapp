@@ -11,10 +11,10 @@ const { toasts } = useToast()
         <div
           v-for="toast in toasts"
           :key="toast.id"
-          class="px-4 py-3 rounded-lg text-white text-sm shadow-lg transition-all duration-300"
+          class="px-4 py-3 rounded-lg text-sm shadow-lg transition-all duration-300 border"
           :class="{
-            'bg-primary-700 dark:bg-primary-600': toast.type === 'success',
-            'bg-red-600': toast.type === 'error'
+            'border-emerald-500/25 bg-emerald-600 text-white dark:bg-emerald-500/15 dark:text-emerald-200': toast.type === 'success',
+            'border-red-500/25 bg-red-600 text-white dark:bg-red-500/15 dark:text-red-200': toast.type === 'error'
           }"
         >
           {{ toast.message }}

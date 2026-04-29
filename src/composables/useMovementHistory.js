@@ -1,5 +1,16 @@
 import { computed, ref } from 'vue'
 
+const FIELD_BY_FILTER = {
+  grupo: 'itemGroup',
+  categoria: 'itemCategory',
+  subcategoria: 'itemSubcategory',
+  item: 'itemName',
+  responsavel: 'requestedBy',
+  local: 'destination',
+  doc: 'docRef',
+  operador: 'operatorName',
+}
+
 export function useMovementHistory(movements) {
   const histSearch = ref('')
   const histDateFrom = ref('')
@@ -23,31 +34,41 @@ export function useMovementHistory(movements) {
       inc('categoria', m.itemCategory)
       inc('subcategoria', m.itemSubcategory)
       inc('item', m.itemName)
+      inc('responsavel', m.requestedBy)
+      inc('local', m.destination)
+      inc('doc', m.docRef)
+      inc('operador', m.operatorName)
       for (const [k, v] of Object.entries(m.variationValues || {})) {
         if (v) inc(`attr_${k}`, v)
       }
     }
 
     const selected = histFilters.value
-    const result = []
     const facetDefs = [
-      { key: 'tipo', label: 'Tipo' },
-      { key: 'grupo', label: 'Grupo' },
-      { key: 'categoria', label: 'Categoria' },
-      { key: 'subcategoria', label: 'Subcategoria' },
-      { key: 'item', label: 'Item' },
+      { key: 'tipo', label: 'Tipo', group: 'main', priority: 10, defaultExpanded: true },
+      { key: 'responsavel', label: 'Responsavel', group: 'main', priority: 20 },
+      { key: 'local', label: 'Local', group: 'main', priority: 30 },
+      { key: 'doc', label: 'DOC', group: 'main', priority: 40 },
+      { key: 'operador', label: 'Operador', group: 'main', priority: 50 },
+      { key: 'grupo', label: 'Grupo', group: 'product', priority: 10 },
+      { key: 'categoria', label: 'Categoria', group: 'product', priority: 20 },
+      { key: 'subcategoria', label: 'Subcategoria', group: 'product', priority: 30 },
+      { key: 'item', label: 'Item', group: 'product', priority: 40 },
     ]
 
-    for (const def of facetDefs) {
+    function makeFacet(def) {
       const vals = counts[def.key]
-      if (!vals) continue
+      if (!vals) return null
       const options = Object.entries(vals)
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, count }))
-      if (options.length) {
-        result.push({ key: def.key, label: def.label, options, selected: selected[def.key] || [] })
-      }
+      if (!options.length) return null
+      return { ...def, options, selected: selected[def.key] || [] }
     }
+
+    const result = facetDefs
+      .map(makeFacet)
+      .filter(Boolean)
 
     for (const key of Object.keys(counts)) {
       if (!key.startsWith('attr_')) continue
@@ -57,11 +78,23 @@ export function useMovementHistory(movements) {
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, count }))
       if (options.length) {
-        result.push({ key, label: attrName, options, selected: selected[key] || [] })
+        result.push({
+          key,
+          label: attrName,
+          group: 'details',
+          priority: 100,
+          defaultExpanded: false,
+          options,
+          selected: selected[key] || [],
+        })
       }
     }
 
-    return result
+    return result.sort((a, b) =>
+      (a.group || '').localeCompare(b.group || '') ||
+      (a.priority || 0) - (b.priority || 0) ||
+      a.label.localeCompare(b.label)
+    )
   })
 
   const hasHistFilters = computed(() =>
@@ -94,10 +127,10 @@ export function useMovementHistory(movements) {
         const typeLabel = m.type === 'entrada' ? 'Entrada' : 'Sa\u00edda'
         if (!sf.tipo.includes(typeLabel)) return false
       }
-      if (sf.grupo && sf.grupo.length && !sf.grupo.includes(m.itemGroup)) return false
-      if (sf.categoria && sf.categoria.length && !sf.categoria.includes(m.itemCategory)) return false
-      if (sf.subcategoria && sf.subcategoria.length && !sf.subcategoria.includes(m.itemSubcategory)) return false
-      if (sf.item && sf.item.length && !sf.item.includes(m.itemName)) return false
+
+      for (const [filterKey, fieldName] of Object.entries(FIELD_BY_FILTER)) {
+        if (sf[filterKey]?.length && !sf[filterKey].includes(m[fieldName])) return false
+      }
 
       for (const key of Object.keys(sf)) {
         if (!key.startsWith('attr_') || !sf[key].length) continue
@@ -109,8 +142,6 @@ export function useMovementHistory(movements) {
       if (q) {
         const haystack = [
           m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
-          m.supplier, m.requestedBy, m.destination, m.docRef, m.note,
-          m.operatorName || '',
           ...Object.values(m.variationValues || {}),
           ...Object.values(m.variationExtras || {}),
         ].join(' ').toLowerCase()

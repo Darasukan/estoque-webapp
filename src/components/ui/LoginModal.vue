@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useAuth } from '../../composables/useAuth.js'
+import AppButton from './AppButton.vue'
 
 defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
@@ -40,11 +41,11 @@ function onCancel() {
   <Teleport to="body">
     <div
       v-if="show"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/85"
       @click.self="onCancel"
       @keydown.escape="onCancel"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
+      <div class="ds-panel w-full max-w-sm mx-4 p-6" @click.stop>
         <!-- Header -->
         <div class="flex items-center gap-3 mb-5">
           <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center">
@@ -66,7 +67,7 @@ function onCancel() {
               v-model="user"
               type="text"
               autocomplete="username"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              class="ds-input"
               placeholder="Usuário"
             />
           </div>
@@ -78,7 +79,7 @@ function onCancel() {
               v-model="pass"
               type="password"
               autocomplete="current-password"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              class="ds-input"
               placeholder="Senha"
             />
           </div>
@@ -88,15 +89,15 @@ function onCancel() {
 
           <!-- Ações -->
           <div class="flex justify-end gap-2 pt-2">
-            <button
+            <AppButton
               type="button"
-              class="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              variant="secondary"
               @click="onCancel"
-            >Cancelar</button>
-            <button
+            >Cancelar</AppButton>
+            <AppButton
               type="submit"
-              class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
-            >Entrar</button>
+              variant="primary"
+            >Entrar</AppButton>
           </div>
         </form>
       </div>

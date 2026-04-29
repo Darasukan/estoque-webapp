@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 
 export function useTheme() {
-  const isDark = ref(false)
+  const isDark = ref(true)
 
   // Load preference from localStorage or system
   function init() {
@@ -9,7 +9,7 @@ export function useTheme() {
     if (saved) {
       isDark.value = saved === 'dark'
     } else {
-      isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+      isDark.value = true
     }
     applyTheme()
   }
