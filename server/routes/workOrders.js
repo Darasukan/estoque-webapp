@@ -5,11 +5,19 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 const INTERNAL_MAINTENANCE_LOCATION = 'Oficina'
-const MOTOR_OBJECTIVE_TYPES = new Set(['revisado', 'rebobinado', 'reformado', 'observacao'])
+const MOTOR_OBJECTIVE_TYPES = new Set(['nenhum', 'rebobinado', 'reformado', 'revisado', 'enrolado', 'enrolar', 'instalado', 'removido', 'movimentado', 'inativado', 'reativado', 'observacao'])
 const MOTOR_OBJECTIVE_LABELS = {
-  revisado: 'Revisado',
+  nenhum: 'Nenhum',
   rebobinado: 'Rebobinado',
   reformado: 'Reformado',
+  revisado: 'Revisado',
+  enrolado: 'Enrolado',
+  enrolar: 'Enrolado',
+  instalado: 'Instalado',
+  removido: 'Removido',
+  movimentado: 'Movimentado',
+  inativado: 'Inativado',
+  reativado: 'Reativado',
   observacao: 'Observacao',
 }
 
@@ -104,11 +112,11 @@ function resolveDestinationName(destinationId) {
   return parent ? `${parent.name} > ${dest.name}` : dest.name
 }
 
-function buildTitle({ title, serviceType, equipment, destinationName, number }) {
+function buildTitle({ title, equipment, destinationName, number }) {
   const typedTitle = clean(title)
   if (typedTitle) return typedTitle
   const subject = equipment || destinationName || `OS #${number}`
-  return `${serviceType || 'Outros'} - ${subject}`
+  return subject
 }
 
 function normalizeMaintenanceLocationType(value, hasInternal, hasExternal) {
@@ -137,7 +145,7 @@ function buildMaintenanceLocation(body, existing = null) {
 }
 
 function normalizeMotorObjectiveType(value) {
-  const eventType = clean(value) || 'revisado'
+  const eventType = clean(value) || 'nenhum'
   return MOTOR_OBJECTIVE_TYPES.has(eventType) ? eventType : ''
 }
 
@@ -168,8 +176,32 @@ function setMotorStatus(motorId, status) {
   db.prepare('UPDATE motors SET status = ?, updated_at = ? WHERE id = ?').run(status, nowIso(), motorId)
 }
 
+function applyMotorEventEffect(motorId, eventType, fields = {}) {
+  if (!motorId) return
+  const now = nowIso()
+  if (eventType === 'movimentado' && fields.toDestinationId && fields.toDestination) {
+    db.prepare('UPDATE motors SET destination_id = ?, destination_name = ?, updated_at = ? WHERE id = ?')
+      .run(fields.toDestinationId, fields.toDestination, now, motorId)
+  }
+  if (eventType === 'inativado') {
+    db.prepare("UPDATE motors SET status = 'inativo', updated_at = ? WHERE id = ?").run(now, motorId)
+  }
+  if (eventType === 'reativado' || ['rebobinado', 'reformado', 'revisado', 'enrolado', 'enrolar'].includes(eventType)) {
+    db.prepare("UPDATE motors SET status = 'ativo', updated_at = ? WHERE id = ?").run(now, motorId)
+  }
+}
+
 function mapWorkOrder(r) {
   const motor = r.motor_id ? db.prepare('SELECT id, tag, name, status FROM motors WHERE id = ?').get(r.motor_id) : null
+  const motorEvent = r.motor_id
+    ? db.prepare(`
+      SELECT event_type, event_date, performed_by, to_destination, notes
+      FROM motor_events
+      WHERE work_order_id = ?
+      ORDER BY event_date DESC, created_at DESC
+      LIMIT 1
+    `).get(r.id)
+    : null
   const maintenanceLocationName =
     r.maintenance_location_type === 'interna'
       ? (r.maintenance_destination_name || '')
@@ -182,6 +214,12 @@ function mapWorkOrder(r) {
     motorTag: motor?.tag || '',
     motorName: motor?.name || '',
     motorStatus: motor?.status || '',
+    motorEventType: motorEvent?.event_type || '',
+    motorEventLabel: motorEvent ? motorObjectiveLabel(motorEvent.event_type) : '',
+    motorEventDate: motorEvent?.event_date || '',
+    motorEventPerformedBy: motorEvent?.performed_by || '',
+    motorEventToDestination: motorEvent?.to_destination || '',
+    motorEventNotes: motorEvent?.notes || '',
     destinationId: r.destination_id,
     destinationName: r.destination_name,
     equipment: r.equipment || r.destination_name || '',
@@ -361,6 +399,11 @@ router.post('/', requireAuth, (req, res) => {
     maintenanceDestinationId,
     maintenanceExternalLocation,
     initialMotorEventType,
+    initialMotorEventDate,
+    initialMotorEventPerformedBy,
+    initialMotorEventToDestinationId,
+    initialMotorEventToDestination,
+    initialMotorEventNotes,
   } = req.body
 
   if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
@@ -384,7 +427,19 @@ router.post('/', requireAuth, (req, res) => {
     : null
   if (maintenanceLocation?.error) return res.status(400).json({ error: maintenanceLocation.error })
   const motorObjectiveType = isMotorOrder ? normalizeMotorObjectiveType(initialMotorEventType) : ''
-  if (isMotorOrder && !motorObjectiveType) return res.status(400).json({ error: 'Objetivo da OS de motor invalido' })
+  if (isMotorOrder && !motorObjectiveType) return res.status(400).json({ error: 'Evento inicial do motor invalido' })
+  const hasInitialMotorEvent = isMotorOrder && motorObjectiveType !== 'nenhum'
+  const initialMotorEventDateValue = hasInitialMotorEvent ? clean(initialMotorEventDate) || clean(requestDate) : ''
+  const initialMotorEventToDestinationIdValue = hasInitialMotorEvent ? clean(initialMotorEventToDestinationId) : ''
+  const initialMotorEventToDestinationValue = hasInitialMotorEvent && initialMotorEventToDestinationIdValue
+    ? resolveDestinationName(initialMotorEventToDestinationIdValue)
+    : ''
+  if (hasInitialMotorEvent && motorObjectiveType === 'movimentado' && !initialMotorEventToDestinationIdValue) {
+    return res.status(400).json({ error: 'Novo local do motor e obrigatorio para movimentacao' })
+  }
+  if (hasInitialMotorEvent && initialMotorEventToDestinationIdValue && !initialMotorEventToDestinationValue) {
+    return res.status(400).json({ error: 'Destino do evento nao encontrado' })
+  }
   const internalMaintenance = !isMotorOrder || maintenanceLocation.maintenanceLocationType === 'interna'
   const maintenanceStartDateValue = internalMaintenance ? clean(maintenanceStartDate) : ''
   const maintenanceStartTimeValue = internalMaintenance ? clean(maintenanceStartTime) : ''
@@ -413,8 +468,9 @@ router.post('/', requireAuth, (req, res) => {
   if (!destinationName && !isMotorOrder) destinationName = equipmentValue
 
   const serviceTypeValue = normalizeServiceType(serviceType)
+  const motorObjectiveTitle = hasInitialMotorEvent ? ` - ${motorObjectiveLabel(motorObjectiveType)}` : ''
   const titleValue = isMotorOrder && !clean(title)
-    ? `${serviceTypeValue} - Motor ${motor.tag} - ${motorObjectiveLabel(motorObjectiveType)}`
+    ? `Motor ${motor.tag}${motorObjectiveTitle}`
     : buildTitle({ title, serviceType: serviceTypeValue, equipment: equipmentValue, destinationName, number })
 
   const id = genId('os')
@@ -447,18 +503,23 @@ router.post('/', requireAuth, (req, res) => {
       notes: `${titleValue} criada para ${equipmentValue}.`,
     })
 
-    if (isMotorOrder) {
+    if (hasInitialMotorEvent) {
       const objectiveLabel = motorObjectiveLabel(motorObjectiveType)
       addMotorEvent(id, motor.id, motorObjectiveType, {
-        eventDate: createdAt,
+        eventDate: initialMotorEventDateValue,
         fromDestination: motor.destination_name || '',
-        performedBy: maintenanceProfessionalValue,
-        notes: `Objetivo da OS: ${objectiveLabel}.`,
+        toDestination: initialMotorEventToDestinationValue,
+        performedBy: clean(initialMotorEventPerformedBy) || maintenanceProfessionalValue,
+        notes: clean(initialMotorEventNotes) || `Evento inicial da OS: ${objectiveLabel}.`,
+      })
+      applyMotorEventEffect(motor.id, motorObjectiveType, {
+        toDestinationId: initialMotorEventToDestinationIdValue,
+        toDestination: initialMotorEventToDestinationValue,
       })
       addWorkOrderEvent(id, 'evento_motor_registrado', req, {
-        eventDate: createdAt,
+        eventDate: initialMotorEventDateValue,
         toValue: motorObjectiveType,
-        notes: `Objetivo inicial do motor: ${objectiveLabel}.`,
+        notes: clean(initialMotorEventNotes) || `Evento inicial do motor: ${objectiveLabel}.`,
       })
     }
 

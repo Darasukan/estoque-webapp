@@ -15,6 +15,7 @@ export const MOTOR_EVENT_TYPES = [
   { id: 'rebobinado', label: 'Rebobinado' },
   { id: 'reformado', label: 'Reformado' },
   { id: 'revisado', label: 'Revisado' },
+  { id: 'enrolado', label: 'Enrolado' },
   { id: 'instalado', label: 'Instalado' },
   { id: 'removido', label: 'Removido' },
   { id: 'movimentado', label: 'Movimentado' },
@@ -28,6 +29,7 @@ export function motorStatusLabel(status) {
 }
 
 export function motorEventLabel(type) {
+  if (type === 'enrolar') return 'Enrolado'
   return MOTOR_EVENT_TYPES.find(t => t.id === type)?.label || type || ''
 }
 

@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js'
 const router = Router()
 
 const MOTOR_STATUSES = new Set(['ativo', 'em_manutencao', 'reserva', 'inativo'])
-const EVENT_TYPES = new Set(['rebobinado', 'reformado', 'revisado', 'instalado', 'removido', 'movimentado', 'inativado', 'reativado', 'observacao'])
+const EVENT_TYPES = new Set(['rebobinado', 'reformado', 'revisado', 'enrolado', 'enrolar', 'instalado', 'removido', 'movimentado', 'inativado', 'reativado', 'observacao'])
 
 function genId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString('hex')}`
@@ -156,7 +156,7 @@ function applyEventEffect(motorId, payload, now) {
   if (payload.eventType === 'reativado') {
     db.prepare("UPDATE motors SET status = 'ativo', updated_at = ? WHERE id = ?").run(now, motorId)
   }
-  if (['rebobinado', 'reformado', 'revisado'].includes(payload.eventType)) {
+  if (['rebobinado', 'reformado', 'revisado', 'enrolado', 'enrolar'].includes(payload.eventType)) {
     db.prepare("UPDATE motors SET status = 'ativo', updated_at = ? WHERE id = ?").run(now, motorId)
   }
 }

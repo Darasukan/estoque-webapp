@@ -184,7 +184,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     motor_id TEXT NOT NULL REFERENCES motors(id) ON DELETE CASCADE,
     work_order_id TEXT DEFAULT '',
-    event_type TEXT NOT NULL CHECK(event_type IN ('rebobinado','reformado','revisado','instalado','removido','movimentado','inativado','reativado','observacao')),
+    event_type TEXT NOT NULL CHECK(event_type IN ('rebobinado','reformado','revisado','enrolado','enrolar','instalado','removido','movimentado','inativado','reativado','observacao')),
     event_date TEXT NOT NULL,
     from_destination TEXT DEFAULT '',
     to_destination TEXT DEFAULT '',
@@ -234,6 +234,40 @@ const workOrderMigrations = [
 
 for (const [col, sql] of workOrderMigrations) {
   if (!workOrderCols.includes(col)) db.prepare(sql).run()
+}
+
+// Migration: widen motor event CHECK constraint for Enrolado.
+const motorEventsSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'motor_events'").get()?.sql || ''
+if (motorEventsSchema && !motorEventsSchema.includes("'enrolado'")) {
+  const migrateMotorEvents = db.transaction(() => {
+    db.prepare(`
+      CREATE TABLE motor_events_next (
+        id TEXT PRIMARY KEY,
+        motor_id TEXT NOT NULL REFERENCES motors(id) ON DELETE CASCADE,
+        work_order_id TEXT DEFAULT '',
+        event_type TEXT NOT NULL CHECK(event_type IN ('rebobinado','reformado','revisado','enrolado','enrolar','instalado','removido','movimentado','inativado','reativado','observacao')),
+        event_date TEXT NOT NULL,
+        from_destination TEXT DEFAULT '',
+        to_destination TEXT DEFAULT '',
+        performed_by TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `).run()
+    db.prepare(`
+      INSERT INTO motor_events_next (
+        id, motor_id, work_order_id, event_type, event_date,
+        from_destination, to_destination, performed_by, notes, created_at
+      )
+      SELECT
+        id, motor_id, work_order_id, event_type, event_date,
+        from_destination, to_destination, performed_by, notes, created_at
+      FROM motor_events
+    `).run()
+    db.prepare('DROP TABLE motor_events').run()
+    db.prepare('ALTER TABLE motor_events_next RENAME TO motor_events').run()
+  })
+  migrateMotorEvents()
 }
 
 db.prepare(`

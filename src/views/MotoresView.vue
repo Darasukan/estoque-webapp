@@ -1,9 +1,8 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorEventLabel, motorStatusLabel } from '../composables/useMotors.js'
+import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorStatusLabel, motorEventLabel } from '../composables/useMotors.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
-import { usePeople } from '../composables/usePeople.js'
 import { useToast } from '../composables/useToast.js'
 import OrdensServicoView from './OrdensServicoView.vue'
 import AppButton from '../components/ui/AppButton.vue'
@@ -17,34 +16,30 @@ const {
   motors,
   motorEvents,
   loadData,
+  loadEvents,
   addMotor,
   editMotor,
   removeMotor,
-  loadEvents,
-  addMotorEvent,
-  editMotorEvent,
-  removeMotorEvent,
 } = useMotors()
 const { groupedDestinations, getDestFullName } = useDestinations()
 const { workOrders } = useWorkOrders()
-const { activePeople } = usePeople()
 const { success, error } = useToast()
 
 const search = ref('')
 const statusFilter = ref('')
+const motorViewMode = ref('motores')
 const selectedMotorId = ref('')
 const showForm = ref(false)
 const editingMotorId = ref(null)
-const eventFormOpen = ref(false)
 const osPanelOpen = ref(false)
 const osPrefillMotor = ref(null)
+const osActiveTab = ref('ordens')
+const osFocusOrderId = ref('')
 const confirmDeleteMotorId = ref(null)
-const editingEventId = ref(null)
-const confirmDeleteEventId = ref(null)
+const locationTrailOpen = ref(false)
+const selectedEventCountType = ref('rebobinado')
 
 const motorForm = ref(emptyMotorForm())
-const eventForm = ref(emptyEventForm())
-const editEventForm = ref(emptyEventForm())
 
 function emptyMotorForm() {
   return {
@@ -57,18 +52,6 @@ function emptyMotorForm() {
     rpm: '',
     destinationId: '',
     status: 'ativo',
-    notes: '',
-  }
-}
-
-function emptyEventForm() {
-  return {
-    eventType: 'revisado',
-    eventDate: new Date().toISOString().slice(0, 10),
-    workOrderId: '',
-    toDestinationId: '',
-    toDestination: '',
-    performedBy: '',
     notes: '',
   }
 }
@@ -99,12 +82,68 @@ const selectedMotor = computed(() =>
   motors.value.find(m => m.id === selectedMotorId.value) || filteredMotors.value[0] || null
 )
 
-const selectedEvents = computed(() =>
-  selectedMotor.value ? (motorEvents.value[selectedMotor.value.id] || []) : []
+const selectedWorkOrders = computed(() =>
+  selectedMotor.value
+    ? workOrders.value.filter(wo => wo.motorId === selectedMotor.value.id).sort((a, b) => workOrderSortKey(b).localeCompare(workOrderSortKey(a)))
+    : []
 )
 
-const selectedWorkOrders = computed(() =>
-  selectedMotor.value ? workOrders.value.filter(wo => wo.motorId === selectedMotor.value.id) : []
+const selectedOpenWorkOrders = computed(() =>
+  selectedWorkOrders.value.filter(wo => !wo.maintenanceEndDate || !wo.maintenanceEndTime)
+)
+
+const motorEventCountOptions = computed(() => MOTOR_EVENT_TYPES)
+
+const selectedMotorEventCounts = computed(() => {
+  const counts = {}
+  if (!selectedMotor.value) return counts
+  for (const type of MOTOR_EVENT_TYPES) counts[type.id] = 0
+  const events = motorEvents.value[selectedMotor.value.id] || []
+  for (const event of events) {
+    const type = event.eventType === 'enrolar' ? 'enrolado' : event.eventType
+    if (!type) continue
+    counts[type] = (counts[type] || 0) + 1
+  }
+  return counts
+})
+
+const selectedEventCountLabel = computed(() => motorEventLabel(selectedEventCountType.value))
+
+const selectedEventCount = computed(() =>
+  selectedMotorEventCounts.value[selectedEventCountType.value] || 0
+)
+
+const selectedMotorLocationTrail = computed(() => {
+  if (!selectedMotor.value) return []
+  const currentLocation = String(selectedMotor.value.destinationName || '').trim()
+  const seen = new Set()
+  const entries = []
+  const add = (value, event = null) => {
+    const label = String(value || '').trim()
+    if (!label || label === '-' || label === currentLocation || seen.has(label)) return
+    seen.add(label)
+    const order = event?.workOrderId
+      ? selectedWorkOrders.value.find(wo => wo.id === event.workOrderId)
+      : null
+    entries.push({
+      location: label,
+      eventDate: event?.eventDate || event?.createdAt || '',
+      orderNumber: order?.number || '',
+    })
+  }
+  const events = motorEvents.value[selectedMotor.value.id] || []
+  for (const event of [...events].sort((a, b) => (a.eventDate || a.createdAt || '').localeCompare(b.eventDate || b.createdAt || ''))) {
+    if (event.eventType !== 'movimentado') continue
+    add(event.fromDestination, event)
+    add(event.toDestination, event)
+  }
+  return entries
+})
+
+const allMotorWorkOrders = computed(() =>
+  workOrders.value
+    .filter(wo => wo.motorId)
+    .sort((a, b) => workOrderSortKey(b).localeCompare(workOrderSortKey(a)))
 )
 
 const motorStats = computed(() => ({
@@ -115,20 +154,20 @@ const motorStats = computed(() => ({
   inactive: motors.value.filter(m => m.status === 'inativo').length,
 }))
 
+onMounted(() => loadData())
+
 watch(selectedMotor, (motor) => {
   if (motor) loadEvents(motor.id).catch(() => {})
+  locationTrailOpen.value = false
 }, { immediate: true })
-
-onMounted(() => loadData())
 
 function selectMotor(motor) {
   selectedMotorId.value = motor.id
-  eventFormOpen.value = false
+  motorViewMode.value = 'motores'
   osPanelOpen.value = false
   osPrefillMotor.value = null
+  osFocusOrderId.value = ''
   confirmDeleteMotorId.value = null
-  editingEventId.value = null
-  confirmDeleteEventId.value = null
 }
 
 function startNewMotor() {
@@ -181,67 +220,9 @@ async function deleteSelectedMotor() {
     success('Motor excluido.')
     selectedMotorId.value = ''
     confirmDeleteMotorId.value = null
-    eventFormOpen.value = false
     osPanelOpen.value = false
     osPrefillMotor.value = null
-  } catch (e) {
-    error(e.message)
-  }
-}
-
-function openEventForm(type = 'revisado') {
-  eventForm.value = { ...emptyEventForm(), eventType: type }
-  eventFormOpen.value = true
-}
-
-async function saveEvent() {
-  if (!selectedMotor.value) return
-  try {
-    await addMotorEvent(selectedMotor.value.id, eventForm.value)
-    success('Evento registrado.')
-    eventFormOpen.value = false
-  } catch (e) {
-    error(e.message)
-  }
-}
-
-function startEditEvent(ev) {
-  editingEventId.value = ev.id
-  confirmDeleteEventId.value = null
-  editEventForm.value = {
-    eventType: ev.eventType,
-    eventDate: ev.eventDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-    workOrderId: ev.workOrderId || '',
-    toDestinationId: '',
-    toDestination: ev.toDestination || '',
-    performedBy: ev.performedBy || '',
-    notes: ev.notes || '',
-  }
-}
-
-function cancelEditEvent() {
-  editingEventId.value = null
-  editEventForm.value = emptyEventForm()
-}
-
-async function saveEditEvent(ev) {
-  if (!selectedMotor.value) return
-  try {
-    await editMotorEvent(selectedMotor.value.id, ev.id, editEventForm.value)
-    success('Evento atualizado.')
-    cancelEditEvent()
-  } catch (e) {
-    error(e.message)
-  }
-}
-
-async function deleteEvent(ev) {
-  if (!selectedMotor.value) return
-  try {
-    await removeMotorEvent(selectedMotor.value.id, ev.id)
-    success('Evento excluido.')
-    confirmDeleteEventId.value = null
-    if (editingEventId.value === ev.id) cancelEditEvent()
+    osFocusOrderId.value = ''
   } catch (e) {
     error(e.message)
   }
@@ -251,6 +232,26 @@ function createWorkOrderForMotor() {
   if (!selectedMotor.value) return
   osPrefillMotor.value = selectedMotor.value
   osPanelOpen.value = true
+  osActiveTab.value = 'nova'
+  osFocusOrderId.value = ''
+}
+
+function showMotorOrders(order = null) {
+  if (!selectedMotor.value) return
+  osPanelOpen.value = true
+  osActiveTab.value = 'ordens'
+  osPrefillMotor.value = null
+  osFocusOrderId.value = order?.id || ''
+}
+
+function openMotorFromOrder(order) {
+  const motor = motors.value.find(m => m.id === order.motorId)
+  if (!motor) return
+  selectMotor(motor)
+}
+
+function workOrderSortKey(order) {
+  return order.createdAt || `${order.requestDate || ''} ${order.requestTime || ''}`
 }
 
 function formatDate(value) {
@@ -264,12 +265,33 @@ function workOrderStatusLabel(order) {
   return order.maintenanceEndDate && order.maintenanceEndTime ? 'Finalizada' : 'Aberta'
 }
 
+function workOrderMotorEventLabel(order) {
+  if (!order?.motorId) return ''
+  if (order.motorEventLabel) return order.motorEventLabel === 'Enrolar' ? 'Enrolado' : order.motorEventLabel
+  if (order.motorEventType) return motorEventLabel(order.motorEventType)
+  const parts = String(order.title || '').split(' - ').map(part => part.trim()).filter(Boolean)
+  const label = parts.length > 1 ? parts[parts.length - 1] : ''
+  if (!label || label === order.motorName || label === order.motorTag) return ''
+  return label === 'Enrolar' ? 'Enrolado' : label
+}
+
 function workOrderLocationLabel(order) {
   return order.maintenanceLocationName ||
     order.maintenanceDestinationName ||
     order.maintenanceExternalLocation ||
     order.destinationName ||
     '-'
+}
+
+function workOrderDateLabel(order) {
+  if (order.requestDate && order.requestTime) return `${formatDate(order.requestDate)} ${order.requestTime}`
+  return formatDate(order.requestDate || order.createdAt)
+}
+
+function workOrderEndLabel(order) {
+  if (order.maintenanceEndDate && order.maintenanceEndTime) return `${formatDate(order.maintenanceEndDate)} ${order.maintenanceEndTime}`
+  if (order.maintenanceEndDate) return formatDate(order.maintenanceEndDate)
+  return 'Em aberto'
 }
 </script>
 
@@ -281,7 +303,9 @@ function workOrderLocationLabel(order) {
         <h1 class="ds-page-title">{{ selectedMotor.tag }}</h1>
         <p class="ds-page-subtitle">Ordens, materiais e eventos vinculados a este motor.</p>
       </div>
-      <AppButton variant="secondary" @click="osPanelOpen = false; osPrefillMotor = null">Voltar ao motor</AppButton>
+      <div class="flex gap-2">
+        <AppButton variant="secondary" @click="osPanelOpen = false; osPrefillMotor = null; osActiveTab = 'ordens'">Voltar ao motor</AppButton>
+      </div>
     </div>
 
     <OrdensServicoView
@@ -289,7 +313,10 @@ function workOrderLocationLabel(order) {
       embedded
       :scoped-motor-id="selectedMotor.id"
       :prefill-motor="osPrefillMotor"
+      :initial-tab="osActiveTab"
+      :focus-order-id="osFocusOrderId"
       @prefill-consumed="osPrefillMotor = null"
+      @created="showMotorOrders"
     />
   </div>
 
@@ -298,7 +325,7 @@ function workOrderLocationLabel(order) {
       <div>
         <p class="ds-page-kicker">Ativos físicos</p>
         <h1 class="ds-page-title">Motores</h1>
-        <p class="ds-page-subtitle">Ficha técnica, localização atual, histórico vitalício e OS de motor em um só lugar.</p>
+        <p class="ds-page-subtitle">Ficha técnica, localização atual e históricos de OS por motor.</p>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 min-w-full sm:min-w-[36rem]">
         <div class="ds-metric">
@@ -324,7 +351,64 @@ function workOrderLocationLabel(order) {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
+    <div class="ds-segmented">
+      <button
+        type="button"
+        class="ds-segmented-item"
+        :class="motorViewMode === 'motores' ? 'ds-segmented-item-active' : ''"
+        @click="motorViewMode = 'motores'"
+      >
+        Motores
+      </button>
+      <button
+        type="button"
+        class="ds-segmented-item"
+        :class="motorViewMode === 'linha' ? 'ds-segmented-item-active' : ''"
+        @click="motorViewMode = 'linha'"
+      >
+        Historico geral de OS
+      </button>
+    </div>
+
+    <div v-if="motorViewMode === 'linha'" class="ds-panel overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-200 dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-3 bg-gray-50/70 dark:bg-white/[0.02]">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Linha do tempo geral de OS de motores</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400">Todas as OS vinculadas a motores, em ordem recente.</p>
+        </div>
+        <span class="ds-chip">{{ allMotorWorkOrders.length }} OS</span>
+      </div>
+      <div class="divide-y divide-gray-100 dark:divide-gray-700">
+        <button
+          v-for="wo in allMotorWorkOrders"
+          :key="wo.id"
+          type="button"
+          class="w-full px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          @click="openMotorFromOrder(wo)"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Motor {{ wo.motorTag || wo.equipment || '-' }}</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+              <span v-if="workOrderMotorEventLabel(wo)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
+                {{ workOrderMotorEventLabel(wo) }}
+              </span>
+            </div>
+            <span class="text-xs text-gray-400">{{ workOrderDateLabel(wo) }}</span>
+          </div>
+          <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ wo.title || wo.maintenanceNote || wo.note || 'OS sem observacao' }}</p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Solicitante: {{ wo.requestedBy || '-' }} - Local/oficina: {{ workOrderLocationLabel(wo) }} - Termino: {{ workOrderEndLabel(wo) }}</p>
+        </button>
+        <EmptyState
+          v-if="!allMotorWorkOrders.length"
+          title="Nenhuma OS de motor cadastrada."
+          text="As OS de motores aparecem aqui como linha do tempo geral."
+        />
+      </div>
+    </div>
+
+    <div v-else class="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
     <aside class="space-y-3">
       <div class="ds-toolbar justify-between">
         <div>
@@ -422,7 +506,8 @@ function workOrderLocationLabel(order) {
           </div>
           <div class="flex flex-wrap gap-2">
             <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
-            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Criar OS de Motor</AppButton>
+            <AppButton variant="secondary" size="sm" @click="showMotorOrders">OS do Motor</AppButton>
+            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Nova OS</AppButton>
             <AppButton
               v-if="isLoggedIn && confirmDeleteMotorId !== selectedMotor.id"
               variant="danger"
@@ -447,31 +532,59 @@ function workOrderLocationLabel(order) {
               <div class="ds-surface p-3"><p class="text-xs text-gray-400">RPM</p><p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ selectedMotor.rpm || '-' }}</p></div>
             </div>
 
-            <div class="grid grid-cols-3 gap-3">
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Rebobinado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.rebobinado || 0 }}</p></div>
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Reformado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.reformado || 0 }}</p></div>
-              <div class="ds-surface p-3"><p class="text-xs text-gray-400">Revisado</p><p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotor.eventCounts?.revisado || 0 }}</p></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="ds-surface p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-xs text-gray-400">Eventos</p>
+                    <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedEventCount }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ selectedEventCountLabel }}</p>
+                  </div>
+                  <select v-model="selectedEventCountType" class="ds-input w-44 max-w-[55%] text-xs">
+                    <option v-for="type in motorEventCountOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="ds-surface p-3 text-left hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
+                @click="locationTrailOpen = true"
+              >
+                <p class="text-xs text-gray-400">Lugares por onde passou</p>
+                <div class="mt-2">
+                  <p class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotorLocationTrail.length }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ selectedMotorLocationTrail.length === 1 ? 'destino anterior' : 'destinos anteriores' }}</p>
+                </div>
+              </button>
             </div>
 
             <div>
-              <h3 class="ds-section-heading mb-2">Histórico do motor</h3>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 class="ds-section-heading">Historico de OS do motor</h3>
+              </div>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden">
-                <div v-for="ev in selectedEvents" :key="ev.id" class="px-4 py-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ motorEventLabel(ev.eventType) }}</p>
-                    <span class="text-xs text-gray-400">{{ formatDate(ev.eventDate) }}</span>
+                <div
+                  v-for="wo in selectedWorkOrders"
+                  :key="wo.id"
+                  class="w-full px-4 py-3 text-left"
+                >
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                      <span v-if="workOrderMotorEventLabel(wo)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
+                        {{ workOrderMotorEventLabel(wo) }}
+                      </span>
+                    </div>
+                    <span class="text-xs text-gray-400">{{ workOrderDateLabel(wo) }}</span>
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
-                    <span v-if="ev.performedBy">{{ ev.performedBy }}</span>
-                    <span v-if="ev.workOrderId"> · OS vinculada</span>
-                    <span v-if="ev.fromDestination || ev.toDestination"> · {{ ev.fromDestination || '-' }} -> {{ ev.toDestination || '-' }}</span>
-                  </p>
-                  <p v-if="ev.notes" class="text-sm text-gray-600 dark:text-gray-300 mt-1">{{ ev.notes }}</p>
+                  <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ wo.title || wo.maintenanceNote || wo.note || 'OS sem observacao' }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Local/oficina: {{ workOrderLocationLabel(wo) }} - Termino: {{ workOrderEndLabel(wo) }}</p>
                 </div>
                 <EmptyState
-                  v-if="!selectedEvents.length"
-                  title="Sem eventos registrados."
-                  text="Eventos entram pela OS de Motor."
+                  v-if="!selectedWorkOrders.length"
+                  title="Nenhuma OS vinculada."
+                  text="Use Nova OS para abrir manutencao deste motor."
                 />
               </div>
             </div>
@@ -493,29 +606,40 @@ function workOrderLocationLabel(order) {
             <div class="ds-surface p-4">
               <div class="flex items-center justify-between gap-2 mb-2">
                 <p class="text-xs font-semibold uppercase text-gray-400">OS do motor</p>
-                <AppButton
-                  v-if="isLoggedIn"
-                  variant="ghost"
-                  size="xs"
-                  @click="osPanelOpen = true; osPrefillMotor = null"
-                >Abrir</AppButton>
               </div>
-              <div v-for="wo in selectedWorkOrders" :key="wo.id" class="py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                <div class="flex items-center justify-between gap-2">
+              <div
+                v-for="wo in selectedOpenWorkOrders"
+                :key="wo.id"
+                class="block w-full py-2 text-left border-b border-gray-100 dark:border-gray-700 last:border-b-0 rounded transition-colors"
+              >
+                <div class="flex items-center justify-between gap-2 px-2">
                   <p class="text-sm font-medium text-gray-900 dark:text-gray-100">OS #{{ wo.number }}</p>
-                  <span class="text-[11px] rounded-full px-2 py-0.5" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                  <div class="flex flex-wrap justify-end gap-1">
+                    <span class="text-[11px] rounded-full px-2 py-0.5" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                    <span v-if="workOrderMotorEventLabel(wo)" class="text-[11px] rounded-full px-2 py-0.5 bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
+                      {{ workOrderMotorEventLabel(wo) }}
+                    </span>
+                  </div>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ wo.serviceType }} · {{ wo.requestDate }}</p>
-                <p class="text-[11px] text-gray-400 dark:text-gray-500">Local/oficina: {{ workOrderLocationLabel(wo) }}</p>
+                <p class="px-2 text-xs text-gray-500 dark:text-gray-400">{{ wo.requestDate }}</p>
+                <p class="px-2 text-[11px] text-gray-400 dark:text-gray-500">Local/oficina: {{ workOrderLocationLabel(wo) }}</p>
                 <div v-if="wo.items?.length" class="mt-1 space-y-0.5">
-                  <p v-for="mat in wo.items" :key="mat.id" class="text-[11px] text-gray-500 dark:text-gray-400">
+                  <p v-for="mat in wo.items" :key="mat.id" class="px-2 text-[11px] text-gray-500 dark:text-gray-400">
                     {{ mat.itemName }} - {{ mat.qty }} {{ mat.itemUnit }}
                   </p>
                 </div>
+                <div v-if="isLoggedIn" class="px-2 mt-2">
+                  <span
+                    class="inline-flex px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                    @click.stop="showMotorOrders(wo)"
+                  >
+                    Editar
+                  </span>
+                </div>
               </div>
               <EmptyState
-                v-if="!selectedWorkOrders.length"
-                title="Nenhuma OS vinculada."
+                v-if="!selectedOpenWorkOrders.length"
+                title="Nenhuma OS aberta."
                 text="Crie uma OS de motor para registrar serviços e materiais."
               />
             </div>
@@ -526,8 +650,40 @@ function workOrderLocationLabel(order) {
     </section>
     </div>
 
-    <datalist id="motor-people-options">
-      <option v-for="p in activePeople" :key="p.id" :value="p.name" />
-    </datalist>
+  </div>
+
+  <div
+    v-if="selectedMotor && locationTrailOpen"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+    @click.self="locationTrailOpen = false"
+  >
+    <div class="ds-panel w-full max-w-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+        <div>
+          <p class="ds-page-kicker">Motor {{ selectedMotor.tag }}</p>
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Lugares por onde passou</h3>
+        </div>
+        <AppButton variant="ghost" size="sm" @click="locationTrailOpen = false">Fechar</AppButton>
+      </div>
+      <div class="p-5">
+        <div v-if="selectedMotorLocationTrail.length" class="space-y-2">
+          <div
+            v-for="(entry, index) in selectedMotorLocationTrail"
+            :key="`${entry.location}-${entry.orderNumber}-${entry.eventDate}`"
+            class="grid grid-cols-[auto_1fr] gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
+          >
+            <span class="mt-0.5 text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">{{ index + 1 }}</span>
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ entry.location }}</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Movimentado em {{ formatDate(entry.eventDate) }}
+                <span v-if="entry.orderNumber"> · OS #{{ entry.orderNumber }}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <p v-else class="text-sm text-gray-500 dark:text-gray-400">Nenhum destino anterior registrado para este motor.</p>
+      </div>
+    </div>
   </div>
 </template>
