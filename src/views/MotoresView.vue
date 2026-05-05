@@ -11,6 +11,7 @@ import EmptyState from '../components/ui/EmptyState.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 
 const isLoggedIn = inject('isLoggedIn')
+const canManageMotorOrders = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 
 const {
   motors,
@@ -109,9 +110,12 @@ const selectedMotorEventCounts = computed(() => {
 
 const selectedEventCountLabel = computed(() => motorEventLabel(selectedEventCountType.value))
 
-const selectedEventCount = computed(() =>
-  selectedMotorEventCounts.value[selectedEventCountType.value] || 0
-)
+const selectedEventCount = computed(() => {
+  if (['enrolado', 'rebobinado'].includes(selectedEventCountType.value)) {
+    return (selectedMotorEventCounts.value.enrolado || 0) + (selectedMotorEventCounts.value.rebobinado || 0)
+  }
+  return selectedMotorEventCounts.value[selectedEventCountType.value] || 0
+})
 
 const selectedMotorLocationTrail = computed(() => {
   if (!selectedMotor.value) return []
@@ -229,7 +233,7 @@ async function deleteSelectedMotor() {
 }
 
 function createWorkOrderForMotor() {
-  if (!selectedMotor.value) return
+  if (!selectedMotor.value || !canManageMotorOrders.value) return
   osPrefillMotor.value = selectedMotor.value
   osPanelOpen.value = true
   osActiveTab.value = 'nova'
@@ -241,7 +245,7 @@ function showMotorOrders(order = null) {
   osPanelOpen.value = true
   osActiveTab.value = 'ordens'
   osPrefillMotor.value = null
-  osFocusOrderId.value = order?.id || ''
+  osFocusOrderId.value = canManageMotorOrders.value ? (order?.id || '') : ''
 }
 
 function openMotorFromOrder(order) {

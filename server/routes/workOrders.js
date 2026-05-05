@@ -195,7 +195,7 @@ function mapWorkOrder(r) {
   const motor = r.motor_id ? db.prepare('SELECT id, tag, name, status FROM motors WHERE id = ?').get(r.motor_id) : null
   const motorEvent = r.motor_id
     ? db.prepare(`
-      SELECT event_type, event_date, performed_by, to_destination, notes
+      SELECT id, event_type, event_date, performed_by, to_destination, notes
       FROM motor_events
       WHERE work_order_id = ?
       ORDER BY event_date DESC, created_at DESC
@@ -214,6 +214,7 @@ function mapWorkOrder(r) {
     motorTag: motor?.tag || '',
     motorName: motor?.name || '',
     motorStatus: motor?.status || '',
+    motorEventId: motorEvent?.id || '',
     motorEventType: motorEvent?.event_type || '',
     motorEventLabel: motorEvent ? motorObjectiveLabel(motorEvent.event_type) : '',
     motorEventDate: motorEvent?.event_date || '',
