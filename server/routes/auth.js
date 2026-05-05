@@ -78,6 +78,13 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 
   const { name, role, pin, active } = req.body
 
+  if (pin !== undefined && (!String(pin).trim())) {
+    return res.status(400).json({ error: 'Senha obrigatória.' })
+  }
+  if (pin !== undefined && (req.user?.id !== req.params.id || user.role !== 'admin')) {
+    return res.status(403).json({ error: 'A senha so pode ser alterada pelo proprio administrador.' })
+  }
+
   // Protect default admin: only allow pin changes
   if (req.params.id === 'user_admin') {
     if (name !== undefined && name !== user.name) return res.status(403).json({ error: 'Não é possível alterar o nome do admin padrão.' })
@@ -97,7 +104,7 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   const params = []
   if (name !== undefined) { updates.push('name = ?'); params.push(name) }
   if (role !== undefined) { updates.push('role = ?'); params.push(role) }
-  if (pin !== undefined) { updates.push('pin_hash = ?'); params.push(bcryptjs.hashSync(pin, 10)) }
+  if (pin !== undefined) { updates.push('pin_hash = ?'); params.push(bcryptjs.hashSync(String(pin).trim(), 10)) }
   if (active !== undefined) { updates.push('active = ?'); params.push(active ? 1 : 0) }
 
   if (updates.length) {

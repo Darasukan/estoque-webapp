@@ -34,6 +34,12 @@ const editDestDesc = ref('')
 const addingMaterial = ref(false)
 const materialSearch = ref('')
 const pendingMaterialIds = ref([])
+const materialGroup = ref('')
+const materialCategory = ref('')
+const materialSubcategory = ref('')
+const materialItemId = ref('')
+const linkedMaterialsPage = ref(1)
+const linkedMaterialsPerPage = 8
 
 const filteredParentList = computed(() => {
   const q = destinationSearch.value.trim().toLowerCase()
@@ -220,6 +226,19 @@ function materialMatchesSearch(variation, query) {
   ].filter(Boolean).join(' ').toLowerCase().includes(query)
 }
 
+function itemMatchesMaterialSearch(item, query) {
+  if (!query) return true
+  const itemVars = variations.value.filter(variation => variation.itemId === item.id)
+  return [
+    item.name,
+    item.group,
+    item.category,
+    item.subcategory,
+    item.location,
+    ...itemVars.map(variation => `${variationLabel(variation)} ${Object.entries(variation.extras || {}).map(([k, v]) => `${k} ${v}`).join(' ')}`),
+  ].filter(Boolean).join(' ').toLowerCase().includes(query)
+}
+
 const linkedMaterials = computed(() => {
   const destinationId = selectedMaterialDestination.value?.id
   if (!destinationId) return []
@@ -228,10 +247,42 @@ const linkedMaterials = computed(() => {
     .sort((a, b) => materialLabel(a).localeCompare(materialLabel(b)))
 })
 
+const linkedMaterialsTotalPages = computed(() =>
+  Math.max(1, Math.ceil(linkedMaterials.value.length / linkedMaterialsPerPage))
+)
+
+const paginatedLinkedMaterials = computed(() => {
+  const start = (linkedMaterialsPage.value - 1) * linkedMaterialsPerPage
+  return linkedMaterials.value.slice(start, start + linkedMaterialsPerPage)
+})
+
+const linkedMaterialsPageStart = computed(() =>
+  linkedMaterials.value.length ? (linkedMaterialsPage.value - 1) * linkedMaterialsPerPage + 1 : 0
+)
+
+const linkedMaterialsPageEnd = computed(() =>
+  Math.min(linkedMaterialsPage.value * linkedMaterialsPerPage, linkedMaterials.value.length)
+)
+
+watch(() => selectedMaterialDestination.value?.id, () => {
+  linkedMaterialsPage.value = 1
+})
+
+watch(linkedMaterialsTotalPages, (total) => {
+  if (linkedMaterialsPage.value > total) linkedMaterialsPage.value = total
+})
+
 function materialCountForDestination(destinationId) {
   return variations.value.filter(variation =>
     (variation.destinations || []).includes(destinationId)
   ).length
+}
+
+function goLinkedMaterialsPage(delta) {
+  linkedMaterialsPage.value = Math.min(
+    linkedMaterialsTotalPages.value,
+    Math.max(1, linkedMaterialsPage.value + delta)
+  )
 }
 
 const materialSearchResults = computed(() => {
@@ -245,17 +296,162 @@ const materialSearchResults = computed(() => {
     .slice(0, 24)
 })
 
+function availableVariationsForItem(itemId) {
+  const destinationId = selectedMaterialDestination.value?.id
+  if (!destinationId) return []
+  const q = materialSearch.value.trim().toLowerCase()
+  return variations.value
+    .filter(variation => variation.itemId === itemId)
+    .filter(variation => !(variation.destinations || []).includes(destinationId))
+    .filter(variation => !q || materialMatchesSearch(variation, q))
+    .sort((a, b) => variationLabel(a).localeCompare(variationLabel(b)))
+}
+
+function itemHasAvailableVariation(item) {
+  const destinationId = selectedMaterialDestination.value?.id
+  if (!destinationId) return false
+  const q = materialSearch.value.trim().toLowerCase()
+  return variations.value.some(variation =>
+    variation.itemId === item.id &&
+    !(variation.destinations || []).includes(destinationId) &&
+    (!q || itemMatchesMaterialSearch(item, q))
+  )
+}
+
+const materialGroups = computed(() => {
+  const groups = new Set()
+  for (const item of items.value) {
+    if (itemHasAvailableVariation(item)) groups.add(item.group)
+  }
+  return [...groups].sort((a, b) => a.localeCompare(b))
+})
+
+const materialCategories = computed(() => {
+  if (!materialGroup.value) return []
+  const categories = new Set()
+  for (const item of items.value) {
+    if (item.group === materialGroup.value && item.category && itemHasAvailableVariation(item)) {
+      categories.add(item.category)
+    }
+  }
+  return [...categories].sort((a, b) => a.localeCompare(b))
+})
+
+const materialSubcategories = computed(() => {
+  if (!materialGroup.value || !materialCategory.value) return []
+  const subcategories = new Set()
+  for (const item of items.value) {
+    if (
+      item.group === materialGroup.value &&
+      item.category === materialCategory.value &&
+      item.subcategory &&
+      itemHasAvailableVariation(item)
+    ) {
+      subcategories.add(item.subcategory)
+    }
+  }
+  return [...subcategories].sort((a, b) => a.localeCompare(b))
+})
+
+const materialItems = computed(() => {
+  if (!materialGroup.value) return []
+  return items.value
+    .filter(item => itemHasAvailableVariation(item))
+    .filter(item => item.group === materialGroup.value)
+    .filter(item => !materialCategory.value || item.category === materialCategory.value)
+    .filter(item => !materialSubcategory.value || item.subcategory === materialSubcategory.value)
+    .filter(item => {
+      if (materialSubcategory.value) return true
+      if (materialCategory.value) return !materialSubcategories.value.length || !item.subcategory
+      return !materialCategories.value.length || !item.category
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const selectedMaterialItem = computed(() =>
+  items.value.find(item => item.id === materialItemId.value) || null
+)
+
+const selectedMaterialItemVariations = computed(() =>
+  materialItemId.value ? availableVariationsForItem(materialItemId.value) : []
+)
+
+const materialBreadcrumb = computed(() => [
+  materialGroup.value,
+  materialCategory.value,
+  materialSubcategory.value,
+  selectedMaterialItem.value?.name,
+].filter(Boolean))
+
+const materialModalTitle = computed(() => {
+  if (selectedMaterialItem.value) return 'Variacoes'
+  if (materialSubcategory.value || (materialCategory.value && !materialSubcategories.value.length) || (materialGroup.value && !materialCategories.value.length)) return 'Itens'
+  if (materialCategory.value) return 'Nivel 3'
+  if (materialGroup.value) return 'Nivel 2'
+  return 'Nivel 1'
+})
+
+function resetMaterialNavigation() {
+  materialGroup.value = ''
+  materialCategory.value = ''
+  materialSubcategory.value = ''
+  materialItemId.value = ''
+}
+
+function selectMaterialGroup(group) {
+  materialGroup.value = group
+  materialCategory.value = ''
+  materialSubcategory.value = ''
+  materialItemId.value = ''
+}
+
+function selectMaterialCategory(category) {
+  materialCategory.value = category
+  materialSubcategory.value = ''
+  materialItemId.value = ''
+}
+
+function selectMaterialSubcategory(subcategory) {
+  materialSubcategory.value = subcategory
+  materialItemId.value = ''
+}
+
+function selectMaterialItem(itemId) {
+  materialItemId.value = itemId
+}
+
+function goMaterialRoot() {
+  resetMaterialNavigation()
+}
+
+function goMaterialGroup() {
+  materialCategory.value = ''
+  materialSubcategory.value = ''
+  materialItemId.value = ''
+}
+
+function goMaterialCategory() {
+  materialSubcategory.value = ''
+  materialItemId.value = ''
+}
+
+function goMaterialSubcategory() {
+  materialItemId.value = ''
+}
+
 function startMaterialAdd() {
   if (!canLinkMaterial.value) return
   addingMaterial.value = true
   materialSearch.value = ''
   pendingMaterialIds.value = []
+  resetMaterialNavigation()
 }
 
 function cancelMaterialAdd() {
   addingMaterial.value = false
   materialSearch.value = ''
   pendingMaterialIds.value = []
+  resetMaterialNavigation()
 }
 
 function isPendingMaterial(variationId) {
@@ -434,7 +630,9 @@ async function removeMaterialFromDestination(variation) {
                   class="flex-1 min-w-0 text-left rounded-lg px-2 py-1 -mx-2 hover:bg-white dark:hover:bg-gray-700/60 transition-colors"
                   @click="selectMaterialDestination(selectedParent.id)"
                 >
-                  <p class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedParent.name }}</p>
+                  <p class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                    <span class="truncate">{{ selectedParent.name }}</span>
+                  </p>
                   <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ selectedParent.description || 'Sem descricao' }}</p>
                 </button>
                 <span
@@ -580,7 +778,12 @@ async function removeMaterialFromDestination(variation) {
             <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Materiais utilizados</p>
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ getDestFullName(selectedMaterialDestination?.id) }}</p>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                  {{ getDestFullName(selectedMaterialDestination?.id) }}
+                </p>
+                <p v-if="linkedMaterials.length" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {{ linkedMaterialsPageStart }}-{{ linkedMaterialsPageEnd }} de {{ linkedMaterials.length }} materiais
+                </p>
               </div>
               <button
                 v-if="canLinkMaterial && !addingMaterial"
@@ -594,7 +797,7 @@ async function removeMaterialFromDestination(variation) {
 
             <div v-if="linkedMaterials.length" class="divide-y divide-gray-100 dark:divide-gray-800">
               <div
-                v-for="variation in linkedMaterials"
+                v-for="variation in paginatedLinkedMaterials"
                 :key="variation.id"
                 class="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
               >
@@ -618,6 +821,26 @@ async function removeMaterialFromDestination(variation) {
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                 </button>
+              </div>
+              <div
+                v-if="linkedMaterialsTotalPages > 1"
+                class="px-4 py-3 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50"
+              >
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  Pagina {{ linkedMaterialsPage }} de {{ linkedMaterialsTotalPages }}
+                </p>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    :disabled="linkedMaterialsPage <= 1"
+                    @click="goLinkedMaterialsPage(-1)"
+                  >Anterior</button>
+                  <button
+                    class="px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    :disabled="linkedMaterialsPage >= linkedMaterialsTotalPages"
+                    @click="goLinkedMaterialsPage(1)"
+                  >Proxima</button>
+                </div>
               </div>
             </div>
 
@@ -665,34 +888,146 @@ async function removeMaterialFromDestination(variation) {
           <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
             {{ pendingMaterialIds.length }} {{ pendingMaterialIds.length === 1 ? 'material selecionado' : 'materiais selecionados' }}
           </p>
+          <div class="mt-3 flex items-center gap-1.5 text-sm flex-wrap">
+            <button
+              class="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+              @click="goMaterialRoot"
+            >Catalogo</button>
+            <template v-if="materialGroup">
+              <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+              <button
+                class="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                :class="{ 'text-gray-800 dark:text-gray-100 no-underline': !materialCategory }"
+                @click="goMaterialGroup"
+              >{{ materialGroup }}</button>
+            </template>
+            <template v-if="materialCategory">
+              <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+              <button
+                class="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                :class="{ 'text-gray-800 dark:text-gray-100 no-underline': !materialSubcategory }"
+                @click="goMaterialCategory"
+              >{{ materialCategory }}</button>
+            </template>
+            <template v-if="materialSubcategory">
+              <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+              <button
+                class="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                :class="{ 'text-gray-800 dark:text-gray-100 no-underline': !selectedMaterialItem }"
+                @click="goMaterialSubcategory"
+              >{{ materialSubcategory }}</button>
+            </template>
+            <template v-if="selectedMaterialItem">
+              <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+              <span class="font-semibold text-gray-800 dark:text-gray-100">{{ selectedMaterialItem.name }}</span>
+            </template>
+          </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
-          <button
-            v-for="variation in materialSearchResults"
-            :key="variation.id"
-            type="button"
-            class="w-full flex items-center gap-3 px-5 py-3 text-left border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-            :class="isPendingMaterial(variation.id) ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
-            @click="togglePendingMaterial(variation.id)"
-          >
-            <span
-              class="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors"
-              :class="isPendingMaterial(variation.id)
-                ? 'bg-primary-600 border-primary-600'
-                : 'border-gray-300 dark:border-gray-600'"
-            >
-              <svg v-if="isPendingMaterial(variation.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-            </span>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{{ materialLabel(variation) }}</p>
-              <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialMeta(variation) || 'Sem hierarquia' }}</p>
-            </div>
-            <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ variation.stock }} em estoque</span>
-          </button>
+        <div class="flex-1 overflow-y-auto p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">{{ materialModalTitle }}</p>
+            <p v-if="materialBreadcrumb.length" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialBreadcrumb.join(' > ') }}</p>
+          </div>
 
-          <p v-if="!materialSearchResults.length" class="px-5 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
-            Nenhum material disponivel para vincular.
+          <div v-if="!materialGroup && materialGroups.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <button
+              v-for="group in materialGroups"
+              :key="group"
+              type="button"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              @click="selectMaterialGroup(group)"
+            >
+              <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ group }}</p>
+              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {{ items.filter(item => item.group === group && itemHasAvailableVariation(item)).length }} itens
+              </p>
+            </button>
+          </div>
+
+          <div v-else-if="materialGroup && !materialCategory && materialCategories.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <button
+              v-for="category in materialCategories"
+              :key="category"
+              type="button"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              @click="selectMaterialCategory(category)"
+            >
+              <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ category }}</p>
+              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {{ items.filter(item => item.group === materialGroup && item.category === category && itemHasAvailableVariation(item)).length }} itens
+              </p>
+            </button>
+          </div>
+
+          <div v-else-if="materialCategory && !materialSubcategory && materialSubcategories.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <button
+              v-for="subcategory in materialSubcategories"
+              :key="subcategory"
+              type="button"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              @click="selectMaterialSubcategory(subcategory)"
+            >
+              <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ subcategory }}</p>
+              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {{ items.filter(item => item.group === materialGroup && item.category === materialCategory && item.subcategory === subcategory && itemHasAvailableVariation(item)).length }} itens
+              </p>
+            </button>
+          </div>
+
+          <div v-else-if="!selectedMaterialItem && materialItems.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <button
+              v-for="item in materialItems"
+              :key="item.id"
+              type="button"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              @click="selectMaterialItem(item.id)"
+            >
+              <p class="text-sm font-bold text-gray-800 dark:text-gray-100 line-clamp-2">{{ item.name }}</p>
+              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500 line-clamp-2">
+                {{ [item.group, item.category, item.subcategory].filter(Boolean).join(' > ') || 'Sem hierarquia' }}
+              </p>
+              <p class="mt-3 text-[11px] text-gray-400 dark:text-gray-500">{{ availableVariationsForItem(item.id).length }} variacoes</p>
+            </button>
+          </div>
+
+          <div v-else-if="selectedMaterialItem && selectedMaterialItemVariations.length" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
+            <button
+              v-for="variation in selectedMaterialItemVariations"
+              :key="variation.id"
+              type="button"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+              :class="isPendingMaterial(variation.id) ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
+              @click="togglePendingMaterial(variation.id)"
+            >
+              <span
+                class="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors"
+                :class="isPendingMaterial(variation.id)
+                  ? 'bg-primary-600 border-primary-600'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'"
+              >
+                <svg v-if="isPendingMaterial(variation.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+              </span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ variationLabel(variation) }}</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialMeta(variation) || selectedMaterialItem.name }}</p>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                  Estoque {{ variation.stock }}
+                </span>
+                <span
+                  v-if="variation.minStock"
+                  class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                >
+                  Min. {{ variation.minStock }}
+                </span>
+              </div>
+            </button>
+          </div>
+
+          <p v-else class="px-5 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+            Nenhum material disponivel neste nivel.
           </p>
         </div>
 

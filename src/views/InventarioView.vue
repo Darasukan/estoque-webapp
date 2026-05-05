@@ -7,8 +7,8 @@ import { useToast } from '../composables/useToast.js'
 
 const isAdmin = inject('isAdmin')
 
-const { items, getVariationsForItem, editVariation, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
-const { movements } = useMovements()
+const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
+const { movements, addMovement } = useMovements()
 const { success, error } = useToast()
 
 // ===== Search =====
@@ -220,7 +220,7 @@ const adjustValue = ref('')
 
 function startAdjust(varId, currentStock) {
   adjustingId.value = varId
-  adjustValue.value = String(currentStock)
+  adjustValue.value = ''
   nextTick(() => adjustInput.value?.focus())
 }
 
@@ -229,12 +229,37 @@ function cancelAdjust() {
   adjustValue.value = ''
 }
 
-function confirmAdjust(varId) {
+async function confirmAdjust(varId) {
   const val = Number(adjustValue.value)
-  if (!isFinite(val) || isNaN(val) || val < 0) { error('Valor inválido.'); return }
-  editVariation(varId, { stock: Math.round(val) })
-  success('Estoque atualizado.')
-  adjustingId.value = null
+  if (!isFinite(val) || isNaN(val) || val === 0) { error('Informe um ajuste diferente de zero.'); return }
+
+  const delta = Math.round(val)
+  if (delta === 0) { error('Informe um ajuste inteiro diferente de zero.'); return }
+
+  const row = allRows.value.find(r => r.variation.id === varId)
+  if (!row) { error('Variação não encontrada.'); return }
+
+  const qty = Math.abs(delta)
+  if (delta < 0 && row.variation.stock < qty) {
+    error(`Estoque insuficiente. Disponível: ${row.variation.stock}`)
+    return
+  }
+
+  const type = delta > 0 ? 'entrada' : 'saida'
+  try {
+    await addMovement(type, row.variation, row.item, qty, {
+      supplier: type === 'entrada' ? 'Ajuste de estoque' : '',
+      requestedBy: type === 'saida' ? 'Ajuste de estoque' : '',
+      destination: type === 'saida' ? 'Ajuste de estoque' : '',
+      docRef: 'AJUSTE',
+      note: 'Ajuste manual pelo inventário.',
+    })
+    success(type === 'entrada' ? 'Entrada de ajuste registrada.' : 'Saída de ajuste registrada.')
+    adjustingId.value = null
+    adjustValue.value = ''
+  } catch (e) {
+    error(e.message)
+  }
 }
 
 function onAdjustKeydown(e, varId) {
@@ -728,7 +753,8 @@ function exportCSV() {
                       ref="adjustInput"
                       v-model="adjustValue"
                       type="number"
-                      min="0"
+                      step="1"
+                      placeholder="+/-"
                       class="w-16 px-2 py-1 text-center text-sm border border-primary-400 dark:border-primary-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       @keydown="onAdjustKeydown($event, row.variation.id)"
                     />

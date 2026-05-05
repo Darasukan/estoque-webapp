@@ -1,11 +1,5 @@
 <script setup>
-import { ref, computed, provide, onMounted, watch } from 'vue'
-import CatalogView from './views/CatalogView.vue'
-import CadastrosView from './views/CadastrosView.vue'
-import InventarioView from './views/InventarioView.vue'
-import MovimentacoesView from './views/MovimentacoesView.vue'
-import OrdensServicoView from './views/OrdensServicoView.vue'
-import MotoresView from './views/MotoresView.vue'
+import { ref, computed, provide, onMounted, watch, defineAsyncComponent } from 'vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
@@ -22,6 +16,13 @@ import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
 import { useWorkOrders } from './composables/useWorkOrders.js'
 import { useMotors } from './composables/useMotors.js'
+
+const CatalogView = defineAsyncComponent(() => import('./views/CatalogView.vue'))
+const CadastrosView = defineAsyncComponent(() => import('./views/CadastrosView.vue'))
+const InventarioView = defineAsyncComponent(() => import('./views/InventarioView.vue'))
+const MovimentacoesView = defineAsyncComponent(() => import('./views/MovimentacoesView.vue'))
+const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
+const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()

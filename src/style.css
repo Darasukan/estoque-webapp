@@ -97,6 +97,14 @@
     letter-spacing: 0;
   }
 
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
   input,
   select,
   textarea {

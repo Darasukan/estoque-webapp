@@ -1,9 +1,11 @@
 <script setup>
 import { ref } from 'vue'
+import { useAuth } from '../../composables/useAuth.js'
 import { useUsers } from '../../composables/useUsers.js'
 import { useToast } from '../../composables/useToast.js'
 
 const { users, addUser, editUser, toggleUserActive, removeUser } = useUsers()
+const { user, isAdmin } = useAuth()
 const { success, error } = useToast()
 
 const newUserName = ref('')
@@ -14,6 +16,10 @@ const editingUserId = ref(null)
 const editUserName = ref('')
 const editUserPin = ref('')
 const editUserRole = ref('operador')
+
+function canEditUserPassword(u) {
+  return isAdmin.value && user.value?.id === u.id
+}
 
 function startAddUser() { addingUser.value = true; newUserName.value = ''; newUserPin.value = ''; newUserRole.value = 'operador' }
 function cancelAddUser() { addingUser.value = false }
@@ -32,12 +38,13 @@ function startEditUser(u) {
 }
 function cancelEditUser() { editingUserId.value = null }
 async function confirmEditUser() {
+  const editingUser = users.value.find(u => u.id === editingUserId.value)
   const changes = {}
   if (editingUserId.value !== 'user_admin') {
     changes.name = editUserName.value
     changes.role = editUserRole.value
   }
-  if (editUserPin.value.trim()) changes.pin = editUserPin.value
+  if (editingUser && canEditUserPassword(editingUser) && editUserPin.value.trim()) changes.pin = editUserPin.value
   const r = await editUser(editingUserId.value, changes)
   if (!r.ok) { error(r.error); return }
   success('Operador atualizado.')
@@ -141,7 +148,8 @@ async function onDeleteUser(u) {
                       <option value="visitante">Visitante</option>
                     </select>
                     <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Admin (fixo)</span>
-                    <input v-model="editUserPin" type="password" placeholder="Nova senha (deixe vazio para manter)" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown.enter="confirmEditUser" @keydown.escape="cancelEditUser" />
+                    <input v-if="canEditUserPassword(u)" v-model="editUserPin" type="password" placeholder="Nova senha (deixe vazio para manter)" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown.enter="confirmEditUser" @keydown.escape="cancelEditUser" />
+                    <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Senha alteravel apenas pelo proprio admin.</span>
                   </div>
                 </td>
                 <td colspan="2" class="px-4 py-2">
