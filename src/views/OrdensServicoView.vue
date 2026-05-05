@@ -55,8 +55,11 @@ const pageSubtitle = computed(() =>
     ? 'Manutenção de motores com histórico do ativo e baixa de peças do estoque'
     : 'Manutenção geral, sem vínculo obrigatório com motor'
 )
-const newButtonLabel = computed(() => isMotorMode.value ? 'Nova OS de Motor' : 'Nova OS')
-const formTitle = computed(() => isMotorMode.value ? 'Nova OS de Motor' : 'Nova Ordem de Serviço')
+const formTitle = computed(() => {
+  if (editingOrderId.value) return isMotorMode.value ? 'Editar OS de Motor' : 'Editar Ordem de Serviço'
+  return isMotorMode.value ? 'Nova OS de Motor' : 'Nova Ordem de Serviço'
+})
+const formSubmitLabel = computed(() => editingOrderId.value ? 'Salvar OS' : 'Criar OS')
 const emptyOrdersText = computed(() =>
   isMotorMode.value ? 'Nenhuma OS de motor cadastrada' : 'Nenhuma ordem de serviço geral cadastrada'
 )
@@ -75,7 +78,7 @@ const visibleSubTabs = computed(() => [
     label: isMotorMode.value ? 'OS de Motor' : 'Ordens',
     icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z',
   },
-  ...(isMotorMode.value && canManageOs.value ? [{
+  ...(canManageOs.value ? [{
     id: 'nova',
     label: 'Nova OS',
     icon: 'M12 4.5v15m7.5-7.5h-15',
@@ -152,15 +155,16 @@ function inferEquipment(order) {
 function createEmptyOsForm(order = null) {
   if (order) {
     const fallback = splitIsoDateTime(order.createdAt)
+    const equipment = inferEquipment(order)
     return {
       title: valueFromOrder(order, 'title'),
       number: order.number || '',
       requestedBy: valueFromOrder(order, 'requestedBy', 'requested_by'),
       requestDate: valueFromOrder(order, 'requestDate', 'request_date') || fallback.date,
       requestTime: valueFromOrder(order, 'requestTime', 'request_time') || fallback.time,
-      equipment: inferEquipment(order),
+      equipment,
       motorId: valueFromOrder(order, 'motorId', 'motor_id'),
-      destinationId: valueFromOrder(order, 'destinationId', 'destination_id'),
+      destinationId: valueFromOrder(order, 'destinationId', 'destination_id') || findDestinationIdByEquipment(equipment),
       motorOriginDestinationId: valueFromOrder(order, 'motorOriginDestinationId', 'motor_origin_destination_id'),
       motorOriginDestinationName: valueFromOrder(order, 'motorOriginDestinationName', 'motor_origin_destination_name'),
       maintenanceLocationType: valueFromOrder(order, 'maintenanceLocationType', 'maintenance_location_type') || (valueFromOrder(order, 'maintenanceDestinationId', 'maintenance_destination_id') ? 'interna' : 'externa'),
@@ -312,11 +316,13 @@ function destinationIdForName(name) {
   return destinationOptions.value.find(d => normalizeText(d.name) === q)?.id || ''
 }
 
-function destinationIdForEquipment(form, equipment) {
-  const matched = findDestinationIdByEquipment(equipment)
-  if (matched) return matched
-  const currentDestName = form.destinationId ? getDestFullName(form.destinationId) : ''
-  return normalizeText(currentDestName) === normalizeText(equipment) ? form.destinationId : ''
+function selectedDestinationLabel(id) {
+  return id ? getDestFullName(id) : ''
+}
+
+function updateNormalOsEquipmentFromDestination() {
+  if (isMotorMode.value) return
+  osForm.value.equipment = selectedDestinationLabel(osForm.value.destinationId)
 }
 
 watch(() => props.prefillMotor, (motor) => {
@@ -359,7 +365,7 @@ watch(() => props.createOnly, (createOnly) => {
     showNewForm.value = false
     return
   }
-  activeSubTab.value = isMotorMode.value ? 'nova' : 'ordens'
+  activeSubTab.value = 'nova'
   editingOrderId.value = null
   showNewForm.value = true
   resetOsForm()
@@ -501,7 +507,8 @@ function validateOsForm() {
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
-  if (!isMotorMode.value && !osForm.value.equipment.trim()) { showError('Equipamento é obrigatório'); return false }
+  if (!isMotorMode.value && !osForm.value.destinationId) { showError('Selecione um equipamento em destinos'); return false }
+  if (!isMotorMode.value && !destinationOptions.value.some(d => d.id === osForm.value.destinationId)) { showError('Equipamento deve ser um destino ativo'); return false }
   if (isMotorMode.value && osForm.value.maintenanceLocationType === 'externa' && !osForm.value.maintenanceExternalLocation.trim()) { showError('Oficina externa é obrigatória'); return false }
   if (isMotorMode.value && !motorObjectiveTypes.some(type => type.id === osForm.value.initialMotorEventType)) { showError('Evento inicial do motor é obrigatório'); return false }
   if (isMotorMode.value && osForm.value.initialMotorEventType !== 'nenhum' && !osForm.value.initialMotorEventDate) { showError('Data do evento do motor é obrigatória'); return false }
@@ -533,7 +540,7 @@ function buildOrderTitle(form) {
   if (editingOrderId.value && form.title) return form.title
   const subject = isMotorMode.value
     ? `Motor ${selectedOsMotor.value?.tag || form.equipment.trim() || ''}`.trim()
-    : form.equipment.trim()
+    : selectedDestinationLabel(form.destinationId)
   const objective = isMotorMode.value && !editingOrderId.value && form.initialMotorEventType !== 'nenhum'
     ? motorObjectiveLabel(form.initialMotorEventType)
     : ''
@@ -542,7 +549,7 @@ function buildOrderTitle(form) {
 
 function buildOsPayload() {
   const form = osForm.value
-  const equipment = isMotorMode.value ? (selectedOsMotor.value?.tag || form.equipment.trim()) : form.equipment.trim()
+  const equipment = isMotorMode.value ? (selectedOsMotor.value?.tag || form.equipment.trim()) : selectedDestinationLabel(form.destinationId)
   const numberText = String(form.number || '').trim()
   const internalMaintenance = !isMotorMode.value || form.maintenanceLocationType === 'interna'
   const hasInitialMotorEvent = isMotorMode.value && form.initialMotorEventType !== 'nenhum'
@@ -557,7 +564,7 @@ function buildOsPayload() {
     number: numberText ? Number(numberText) : '',
     title: buildOrderTitle(form),
     motorId: isMotorMode.value ? form.motorId : '',
-    destinationId: isMotorMode.value ? '' : destinationIdForEquipment(form, equipment),
+    destinationId: isMotorMode.value ? '' : form.destinationId,
     requestedBy: form.requestedBy.trim(),
     requestDate: form.requestDate,
     requestTime: form.requestTime,
@@ -599,6 +606,7 @@ async function handleCreateOS() {
       return
     }
     showNewForm.value = false
+    activeSubTab.value = 'ordens'
     resetOsForm()
   } catch (e) { showError(e.message) }
 }
@@ -622,17 +630,27 @@ async function handleEditOS(id) {
     success('Ordem de serviço atualizada')
     editingOrderId.value = null
     motorEventOrderId.value = null
+    activeSubTab.value = 'ordens'
+    expandedOrderId.value = id
     resetOsForm()
   } catch (e) { showError(e.message) }
 }
 
+async function handleSubmitOS() {
+  if (editingOrderId.value) {
+    await handleEditOS(editingOrderId.value)
+    return
+  }
+  await handleCreateOS()
+}
+
 function startEditOS(order) {
   if (!canManageOs.value) return
-  activeSubTab.value = 'ordens'
   expandedOrderId.value = order.id
-  showNewForm.value = false
   editingOrderId.value = order.id
+  showNewForm.value = !isMotorMode.value
   osForm.value = createEmptyOsForm(order)
+  activeSubTab.value = isMotorMode.value ? 'ordens' : 'nova'
   if (isMotorMode.value && order.motorId) {
     motorEventOrderId.value = order.id
     motorEventForm.value = {
@@ -650,6 +668,8 @@ function startEditOS(order) {
 function cancelEdit() {
   editingOrderId.value = null
   motorEventOrderId.value = null
+  showNewForm.value = false
+  if (!isMotorMode.value) activeSubTab.value = 'ordens'
   resetOsForm()
 }
 
@@ -819,11 +839,14 @@ watch(activeSubTab, (tab) => {
       showNewForm.value = false
       return
     }
-    editingOrderId.value = null
     showNewForm.value = true
-    resetOsForm()
-    applyScopedMotorToOsForm()
-  } else if (isMotorMode.value) {
+    if (!editingOrderId.value || isMotorMode.value) {
+      editingOrderId.value = null
+      motorEventOrderId.value = null
+      resetOsForm()
+      applyScopedMotorToOsForm()
+    }
+  } else {
     showNewForm.value = false
   }
 })
@@ -951,9 +974,11 @@ function editFocusedOrder(orderId) {
 }
 
 function cancelNewOsForm() {
+  editingOrderId.value = null
+  motorEventOrderId.value = null
   showNewForm.value = false
   resetOsForm()
-  if (isMotorMode.value) activeSubTab.value = 'ordens'
+  if (!props.createOnly) activeSubTab.value = 'ordens'
 }
 
 function selectMatItem(item) {
@@ -985,9 +1010,6 @@ function matBackToStep2() {
   <div class="ds-page-stack">
     <datalist id="os-people-options">
       <option v-for="p in activePeople" :key="p.id" :value="p.name" />
-    </datalist>
-    <datalist id="os-equipment-options">
-      <option v-for="d in destinationOptions" :key="d.id" :value="d.name" />
     </datalist>
 
     <!-- Header -->
@@ -1044,21 +1066,10 @@ function matBackToStep2() {
             class="ds-input pl-9"
           />
         </div>
-        <AppButton
-          v-if="isLoggedIn && !isMotorMode"
-          variant="primary"
-          size="lg"
-          @click="showNewForm = !showNewForm; editingOrderId = null; if (showNewForm) resetOsForm()"
-        >
-          <template #icon>
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          </template>
-          {{ newButtonLabel }}
-        </AppButton>
       </div>
 
       <!-- New OS form -->
-      <div v-if="showNewForm && (activeSubTab === 'nova' || !isMotorMode || createOnly)" class="ds-panel p-4 space-y-4">
+      <div v-if="showNewForm && (activeSubTab === 'nova' || createOnly)" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between gap-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formTitle }}</h3>
           <span class="text-xs text-gray-400">Campos com * são obrigatórios</span>
@@ -1085,7 +1096,10 @@ function matBackToStep2() {
             </div>
             <div v-if="!isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
-              <input v-model="osForm.equipment" list="os-equipment-options" type="text" placeholder="Máquina, linha, setor ou equipamento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <select v-model="osForm.destinationId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="updateNormalOsEquipmentFromDestination">
+                <option value="">Selecione um destino</option>
+                <option v-for="d in destinationOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
+              </select>
             </div>
             <div v-if="isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
@@ -1204,7 +1218,7 @@ function matBackToStep2() {
         </div>
 
         <div class="flex items-center gap-2 pt-1">
-          <button class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" @click="handleCreateOS">Criar OS</button>
+          <button class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" @click="handleSubmitOS">{{ formSubmitLabel }}</button>
           <button class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" @click="cancelNewOsForm">Cancelar</button>
         </div>
       </div>
@@ -1310,7 +1324,10 @@ function matBackToStep2() {
                     </div>
                     <div v-if="!isMotorMode" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
-                      <input v-model="osForm.equipment" list="os-equipment-options" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <select v-model="osForm.destinationId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="updateNormalOsEquipmentFromDestination">
+                        <option value="">Selecione um destino</option>
+                        <option v-for="d in destinationOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
+                      </select>
                     </div>
                     <div v-if="isMotorMode" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>

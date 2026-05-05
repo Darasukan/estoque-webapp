@@ -7,7 +7,6 @@ const FIELD_BY_FILTER = {
   item: 'itemName',
   responsavel: 'requestedBy',
   local: 'destination',
-  doc: 'docRef',
   operador: 'operatorName',
 }
 
@@ -17,10 +16,60 @@ export function useMovementHistory(movements) {
   const histDateTo = ref('')
   const histFilters = ref({})
 
-  const histFacets = computed(() => {
-    const ms = movements.value
-    if (!ms.length) return []
+  const facetDefs = [
+    { key: 'tipo', label: 'Tipo', group: 'main', priority: 10, defaultExpanded: true },
+    { key: 'responsavel', label: 'Responsavel', group: 'main', priority: 20 },
+    { key: 'local', label: 'Local', group: 'main', priority: 30 },
+    { key: 'operador', label: 'Operador', group: 'main', priority: 50 },
+    { key: 'grupo', label: 'Grupo', group: 'product', priority: 10 },
+    { key: 'categoria', label: 'Categoria', group: 'product', priority: 20 },
+    { key: 'subcategoria', label: 'Subcategoria', group: 'product', priority: 30 },
+    { key: 'item', label: 'Item', group: 'product', priority: 40 },
+  ]
 
+  function getFilterValue(movement, key) {
+    if (key === 'tipo') return movement.type === 'entrada' ? 'Entrada' : 'Sa\u00edda'
+    if (key.startsWith('attr_')) return (movement.variationValues || {})[key.slice(5)] || ''
+    const fieldName = FIELD_BY_FILTER[key]
+    return fieldName ? movement[fieldName] : ''
+  }
+
+  function movementMatchesSearch(movement) {
+    const q = histSearch.value.trim().toLowerCase()
+    if (!q) return true
+    const haystack = [
+      movement.itemName, movement.itemGroup, movement.itemCategory, movement.itemSubcategory,
+      movement.supplier, movement.requestedBy, movement.destination,
+      movement.docRef, movement.operatorName, movement.note,
+      ...Object.values(movement.variationValues || {}),
+      ...Object.values(movement.variationExtras || {}),
+    ].join(' ').toLowerCase()
+    return haystack.includes(q)
+  }
+
+  function movementMatchesDateRange(movement) {
+    if (histDateFrom.value && new Date(movement.date) < new Date(histDateFrom.value)) return false
+    if (histDateTo.value) {
+      const to = new Date(histDateTo.value)
+      to.setDate(to.getDate() + 1)
+      if (new Date(movement.date) >= to) return false
+    }
+    return true
+  }
+
+  function movementMatchesFilters(movement, ignoredKey = '') {
+    for (const [key, selectedValues] of Object.entries(histFilters.value)) {
+      if (key === ignoredKey || !selectedValues.length) continue
+      if (!selectedValues.includes(getFilterValue(movement, key))) return false
+    }
+    return true
+  }
+
+  function movementMatchesBase(movement) {
+    return movementMatchesSearch(movement) && movementMatchesDateRange(movement)
+  }
+
+  function buildCountsForFacet(facetKey) {
     const counts = {}
     function inc(key, val) {
       if (!val) return
@@ -28,37 +77,22 @@ export function useMovementHistory(movements) {
       counts[key][val] = (counts[key][val] || 0) + 1
     }
 
-    for (const m of ms) {
-      inc('tipo', m.type === 'entrada' ? 'Entrada' : 'Sa\u00edda')
-      inc('grupo', m.itemGroup)
-      inc('categoria', m.itemCategory)
-      inc('subcategoria', m.itemSubcategory)
-      inc('item', m.itemName)
-      inc('responsavel', m.requestedBy)
-      inc('local', m.destination)
-      inc('doc', m.docRef)
-      inc('operador', m.operatorName)
-      for (const [k, v] of Object.entries(m.variationValues || {})) {
-        if (v) inc(`attr_${k}`, v)
-      }
+    for (const m of movements.value) {
+      if (!movementMatchesBase(m) || !movementMatchesFilters(m, facetKey)) continue
+      inc(facetKey, getFilterValue(m, facetKey))
     }
+    return counts[facetKey] || {}
+  }
 
+  const histFacets = computed(() => {
+    if (!movements.value.length) return []
     const selected = histFilters.value
-    const facetDefs = [
-      { key: 'tipo', label: 'Tipo', group: 'main', priority: 10, defaultExpanded: true },
-      { key: 'responsavel', label: 'Responsavel', group: 'main', priority: 20 },
-      { key: 'local', label: 'Local', group: 'main', priority: 30 },
-      { key: 'doc', label: 'DOC', group: 'main', priority: 40 },
-      { key: 'operador', label: 'Operador', group: 'main', priority: 50 },
-      { key: 'grupo', label: 'Grupo', group: 'product', priority: 10 },
-      { key: 'categoria', label: 'Categoria', group: 'product', priority: 20 },
-      { key: 'subcategoria', label: 'Subcategoria', group: 'product', priority: 30 },
-      { key: 'item', label: 'Item', group: 'product', priority: 40 },
-    ]
 
     function makeFacet(def) {
-      const vals = counts[def.key]
-      if (!vals) return null
+      const vals = buildCountsForFacet(def.key)
+      for (const value of selected[def.key] || []) {
+        if (vals[value] === undefined) vals[value] = 0
+      }
       const options = Object.entries(vals)
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, count }))
@@ -70,10 +104,22 @@ export function useMovementHistory(movements) {
       .map(makeFacet)
       .filter(Boolean)
 
-    for (const key of Object.keys(counts)) {
-      if (!key.startsWith('attr_')) continue
+    const attrKeys = new Set()
+    for (const m of movements.value) {
+      for (const key of Object.keys(m.variationValues || {})) {
+        attrKeys.add(`attr_${key}`)
+      }
+    }
+    for (const key of Object.keys(selected)) {
+      if (key.startsWith('attr_')) attrKeys.add(key)
+    }
+
+    for (const key of attrKeys) {
       const attrName = key.slice(5)
-      const vals = counts[key]
+      const vals = buildCountsForFacet(key)
+      for (const value of selected[key] || []) {
+        if (vals[value] === undefined) vals[value] = 0
+      }
       const options = Object.entries(vals)
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, count }))
@@ -120,41 +166,9 @@ export function useMovementHistory(movements) {
   }
 
   const filteredMovements = computed(() => {
-    const q = histSearch.value.trim().toLowerCase()
-    const sf = histFilters.value
-    return movements.value.filter(m => {
-      if (sf.tipo && sf.tipo.length) {
-        const typeLabel = m.type === 'entrada' ? 'Entrada' : 'Sa\u00edda'
-        if (!sf.tipo.includes(typeLabel)) return false
-      }
-
-      for (const [filterKey, fieldName] of Object.entries(FIELD_BY_FILTER)) {
-        if (sf[filterKey]?.length && !sf[filterKey].includes(m[fieldName])) return false
-      }
-
-      for (const key of Object.keys(sf)) {
-        if (!key.startsWith('attr_') || !sf[key].length) continue
-        const attrName = key.slice(5)
-        const val = (m.variationValues || {})[attrName] || ''
-        if (!sf[key].includes(val)) return false
-      }
-
-      if (q) {
-        const haystack = [
-          m.itemName, m.itemGroup, m.itemCategory, m.itemSubcategory,
-          ...Object.values(m.variationValues || {}),
-          ...Object.values(m.variationExtras || {}),
-        ].join(' ').toLowerCase()
-        if (!haystack.includes(q)) return false
-      }
-      if (histDateFrom.value && new Date(m.date) < new Date(histDateFrom.value)) return false
-      if (histDateTo.value) {
-        const to = new Date(histDateTo.value)
-        to.setDate(to.getDate() + 1)
-        if (new Date(m.date) >= to) return false
-      }
-      return true
-    })
+    return movements.value.filter(m =>
+      movementMatchesBase(m) && movementMatchesFilters(m)
+    )
   })
 
   const histTotals = computed(() => {

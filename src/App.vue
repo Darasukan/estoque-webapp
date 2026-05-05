@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, provide, onMounted, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, watch, defineAsyncComponent } from 'vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
@@ -16,13 +16,16 @@ import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
 import { useWorkOrders } from './composables/useWorkOrders.js'
 import { useMotors } from './composables/useMotors.js'
+import { useClosings } from './composables/useClosings.js'
 
+const DashboardView = defineAsyncComponent(() => import('./views/DashboardView.vue'))
 const CatalogView = defineAsyncComponent(() => import('./views/CatalogView.vue'))
 const CadastrosView = defineAsyncComponent(() => import('./views/CadastrosView.vue'))
 const InventarioView = defineAsyncComponent(() => import('./views/InventarioView.vue'))
 const MovimentacoesView = defineAsyncComponent(() => import('./views/MovimentacoesView.vue'))
 const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
+const FechamentosView = defineAsyncComponent(() => import('./views/FechamentosView.vue'))
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
@@ -35,13 +38,14 @@ const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
 const { loadData: loadWorkOrders } = useWorkOrders()
 const { loadData: loadMotors } = useMotors()
+const { loadData: loadClosings } = useClosings()
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const showLoginModal = ref(false)
 const sidebarCollapsed = ref(false)
 const catalogSearch = ref('')
 const catalogRef = ref(null)
-const activeTab = ref('catalogo') // 'catalogo' | 'cadastros' | 'inventario' | 'movimentacoes' | 'ordens'
+const activeTab = ref('dashboard')
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
 const movRef = ref(null)
@@ -55,6 +59,8 @@ const showHistorySidebar = computed(() =>
 const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
 
 const allTabs = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'fechamentos', label: 'Fechamentos' },
   { id: 'catalogo', label: 'Catálogo' },
   { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
@@ -75,6 +81,7 @@ async function loadAllData() {
     loadRoles(),
     loadWorkOrders(),
     loadMotors(),
+    loadClosings(),
   ])
   const failed = results.filter(r => r.status === 'rejected')
   if (failed.length) console.error('Erro ao carregar dados:', failed.map(r => r.reason))
@@ -85,6 +92,11 @@ async function loadAllData() {
 onMounted(async () => {
   await checkSession()
   await loadAllData()
+  window.addEventListener('app:data-invalidated', loadAllData)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('app:data-invalidated', loadAllData)
 })
 
 // Reload data after login
@@ -204,14 +216,17 @@ function onLoginClose() {
 
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
+        <DashboardView v-if="activeTab === 'dashboard'" @go="tab => activeTab = tab" />
+
         <!-- Catálogo tab -->
-        <CatalogView v-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
+        <CatalogView v-else-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
 
         <!-- Cadastros tab -->
         <CadastrosView v-else-if="activeTab === 'cadastros'" />
 
         <!-- Inventário tab -->
         <InventarioView v-else-if="activeTab === 'inventario'" />
+        <FechamentosView v-else-if="activeTab === 'fechamentos'" />
 
         <!-- Movimentações tab -->
         <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" ref="movRef" @update:browsing="v => movBrowsing = v" @update:sub-tab="v => movSubTab = v" />

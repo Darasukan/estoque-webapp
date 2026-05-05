@@ -193,6 +193,18 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS monthly_closings (
+    id TEXT PRIMARY KEY,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+    closed_at TEXT NOT NULL,
+    closed_by_id TEXT DEFAULT '',
+    closed_by_name TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(year, month)
+  );
+
   CREATE TABLE IF NOT EXISTS display_order (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     data TEXT NOT NULL DEFAULT '{}'

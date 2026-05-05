@@ -18,7 +18,7 @@ function movementVariationLabel(m) {
   return parts.length ? parts.join(' - ') : '-'
 }
 
-export function useDestinationSummary({ destinations, movements, workOrders, getDestFullName }) {
+export function useDestinationSummary({ destinations, movements, getDestFullName }) {
   const summarySearch = ref('')
   const expandedSummaryDestId = ref(null)
 
@@ -44,19 +44,8 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
 
   function movementMatchesDestination(m, dest) {
     return m.type === 'saida' &&
-      !linkedWorkOrderMovementIds.value.has(m.id) &&
       destinationMatchesValue(dest, m.destination)
   }
-
-  const linkedWorkOrderMovementIds = computed(() => {
-    const ids = new Set()
-    for (const wo of workOrders.value) {
-      for (const item of wo.items || []) {
-        if (item.movementId) ids.add(item.movementId)
-      }
-    }
-    return ids
-  })
 
   const destinationSummaries = computed(() =>
     orderedRegisteredDestinations.value.map(dest => {
@@ -68,7 +57,12 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
         const key = `${m.itemId || m.itemName}||${JSON.stringify(m.variationValues || {})}||${JSON.stringify(m.variationExtras || {})}`
         if (!materialMap[key]) {
           materialMap[key] = {
+            variationId: m.variationId || key,
+            itemId: m.itemId || '',
             itemName: m.itemName,
+            itemGroup: m.itemGroup || 'Sem grupo',
+            itemCategory: m.itemCategory || 'Sem categoria',
+            itemSubcategory: m.itemSubcategory || 'Sem subcategoria',
             itemUnit: m.itemUnit,
             variation: movementVariationLabel(m),
             qty: 0,
@@ -98,18 +92,19 @@ export function useDestinationSummary({ destinations, movements, workOrders, get
 
   const filteredDestinationSummaries = computed(() => {
     const q = summarySearch.value.trim().toLowerCase()
-    if (!q) return destinationSummaries.value
-    return destinationSummaries.value.filter(d => {
+    const withMovements = destinationSummaries.value.filter(d => d.materials.length)
+    if (!q) return withMovements
+    return withMovements.filter(d => {
       const haystack = [
         d.fullName,
-        ...d.materials.map(mat => `${mat.itemName} ${mat.variation}`),
+        ...d.materials.map(mat => `${mat.itemGroup} ${mat.itemCategory} ${mat.itemSubcategory} ${mat.itemName} ${mat.variation}`),
       ].join(' ').toLowerCase()
       return haystack.includes(q)
     })
   })
 
   const summaryTotals = computed(() => ({
-    destinations: destinationSummaries.value.length,
+    destinations: destinationSummaries.value.filter(d => d.materials.length).length,
     withMovement: destinationSummaries.value.filter(d => d.saidas.length).length,
     saidas: destinationSummaries.value.reduce((sum, d) => sum + d.saidas.length, 0),
     orders: 0,

@@ -184,12 +184,13 @@ export function useItems() {
   }
 
   // ===== Seed (mass data) =====
-  async function seedDatabase(seedItems, seedVars) {
-    await api.seedPopulate(seedItems, seedVars)
+  async function seedDatabase(seedItems, seedVars, seedExtras = {}) {
+    await api.seedPopulate(seedItems, seedVars, seedExtras)
     items.value = seedItems
     variations.value = seedVars
     activeGroup.value = null
     activeFilters.value = {}
+    window.dispatchEvent(new CustomEvent('app:data-invalidated'))
   }
 
   // ===== Computed: unique hierarchy values =====

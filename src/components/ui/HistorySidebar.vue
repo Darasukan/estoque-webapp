@@ -105,7 +105,7 @@ function toggleSection(facet) {
             <input
               :value="search"
               type="text"
-              placeholder="Buscar produto..."
+              placeholder="Buscar material, responsavel, local, doc ou operador..."
               class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
               @input="$emit('update:search', $event.target.value)"
             />

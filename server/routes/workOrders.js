@@ -112,6 +112,11 @@ function resolveDestinationName(destinationId) {
   return parent ? `${parent.name} > ${dest.name}` : dest.name
 }
 
+function destinationIsActive(destinationId) {
+  if (!destinationId) return false
+  return !!db.prepare('SELECT id FROM destinations WHERE id = ? AND active = 1').get(destinationId)
+}
+
 function buildTitle({ title, equipment, destinationName, number }) {
   const typedTitle = clean(title)
   if (typedTitle) return typedTitle
@@ -462,11 +467,12 @@ router.post('/', requireAuth, (req, res) => {
   const originNameValue = isMotorOrder
     ? clean(motorOriginDestinationName) || (originIdValue ? resolveDestinationName(originIdValue) : '') || motor.destination_name || ''
     : ''
-  const destinationIdValue = isMotorOrder ? (maintenanceLocation.maintenanceDestinationId || '') : (destinationId || '')
-  let destinationName = isMotorOrder ? maintenanceLocation.maintenanceLocationName : resolveDestinationName(destinationId)
-  const equipmentValue = clean(equipment) || motor?.tag || destinationName
+  const destinationIdValue = isMotorOrder ? (maintenanceLocation.maintenanceDestinationId || '') : clean(destinationId)
+  let destinationName = isMotorOrder ? maintenanceLocation.maintenanceLocationName : resolveDestinationName(destinationIdValue)
+  if (!isMotorOrder && !destinationIdValue) return res.status(400).json({ error: 'Equipamento deve ser selecionado em destinos' })
+  if (!isMotorOrder && !destinationIsActive(destinationIdValue)) return res.status(400).json({ error: 'Equipamento deve ser um destino ativo' })
+  const equipmentValue = isMotorOrder ? (clean(equipment) || motor?.tag || destinationName) : destinationName
   if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
-  if (!destinationName && !isMotorOrder) destinationName = equipmentValue
 
   const serviceTypeValue = normalizeServiceType(serviceType)
   const motorObjectiveTitle = hasInitialMotorEvent ? ` - ${motorObjectiveLabel(motorObjectiveType)}` : ''
@@ -618,10 +624,13 @@ router.put('/:id', requireAuth, (req, res) => {
     : ''
   const newDestId = isMotorOrder
     ? (maintenanceLocation.maintenanceDestinationId || '')
-    : (destinationId !== undefined ? destinationId : o.destination_id)
+    : clean(destinationId !== undefined ? destinationId : o.destination_id)
   let destinationName = isMotorOrder ? maintenanceLocation.maintenanceLocationName : resolveDestinationName(newDestId)
-  const equipmentValue = equipment !== undefined ? clean(equipment) : (o.equipment || motor?.tag || o.destination_name || '')
-  if (!destinationName && !isMotorOrder) destinationName = equipmentValue || o.destination_name
+  if (!isMotorOrder && !newDestId) return res.status(400).json({ error: 'Equipamento deve ser selecionado em destinos' })
+  if (!isMotorOrder && !destinationIsActive(newDestId)) return res.status(400).json({ error: 'Equipamento deve ser um destino ativo' })
+  const equipmentValue = isMotorOrder
+    ? (equipment !== undefined ? clean(equipment) : (o.equipment || motor?.tag || o.destination_name || ''))
+    : destinationName
 
   const serviceTypeValue = serviceType !== undefined ? normalizeServiceType(serviceType) : (o.service_type || 'Outros')
   const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')

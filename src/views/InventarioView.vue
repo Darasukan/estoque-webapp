@@ -13,7 +13,17 @@ const { success, error } = useToast()
 
 // ===== Search =====
 const searchQuery = ref('')
-const searchNorm = computed(() => searchQuery.value.trim().toLowerCase())
+const autoHierarchy = ref(null)
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+const searchNorm = computed(() => normalizeSearchText(searchQuery.value))
 
 // ===== Pagination =====
 const currentPage = ref(1)
@@ -57,10 +67,10 @@ const afterStatusSearch = computed(() => {
   if (searchNorm.value) {
     const q = searchNorm.value
     rows = rows.filter(r =>
-      r.item.name.toLowerCase().includes(q) ||
-      [r.item.group, r.item.category, r.item.subcategory].filter(Boolean).join(' ').toLowerCase().includes(q) ||
-      Object.values(r.variation.values || {}).some(v => (v || '').toLowerCase().includes(q)) ||
-      Object.entries(r.variation.extras || {}).some(([k, v]) => k.toLowerCase().includes(q) || (v || '').toLowerCase().includes(q))
+      normalizeSearchText(r.item.name).includes(q) ||
+      normalizeSearchText([r.item.group, r.item.category, r.item.subcategory].filter(Boolean).join(' ')).includes(q) ||
+      Object.values(r.variation.values || {}).some(v => normalizeSearchText(v).includes(q)) ||
+      Object.entries(r.variation.extras || {}).some(([k, v]) => normalizeSearchText(k).includes(q) || normalizeSearchText(v).includes(q))
     )
   }
   return rows
@@ -99,6 +109,66 @@ const paginatedRows = computed(() => {
 // Reset page when filters change
 watch([searchQuery, filterStatus, filterGroup, filterCategory, filterSubcategory, filterAttrValues, pageSize], () => {
   currentPage.value = 1
+})
+
+function clearAutoHierarchyIfOwned() {
+  const auto = autoHierarchy.value
+  if (!auto) return
+  if (
+    filterGroup.value === (auto.group || '') &&
+    filterCategory.value === (auto.category || '') &&
+    filterSubcategory.value === (auto.subcategory || '')
+  ) {
+    filterGroup.value = ''
+    filterCategory.value = ''
+    filterSubcategory.value = ''
+  }
+  autoHierarchy.value = null
+}
+
+function applyAutoHierarchy(next) {
+  clearAutoHierarchyIfOwned()
+  filterGroup.value = next.group || ''
+  filterCategory.value = next.category || ''
+  filterSubcategory.value = next.subcategory || ''
+  autoHierarchy.value = {
+    group: filterGroup.value,
+    category: filterCategory.value,
+    subcategory: filterSubcategory.value,
+  }
+}
+
+function findHierarchySearchMatch(q) {
+  if (!q) return null
+  const rows = baseRows.value
+
+  const levels = [
+    { key: 'subcategory', fields: ['group', 'category', 'subcategory'] },
+    { key: 'category', fields: ['group', 'category'] },
+    { key: 'group', fields: ['group'] },
+  ]
+
+  for (const level of levels) {
+    const matches = rows.filter(r => normalizeSearchText(r.item[level.key]) === q)
+    const paths = new Map()
+    for (const row of matches) {
+      const path = {
+        group: row.item.group || '',
+        category: level.fields.includes('category') ? row.item.category || '' : '',
+        subcategory: level.fields.includes('subcategory') ? row.item.subcategory || '' : '',
+      }
+      paths.set(JSON.stringify(path), path)
+    }
+    if (paths.size === 1) return [...paths.values()][0]
+  }
+
+  return null
+}
+
+watch(searchNorm, q => {
+  const match = findHierarchySearchMatch(q)
+  if (match) applyAutoHierarchy(match)
+  else clearAutoHierarchyIfOwned()
 })
 
 // ---- Hierarchy facet options (each excludes its own filter, includes all others) ----
@@ -171,15 +241,18 @@ const templateAttrKeys = computed(() => {
 
 // ---- Setters ----
 function setGroup(g) {
+  autoHierarchy.value = null
   filterGroup.value = filterGroup.value === g ? '' : g
   filterCategory.value = ''
   filterSubcategory.value = ''
 }
 function setCategory(c) {
+  autoHierarchy.value = null
   filterCategory.value = filterCategory.value === c ? '' : c
   filterSubcategory.value = ''
 }
 function setSubcategory(s) {
+  autoHierarchy.value = null
   filterSubcategory.value = filterSubcategory.value === s ? '' : s
 }
 function setAttrValue(key, val) {
@@ -191,6 +264,7 @@ function setAttrValue(key, val) {
 }
 
 function clearFacets() {
+  autoHierarchy.value = null
   filterGroup.value = ''
   filterCategory.value = ''
   filterSubcategory.value = ''
@@ -248,9 +322,9 @@ async function confirmAdjust(varId) {
   const type = delta > 0 ? 'entrada' : 'saida'
   try {
     await addMovement(type, row.variation, row.item, qty, {
-      supplier: type === 'entrada' ? 'Ajuste de estoque' : '',
-      requestedBy: type === 'saida' ? 'Ajuste de estoque' : '',
-      destination: type === 'saida' ? 'Ajuste de estoque' : '',
+      supplier: '',
+      requestedBy: '',
+      destination: '',
       docRef: 'AJUSTE',
       note: 'Ajuste manual pelo inventário.',
     })
@@ -279,17 +353,20 @@ function isAttrCollapsed(key) {
 
 // Navigate back one level in the cascading hierarchy
 function backToGroups() {
+  autoHierarchy.value = null
   filterGroup.value = ''
   filterCategory.value = ''
   filterSubcategory.value = ''
   filterAttrValues.value = {}
 }
 function backToCategories() {
+  autoHierarchy.value = null
   filterCategory.value = ''
   filterSubcategory.value = ''
   filterAttrValues.value = {}
 }
 function backToSubcategories() {
+  autoHierarchy.value = null
   filterSubcategory.value = ''
   filterAttrValues.value = {}
 }
@@ -353,10 +430,12 @@ function exportCSV() {
   const year = Number(csvSelectedYear.value)
   const from = new Date(year, month - 1, 1)
   const to = new Date(year, month, 1)
+  const cutoffLabel = new Date(year, month, 0).toLocaleDateString('pt-BR')
   const monthTag = `${String(month).padStart(2, '0')}/${year}`
 
   // Pre-compute monthly movements per variation
   const monthMovs = {}
+  const afterPeriodMovs = {}
   for (const m of movements.value) {
     const d = new Date(m.date)
     if (d >= from && d < to) {
@@ -364,11 +443,15 @@ function exportCSV() {
       if (m.type === 'entrada') monthMovs[m.variationId].entradas += m.qty
       else monthMovs[m.variationId].saidas += m.qty
     }
+    if (d >= to) {
+      if (!afterPeriodMovs[m.variationId]) afterPeriodMovs[m.variationId] = 0
+      afterPeriodMovs[m.variationId] += m.type === 'entrada' ? m.qty : -m.qty
+    }
   }
 
   const STATUS_LABEL = { zero: 'Zero', critical: 'Crítico', alert: 'Alerta', ok: 'OK' }
   const sep = ';'
-  const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local'].join(sep)
+  const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', `Saldo em ${cutoffLabel}`, 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local'].join(sep)
 
   const rows = filteredRows.value.map(row => {
     const attrs = []
@@ -380,6 +463,7 @@ function exportCSV() {
       if (v) attrs.push(`${k}: ${v}`)
     }
     const vm = monthMovs[row.variation.id] || { entradas: 0, saidas: 0 }
+    const stockAtCutoff = row.variation.stock - (afterPeriodMovs[row.variation.id] || 0)
     return [
       row.item.group || '',
       row.item.category || '',
@@ -387,6 +471,7 @@ function exportCSV() {
       row.item.name,
       attrs.join(', '),
       row.item.unit || 'UN',
+      stockAtCutoff,
       row.variation.stock,
       row.variation.minStock || 0,
       STATUS_LABEL[row.status],

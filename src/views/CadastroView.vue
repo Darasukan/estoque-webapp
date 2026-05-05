@@ -95,11 +95,11 @@ function onAttrDragEnd() {
 
 // ===== Seed mass data =====
 const showSeedConfirm = ref(false)
-function loadSeedData() {
-  const { items: seedItems, variations: seedVars } = generateSeedData()
-  seedDatabase(seedItems, seedVars)
+async function loadSeedData() {
+  const { items: seedItems, variations: seedVars, ...seedExtras } = generateSeedData()
+  await seedDatabase(seedItems, seedVars, seedExtras)
   showSeedConfirm.value = false
-  success(`Dados de teste carregados! ${seedItems.length} itens + ${seedVars.length} variações.`)
+  success(`Dados de teste carregados! ${seedItems.length} itens + ${seedVars.length} variações + históricos.`)
 }
 
 // ===== Clear all data =====

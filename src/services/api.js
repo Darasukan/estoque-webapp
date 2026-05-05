@@ -201,8 +201,8 @@ export async function saveDisplayOrder(data) {
   return request('/seed/order', { method: 'PUT', body: JSON.stringify(data) })
 }
 
-export async function seedPopulate(items, variations) {
-  return request('/seed/populate', { method: 'POST', body: JSON.stringify({ items, variations }) })
+export async function seedPopulate(items, variations, extras = {}) {
+  return request('/seed/populate', { method: 'POST', body: JSON.stringify({ items, variations, ...extras }) })
 }
 
 export async function seedReset() {
@@ -248,6 +248,23 @@ export async function linkMovementToWorkOrder(workOrderId, movementId) {
 
 export async function getWorkOrderReport() {
   return request('/work-orders/report/by-destination')
+}
+
+// ===== Monthly Closings =====
+export async function getClosings() {
+  return request('/closings')
+}
+
+export async function getClosing(id) {
+  return request(`/closings/${id}`)
+}
+
+export async function createClosing(data) {
+  return request('/closings', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteClosing(id) {
+  return request(`/closings/${id}`, { method: 'DELETE' })
 }
 
 // ===== Motors =====

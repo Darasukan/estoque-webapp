@@ -33,6 +33,316 @@ function makeItems(defs) {
   return { items, variations }
 }
 
+function findSeedRow(data, itemMatcher, variationMatcher = () => true) {
+  for (const item of data.items) {
+    if (!itemMatcher(item)) continue
+    for (const variation of data.variations.filter(v => v.itemId === item.id)) {
+      if (variationMatcher(variation)) return { item, variation }
+    }
+  }
+  return null
+}
+
+function variationLabel(variation) {
+  return Object.entries(variation.values || {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(', ')
+}
+
+function makeMovement(row, index, type, qty, date, fields = {}) {
+  const signed = type === 'entrada' ? qty : -qty
+  const stockAfter = Number(row.variation.stock || 0)
+  const stockBefore = stockAfter - signed
+  return {
+    id: `mov_seed_${index}`,
+    type,
+    variationId: row.variation.id,
+    itemId: row.item.id,
+    itemName: row.item.name,
+    itemGroup: row.item.group,
+    itemCategory: row.item.category || '',
+    itemSubcategory: row.item.subcategory || '',
+    itemUnit: row.item.unit || 'UN',
+    variationValues: row.variation.values || {},
+    variationExtras: row.variation.extras || {},
+    qty,
+    stockBefore,
+    stockAfter,
+    date,
+    supplier: fields.supplier || '',
+    requestedBy: fields.requestedBy || '',
+    destination: fields.destination || '',
+    docRef: fields.docRef || '',
+    note: fields.note || '',
+    operatorId: fields.operatorId || 'user_admin',
+    operatorName: fields.operatorName || 'admin',
+  }
+}
+
+function enrichSeedData(data) {
+  const destinations = [
+    { id: 'dest_rama_texima', name: 'Rama Texima', description: 'Setor de costura industrial.' },
+    { id: 'dest_rama_sta_clara', name: 'Rama Sta. Clara', description: 'Setor de acabamento.' },
+    { id: 'dest_jigger_1', name: 'Jigger 1', description: 'Linha de beneficiamento.' },
+    { id: 'dest_turbo_1', name: 'Turbo 1', description: 'Equipamento de processo.' },
+    { id: 'dest_epi', name: 'EPI', description: 'Saidas avulsas de equipamentos de protecao.' },
+    { id: 'dest_costura', name: 'Maquinas de Costura', description: 'Grupo de maquinas de costura.' },
+    { id: 'dest_costura_reta', name: 'Reta 01', parentId: 'dest_costura', description: 'Maquina reta principal.' },
+    { id: 'dest_costura_overlock', name: 'Overlock 02', parentId: 'dest_costura', description: 'Maquina overlock.' },
+  ]
+  const locations = [
+    { id: 'loc_almox', name: 'Almoxarifado', description: 'Local principal de estoque.' },
+    { id: 'loc_almox_epi', name: 'EPI', parentId: 'loc_almox', description: 'Prateleiras de EPI.' },
+    { id: 'loc_almox_manut', name: 'Manutencao', parentId: 'loc_almox', description: 'Pecas e ferramentas.' },
+    { id: 'loc_oficina', name: 'Oficina', description: 'Oficina interna.' },
+  ]
+  const roles = [
+    { id: 'role_mecanico', name: 'Mecanico', description: 'Execucao de manutencao mecanica.' },
+    { id: 'role_eletricista', name: 'Eletricista', description: 'Execucao de manutencao eletrica.' },
+    { id: 'role_costureira', name: 'Costureira', description: 'Operacao de costura.' },
+    { id: 'role_almoxarife', name: 'Almoxarife', description: 'Controle de estoque.' },
+  ]
+  const people = [
+    { id: 'person_maria', name: 'Maria Souza', role: 'Costureira' },
+    { id: 'person_joao', name: 'Joao Pereira', role: 'Mecanico' },
+    { id: 'person_ana', name: 'Ana Lima', role: 'Almoxarife' },
+    { id: 'person_carlos', name: 'Carlos Silva', role: 'Eletricista' },
+  ]
+
+  const linkedRows = [
+    findSeedRow(data, item => item.name.includes('Luva de Latex')),
+    findSeedRow(data, item => item.name.toLowerCase().includes('nitr')),
+    findSeedRow(data, item => item.name === 'Disco Flap'),
+    findSeedRow(data, item => item.name === 'Bico de Contato MIG'),
+    findSeedRow(data, item => item.name === 'Graxa'),
+  ].filter(Boolean)
+
+  for (const row of linkedRows) {
+    if (row.item.group === 'EPIs') row.variation.destinations = ['dest_epi', 'dest_costura']
+    else row.variation.destinations = ['dest_rama_texima', 'dest_jigger_1']
+    row.variation.location = row.item.group === 'EPIs' ? 'Almoxarifado > EPI' : 'Almoxarifado > Manutencao'
+  }
+
+  const movements = []
+  let movIndex = 1
+  const historyRows = linkedRows.slice(0, 5)
+  for (const row of historyRows) {
+    movements.push(makeMovement(row, movIndex++, 'entrada', 10, '2025-04-10T08:15:00.000Z', { supplier: 'Fornecedor Modelo', docRef: 'NF 2025-0410', note: 'Entrada historica do seed.' }))
+    movements.push(makeMovement(row, movIndex++, 'saida', 2, '2025-05-12T10:30:00.000Z', { requestedBy: 'Maria Souza', destination: row.item.group === 'EPIs' ? 'EPI' : 'Rama Texima', docRef: 'REQ 2025-0512', note: 'Saida historica do seed.' }))
+    movements.push(makeMovement(row, movIndex++, 'saida', 4, '2025-06-18T14:00:00.000Z', { requestedBy: 'Joao Pereira', destination: row.item.group === 'EPIs' ? 'Maquinas de Costura' : 'Jigger 1', docRef: 'REQ 2025-0618' }))
+    movements.push(makeMovement(row, movIndex++, 'entrada', 4, '2025-09-05T09:45:00.000Z', { supplier: 'Fornecedor Modelo', docRef: 'PC 2025-0905' }))
+    movements.push(makeMovement(row, movIndex++, 'saida', 3, '2026-01-22T11:20:00.000Z', { requestedBy: 'Carlos Silva', destination: row.item.group === 'EPIs' ? 'EPI' : 'Turbo 1', docRef: 'REQ 2026-0122' }))
+    movements.push(makeMovement(row, movIndex++, 'entrada', 1, '2026-04-08T16:10:00.000Z', { supplier: 'Ajuste de inventario', docRef: 'AJUSTE', note: 'Ajuste historico do seed.' }))
+  }
+
+  const osMaterial = findSeedRow(data, item => item.name === 'Disco de Corte') || historyRows[0]
+  const motorMaterial = findSeedRow(data, item => item.name === 'Spray Lubrificante') || historyRows[1]
+  const osMovement = osMaterial
+    ? makeMovement(osMaterial, movIndex++, 'saida', 2, '2026-03-18T13:40:00.000Z', { requestedBy: 'Joao Pereira', destination: 'Rama Texima', docRef: 'OS #101', note: 'Material adicionado via OS #101.' })
+    : null
+  const motorOsMovement = motorMaterial
+    ? makeMovement(motorMaterial, movIndex++, 'saida', 1, '2026-04-22T15:05:00.000Z', { requestedBy: 'Carlos Silva', destination: 'Oficina', docRef: 'OS #103', note: 'Material adicionado via OS de motor #103.' })
+    : null
+  if (osMovement) movements.push(osMovement)
+  if (motorOsMovement) movements.push(motorOsMovement)
+
+  const motors = [
+    {
+      id: 'motor_azul',
+      tag: 'N 10-20-30',
+      serial: 'RTS-220V-W22',
+      name: 'Motor Azul',
+      manufacturer: 'WEG',
+      power: '7CV',
+      voltage: '220/380V',
+      rpm: '1750RPM',
+      destinationId: 'dest_rama_texima',
+      destinationName: 'Rama Texima',
+      status: 'ativo',
+      notes: 'Motor principal da linha Rama Texima.',
+      createdAt: '2025-05-20T08:00:00.000Z',
+      updatedAt: '2026-04-25T12:00:00.000Z',
+    },
+    {
+      id: 'motor_verde',
+      tag: 'N 20-40-10',
+      serial: 'JG-380V-02',
+      name: 'Motor Verde',
+      manufacturer: 'WEG',
+      power: '5CV',
+      voltage: '380V',
+      rpm: '1720RPM',
+      destinationId: 'dest_jigger_1',
+      destinationName: 'Jigger 1',
+      status: 'em_manutencao',
+      notes: 'Motor em manutencao preventiva.',
+      createdAt: '2025-08-11T08:00:00.000Z',
+      updatedAt: '2026-04-28T12:00:00.000Z',
+    },
+    {
+      id: 'motor_reserva',
+      tag: 'N 30-10-05',
+      serial: 'RSV-220V-01',
+      name: 'Motor Reserva',
+      manufacturer: 'Kohlbach',
+      power: '3CV',
+      voltage: '220V',
+      rpm: '1700RPM',
+      destinationId: 'dest_turbo_1',
+      destinationName: 'Turbo 1',
+      status: 'reserva',
+      notes: 'Motor reserva operacional.',
+      createdAt: '2025-10-03T08:00:00.000Z',
+      updatedAt: '2026-02-12T12:00:00.000Z',
+    },
+  ]
+
+  const workOrders = [
+    {
+      id: 'wo_seed_101',
+      number: 101,
+      title: 'Rama Texima - troca de disco',
+      destinationId: 'dest_rama_texima',
+      destinationName: 'Rama Texima',
+      equipment: 'Rama Texima',
+      serviceType: 'Mecanica',
+      requestDate: '2026-03-18',
+      requestTime: '08:30',
+      requestedBy: 'Maria Souza',
+      note: 'Ruido anormal no conjunto.',
+      maintenanceStartDate: '2026-03-18',
+      maintenanceStartTime: '13:00',
+      maintenanceEndDate: '2026-03-18',
+      maintenanceEndTime: '15:00',
+      maintenanceProfessional: 'Joao Pereira',
+      maintenanceMaterials: 'Disco e insumos de limpeza.',
+      maintenanceNote: 'Servico concluido.',
+      createdAt: '2026-03-18T08:30:00.000Z',
+    },
+    {
+      id: 'wo_seed_102',
+      number: 102,
+      title: 'Jigger 1 - inspecao pendente',
+      destinationId: 'dest_jigger_1',
+      destinationName: 'Jigger 1',
+      equipment: 'Jigger 1',
+      serviceType: 'Eletrica',
+      requestDate: '2026-04-12',
+      requestTime: '09:10',
+      requestedBy: 'Carlos Silva',
+      note: 'Verificar painel de comando.',
+      maintenanceStartDate: '',
+      maintenanceStartTime: '',
+      maintenanceEndDate: '',
+      maintenanceEndTime: '',
+      maintenanceProfessional: '',
+      createdAt: '2026-04-12T09:10:00.000Z',
+    },
+    {
+      id: 'wo_seed_103',
+      number: 103,
+      title: 'N 10-20-30 - Revisado',
+      motorId: 'motor_azul',
+      equipment: 'N 10-20-30 - Motor Azul',
+      motorOriginDestinationId: 'dest_rama_texima',
+      motorOriginDestinationName: 'Rama Texima',
+      maintenanceLocationType: 'interna',
+      maintenanceDestinationName: 'Oficina',
+      serviceType: 'Outros',
+      requestDate: '2026-04-22',
+      requestTime: '09:00',
+      requestedBy: 'Joao Pereira',
+      note: 'Revisao preventiva.',
+      maintenanceStartDate: '2026-04-22',
+      maintenanceStartTime: '10:00',
+      maintenanceEndDate: '2026-04-22',
+      maintenanceEndTime: '16:00',
+      maintenanceProfessional: 'Carlos Silva',
+      maintenanceMaterials: 'Spray lubrificante.',
+      maintenanceNote: 'Motor revisado e liberado.',
+      createdAt: '2026-04-22T09:00:00.000Z',
+    },
+    {
+      id: 'wo_seed_104',
+      number: 104,
+      title: 'N 20-40-10 - Rebobinado',
+      motorId: 'motor_verde',
+      equipment: 'N 20-40-10 - Motor Verde',
+      motorOriginDestinationId: 'dest_jigger_1',
+      motorOriginDestinationName: 'Jigger 1',
+      maintenanceLocationType: 'externa',
+      maintenanceExternalLocation: 'Americana Motores',
+      serviceType: 'Outros',
+      requestDate: '2026-04-28',
+      requestTime: '14:20',
+      requestedBy: 'Ana Lima',
+      note: 'Motor enviado para rebobinamento.',
+      createdAt: '2026-04-28T14:20:00.000Z',
+    },
+  ]
+
+  const workOrderItems = [
+    osMovement && {
+      id: 'woi_seed_101_1',
+      workOrderId: 'wo_seed_101',
+      variationId: osMovement.variationId,
+      itemId: osMovement.itemId,
+      itemName: osMovement.itemName,
+      itemGroup: osMovement.itemGroup,
+      itemCategory: osMovement.itemCategory,
+      itemUnit: osMovement.itemUnit,
+      variationValues: osMovement.variationValues,
+      qty: osMovement.qty,
+      movementId: osMovement.id,
+      addedAt: osMovement.date,
+    },
+    motorOsMovement && {
+      id: 'woi_seed_103_1',
+      workOrderId: 'wo_seed_103',
+      variationId: motorOsMovement.variationId,
+      itemId: motorOsMovement.itemId,
+      itemName: motorOsMovement.itemName,
+      itemGroup: motorOsMovement.itemGroup,
+      itemCategory: motorOsMovement.itemCategory,
+      itemUnit: motorOsMovement.itemUnit,
+      variationValues: motorOsMovement.variationValues,
+      qty: motorOsMovement.qty,
+      movementId: motorOsMovement.id,
+      addedAt: motorOsMovement.date,
+    },
+  ].filter(Boolean)
+
+  const workOrderEvents = [
+    { id: 'woe_seed_101_1', workOrderId: 'wo_seed_101', eventType: 'criada', eventDate: '2026-03-18T08:30:00.000Z', operatorName: 'admin', notes: 'OS criada pelo seed.' },
+    { id: 'woe_seed_101_2', workOrderId: 'wo_seed_101', eventType: 'finalizada', eventDate: '2026-03-18T15:00:00.000Z', operatorName: 'admin', notes: 'OS finalizada pelo seed.' },
+    { id: 'woe_seed_102_1', workOrderId: 'wo_seed_102', eventType: 'criada', eventDate: '2026-04-12T09:10:00.000Z', operatorName: 'admin', notes: 'OS aberta pelo seed.' },
+    { id: 'woe_seed_103_1', workOrderId: 'wo_seed_103', eventType: 'criada', eventDate: '2026-04-22T09:00:00.000Z', operatorName: 'admin', notes: 'OS de motor criada pelo seed.' },
+    { id: 'woe_seed_103_2', workOrderId: 'wo_seed_103', eventType: 'finalizada', eventDate: '2026-04-22T16:00:00.000Z', operatorName: 'admin', notes: 'Motor revisado e OS finalizada.' },
+    { id: 'woe_seed_104_1', workOrderId: 'wo_seed_104', eventType: 'criada', eventDate: '2026-04-28T14:20:00.000Z', operatorName: 'admin', notes: 'OS de motor externa aberta.' },
+  ]
+
+  const motorEvents = [
+    { id: 'mev_seed_azul_1', motorId: 'motor_azul', workOrderId: 'wo_seed_103', eventType: 'revisado', eventDate: '2026-04-22T09:00:00.000Z', fromDestination: 'Rama Texima', performedBy: 'Carlos Silva', notes: 'Revisao preventiva.' },
+    { id: 'mev_seed_azul_2', motorId: 'motor_azul', workOrderId: 'wo_seed_103', eventType: 'movimentado', eventDate: '2026-04-22T16:00:00.000Z', fromDestination: 'Oficina', toDestination: 'Rama Texima', performedBy: 'Carlos Silva', notes: 'Retorno para operacao.' },
+    { id: 'mev_seed_verde_1', motorId: 'motor_verde', workOrderId: 'wo_seed_104', eventType: 'rebobinado', eventDate: '2026-04-28T14:20:00.000Z', fromDestination: 'Jigger 1', toDestination: 'Americana Motores', performedBy: 'Americana Motores', notes: 'Enviado para rebobinamento externo.' },
+    { id: 'mev_seed_reserva_1', motorId: 'motor_reserva', eventType: 'observacao', eventDate: '2026-02-12T11:00:00.000Z', fromDestination: 'Turbo 1', performedBy: 'Joao Pereira', notes: 'Motor reserva testado.' },
+  ]
+
+  return {
+    ...data,
+    movements,
+    destinations,
+    locations,
+    people,
+    roles,
+    workOrders,
+    workOrderItems,
+    workOrderEvents,
+    motors,
+    motorEvents,
+  }
+}
+
 export function generateSeedData() {
   const allDefs = [
 
@@ -1147,5 +1457,5 @@ export function generateSeedData() {
       ]},
   ]
 
-  return makeItems(allDefs)
+  return enrichSeedData(makeItems(allDefs))
 }
