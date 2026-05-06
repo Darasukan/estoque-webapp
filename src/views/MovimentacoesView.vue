@@ -44,7 +44,9 @@ function focusRef(target) {
 }
 
 // ===== Sub-tabs =====
-const activeSubTab = ref(['entrada', 'saida', 'historico', 'resumo'].includes(props.initialSubTab) ? props.initialSubTab : 'entrada')
+const movementSubTabs = ['entrada', 'saida']
+const validSubTabs = [...movementSubTabs, 'historico', 'resumo']
+const activeSubTab = ref(validSubTabs.includes(props.initialSubTab) ? props.initialSubTab : 'entrada')
 
 const visibleSubTabs = computed(() => {
   const all = [
@@ -60,9 +62,28 @@ const visibleSubTabs = computed(() => {
 watch(isLoggedIn, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubTab.value = 'historico' }, { immediate: true })
 
 function switchSubTab(tab) {
+  if (!validSubTabs.includes(tab) || activeSubTab.value === tab) return
+  const keepMovementContext =
+    movementSubTabs.includes(activeSubTab.value) &&
+    movementSubTabs.includes(tab) &&
+    step.value > 1 &&
+    batchItems.value.length === 0
+
   suppressFlowReset.value = true
   activeSubTab.value = tab
+  if (keepMovementContext) {
+    adaptFormForSubTab(tab)
+    nextTick(() => {
+      suppressFlowReset.value = false
+      if (step.value === 3) focusRef(qtyInputEl)
+    })
+    return
+  }
+
   resetFlow()
+  nextTick(() => {
+    suppressFlowReset.value = false
+  })
 }
 
 // ===== Step flow (shared for Entrada + Saída) =====
@@ -98,6 +119,9 @@ const personDropdownOpen = ref(false)
 const destDropdownOpen = ref(false)
 const destSearch = ref('')
 const docDropdownOpen = ref(false)
+const personSelectVal = ref('')
+const destSelectVal = ref('')
+const appliedPrefillKey = ref('')
 
 function resetFlow() {
   step.value = 1
@@ -118,16 +142,41 @@ function resetFlow() {
   nextTick(() => focusRef(searchInputEl))
 }
 
+function adaptFormForSubTab(tab) {
+  confirmPending.value = false
+  selectedWorkOrderId.value = ''
+  personDropdownOpen.value = false
+  destDropdownOpen.value = false
+  destSearch.value = ''
+  docDropdownOpen.value = false
+  if (tab === 'entrada') {
+    form.value.requestedBy = ''
+    form.value.destination = ''
+    personSelectVal.value = ''
+    destSelectVal.value = ''
+  } else {
+    form.value.supplier = ''
+    form.value.docRef = ''
+    docType.value = 'sem'
+  }
+}
+
 function applyMovementPrefill(prefill) {
   if (!prefill || !isLoggedIn.value) return
   const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
+  const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}`
+  if (appliedPrefillKey.value === prefillKey) return
   const item = items.value.find(i => i.id === prefill.itemId)
   const variation = variations.value.find(v => v.id === prefill.variationId)
   if (!item || !variation) {
+    if (!items.value.length || !variations.value.length) return
+    appliedPrefillKey.value = prefillKey
     error('Item ou variação não encontrada para movimentação rápida.')
     return
   }
 
+  appliedPrefillKey.value = prefillKey
+  suppressFlowReset.value = true
   activeSubTab.value = tab
   resetFlow()
   selectedItem.value = item
@@ -141,17 +190,25 @@ function applyMovementPrefill(prefill) {
 }
 
 watch(() => props.initialSubTab, tab => {
-  if (!tab || activeSubTab.value === tab) return
-  if (!['entrada', 'saida', 'historico', 'resumo'].includes(tab)) return
   if (props.prefillMovement && props.prefillMovement.type === tab) {
     applyMovementPrefill(props.prefillMovement)
     return
   }
+  if (!tab || activeSubTab.value === tab) return
+  if (!validSubTabs.includes(tab)) return
+  suppressFlowReset.value = true
   activeSubTab.value = tab
   resetFlow()
+  nextTick(() => {
+    suppressFlowReset.value = false
+  })
 })
 
-watch(() => props.prefillMovement, applyMovementPrefill, { immediate: true })
+watch(
+  [() => props.prefillMovement, () => items.value.length, () => variations.value.length],
+  ([prefill]) => applyMovementPrefill(prefill),
+  { immediate: true }
+)
 
 function resetCurrentItem() {
   step.value = 1
@@ -336,10 +393,6 @@ const filteredOtherDests = computed(() => {
   if (!q) return otherDestinations.value
   return otherDestinations.value.filter(d => getDestFullName(d.id).toLowerCase().includes(q))
 })
-
-// Select-box controller refs ('__outro__' = free-text mode)
-const personSelectVal = ref('')
-const destSelectVal = ref('')
 
 watch(personSelectVal, (v) => {
   if (v !== '__outro__') form.value.requestedBy = v

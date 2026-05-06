@@ -13,6 +13,10 @@ const props = defineProps({
     type: String,
     default: 'estoque',
   },
+  initialStatus: {
+    type: String,
+    default: 'all',
+  },
 })
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -135,7 +139,12 @@ function sortArrow(key) {
 }
 
 // ===== Status filter =====
-const filterStatus = ref('all')
+const inventoryStatusFilters = ['all', '', 'zero', 'critical', 'alert']
+const filterStatus = ref(inventoryStatusFilters.includes(props.initialStatus) ? props.initialStatus : 'all')
+
+watch(() => props.initialStatus, status => {
+  if (inventoryStatusFilters.includes(status)) filterStatus.value = status
+})
 
 // ===== Facet filters =====
 const filterGroup = ref('')
@@ -401,21 +410,28 @@ const showBody = computed(() => filterStatus.value === 'all' || alertRows.value.
 const adjustingId = ref(null)
 const adjustInput = ref(null)
 const adjustValue = ref('')
+const movementMenuId = ref(null)
 
 function startAdjust(varId, currentStock) {
   adjustingId.value = varId
   adjustValue.value = ''
+  movementMenuId.value = null
   nextTick(() => adjustInput.value?.focus())
 }
 
 function quickMovement(row, type) {
   if (!(isLoggedIn?.value ?? isLoggedIn)) return
+  movementMenuId.value = null
   emit('quick-movement', {
     type,
     itemId: row.item.id,
     variationId: row.variation.id,
     nonce: Date.now(),
   })
+}
+
+function toggleMovementMenu(varId) {
+  movementMenuId.value = movementMenuId.value === varId ? null : varId
 }
 
 function cancelAdjust() {
@@ -1172,38 +1188,55 @@ function exportCSV() {
                       </svg>
                     </button>
                   </div>
-                  <div v-else class="flex flex-wrap items-center justify-center gap-1.5">
+                  <div v-else class="relative flex items-center justify-center gap-1.5">
                     <button
                       v-if="isAdmin"
-                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
                       title="Corrigir saldo manualmente"
                       @click="startAdjust(row.variation.id, row.variation.stock)"
                     >
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
                       </svg>
-                      Ajustar
                     </button>
-                    <button
-                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
-                      title="Registrar entrada para esta variação"
-                      @click="quickMovement(row, 'entrada')"
+                    <div class="rounded-lg p-[1px] bg-[linear-gradient(90deg,#16a34a_0_50%,#dc2626_50%_100%)]">
+                      <button
+                        type="button"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-[7px] bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                        title="Movimentação"
+                        :aria-expanded="movementMenuId === row.variation.id"
+                        @click="toggleMovementMenu(row.variation.id)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9m0 0-3-3m3 3-3 3M16.5 16.5h-9m0 0 3 3m-3-3 3-3" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div
+                      v-if="movementMenuId === row.variation.id"
+                      class="absolute right-0 top-9 z-20 w-32 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
                     >
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
-                      </svg>
-                      Entrada
-                    </button>
-                    <button
-                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer"
-                      title="Registrar saída para esta variação"
-                      @click="quickMovement(row, 'saida')"
-                    >
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
-                      </svg>
-                      Saída
-                    </button>
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
+                        @click="quickMovement(row, 'entrada')"
+                      >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
+                        </svg>
+                        Entrada
+                      </button>
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer"
+                        @click="quickMovement(row, 'saida')"
+                      >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
+                        </svg>
+                        Saída
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>

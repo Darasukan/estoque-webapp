@@ -46,6 +46,8 @@ const catalogSearch = ref('')
 const catalogRef = ref(null)
 const activeTab = ref('dashboard')
 const requestedInventorySection = ref('estoque')
+const requestedInventoryStatus = ref('all')
+const requestedOrdersTab = ref('ordens')
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
 const requestedMovSubTab = ref('entrada')
@@ -115,9 +117,9 @@ function onLoginClose() {
 function openMovementTab(tab, prefill = null) {
   if (!isLoggedIn.value) return
   quickActionsOpen.value = false
-  activeTab.value = 'movimentacoes'
   requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
+  activeTab.value = 'movimentacoes'
   nextTick(() => {
     requestedMovSubTab.value = tab
   })
@@ -127,13 +129,50 @@ function openInventoryQuickMovement(payload) {
   openMovementTab(payload.type, payload)
 }
 
-function navigateTab(tab) {
+function navigateTab(target) {
+  const tab = typeof target === 'string' ? target : target?.tab
+  if (!tab) return
+  if (target?.requiresAuth && !isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
   if (tab === 'fechamentos') {
     requestedInventorySection.value = 'fechamentos'
     activeTab.value = 'inventario'
     return
   }
-  if (tab === 'inventario') requestedInventorySection.value = 'estoque'
+  if (tab === 'inventario') {
+    const section = target?.section || 'estoque'
+    const status = target?.status ?? 'all'
+    requestedInventorySection.value = ''
+    requestedInventoryStatus.value = '__pending__'
+    activeTab.value = 'inventario'
+    nextTick(() => {
+      requestedInventorySection.value = section
+      requestedInventoryStatus.value = status
+    })
+    return
+  }
+  if (tab === 'movimentacoes' && target?.subTab) {
+    if (['entrada', 'saida'].includes(target.subTab)) {
+      openMovementTab(target.subTab)
+      return
+    }
+    requestedMovSubTab.value = ''
+    activeTab.value = 'movimentacoes'
+    nextTick(() => {
+      requestedMovSubTab.value = target.subTab
+    })
+    return
+  }
+  if (tab === 'ordens') {
+    requestedOrdersTab.value = ''
+    activeTab.value = 'ordens'
+    nextTick(() => {
+      requestedOrdersTab.value = target?.subTab || 'ordens'
+    })
+    return
+  }
   activeTab.value = tab
 }
 
@@ -272,6 +311,7 @@ function handleQuickMovementKeydown(event) {
         <InventarioView
           v-else-if="activeTab === 'inventario'"
           :initial-section="requestedInventorySection"
+          :initial-status="requestedInventoryStatus"
           @quick-movement="openInventoryQuickMovement"
         />
 
@@ -289,6 +329,7 @@ function handleQuickMovementKeydown(event) {
         <OrdensServicoView
           v-else-if="activeTab === 'ordens'"
           mode="general"
+          :initial-tab="requestedOrdersTab"
         />
 
         <!-- Motores tab -->

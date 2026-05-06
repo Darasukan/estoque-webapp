@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { useItems, stockAlertStatus } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
@@ -8,6 +8,7 @@ import { useClosings } from '../composables/useClosings.js'
 import { useDestinations } from '../composables/useDestinations.js'
 
 const emit = defineEmits(['go'])
+const isLoggedIn = inject('isLoggedIn')
 
 const { items, variations } = useItems()
 const { movements } = useMovements()
@@ -127,6 +128,116 @@ const topDestinations = computed(() =>
 
 const lastClosing = computed(() => closings.value[0] || null)
 
+const shortcutActions = [
+  {
+    id: 'entrada',
+    label: 'Entrada',
+    description: 'Registrar material chegando no estoque.',
+    target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true },
+    icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6',
+    tone: 'text-green-600 dark:text-green-400',
+  },
+  {
+    id: 'saida',
+    label: 'Saída',
+    description: 'Registrar retirada para pessoa ou destino.',
+    target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true },
+    icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6',
+    tone: 'text-red-600 dark:text-red-400',
+  },
+  {
+    id: 'inventario',
+    label: 'Inventário',
+    description: 'Ver saldo, ajuste e histórico por variação.',
+    target: { tab: 'inventario', section: 'estoque' },
+    icon: 'M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6Zm3 2.25h10.5M6.75 12h10.5M6.75 15.75h6',
+    tone: 'text-primary-600 dark:text-primary-400',
+  },
+  {
+    id: 'nova-os',
+    label: 'Nova OS',
+    description: 'Abrir uma ordem de serviço comum.',
+    target: { tab: 'ordens', subTab: 'nova', requiresAuth: true },
+    icon: 'M12 4.5v15m7.5-7.5h-15',
+    tone: 'text-primary-600 dark:text-primary-400',
+  },
+  {
+    id: 'fechamentos',
+    label: 'Fechamentos',
+    description: 'Conferir ou gerar fechamento mensal.',
+    target: { tab: 'inventario', section: 'fechamentos' },
+    icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0Z',
+    tone: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    id: 'motores',
+    label: 'Motores',
+    description: 'Abrir ficha, OS e histórico de motores.',
+    target: { tab: 'motores' },
+    icon: 'M3.75 13.5h16.5m-16.5 0a2.25 2.25 0 01-2.25-2.25V9A2.25 2.25 0 013.75 6.75h16.5A2.25 2.25 0 0122.5 9v2.25a2.25 2.25 0 01-2.25 2.25m-16.5 0v1.875c0 .621.504 1.125 1.125 1.125h14.25c.621 0 1.125-.504 1.125-1.125V13.5',
+    tone: 'text-gray-700 dark:text-gray-300',
+  },
+]
+
+const priorityActions = computed(() => {
+  const list = []
+  if (stockStats.value.zero) {
+    list.push({
+      id: 'zero',
+      label: `${stockStats.value.zero} ${stockStats.value.zero === 1 ? 'variação' : 'variações'} sem estoque`,
+      description: 'Prioridade alta para reposição ou ajuste.',
+      target: { tab: 'inventario', section: 'estoque', status: 'zero' },
+      tone: 'text-red-600 dark:text-red-400',
+    })
+  }
+  if (stockStats.value.critical + stockStats.value.alert) {
+    list.push({
+      id: 'alertas',
+      label: `${stockStats.value.critical + stockStats.value.alert} ${stockStats.value.critical + stockStats.value.alert === 1 ? 'variação' : 'variações'} em alerta`,
+      description: 'Conferir mínimo, consumo e necessidade de compra.',
+      target: { tab: 'inventario', section: 'estoque', status: '' },
+      tone: 'text-amber-600 dark:text-amber-400',
+    })
+  }
+  if (destinationAlerts.value.length) {
+    list.push({
+      id: 'destinos',
+      label: `${destinationAlerts.value.length} destino${destinationAlerts.value.length === 1 ? '' : 's'} com alerta`,
+      description: 'Ver materiais críticos por máquina ou local.',
+      target: { tab: 'inventario', section: 'estoque', status: '' },
+      tone: 'text-amber-600 dark:text-amber-400',
+    })
+  }
+  if (openOrders.value.length) {
+    list.push({
+      id: 'os',
+      label: `${openOrders.value.length} OS aberta${openOrders.value.length === 1 ? '' : 's'}`,
+      description: 'Continuar manutenções pendentes.',
+      target: { tab: 'ordens', subTab: 'ordens' },
+      tone: 'text-primary-600 dark:text-primary-400',
+    })
+  }
+  if (motorsInMaintenance.value.length) {
+    list.push({
+      id: 'motores',
+      label: `${motorsInMaintenance.value.length} motor${motorsInMaintenance.value.length === 1 ? '' : 'es'} em manutenção`,
+      description: 'Acompanhar OS e eventos de motor.',
+      target: { tab: 'motores' },
+      tone: 'text-primary-600 dark:text-primary-400',
+    })
+  }
+  if (!lastClosing.value) {
+    list.push({
+      id: 'sem-fechamento',
+      label: 'Nenhum fechamento registrado',
+      description: 'Abrir rotina de fechamento mensal.',
+      target: { tab: 'inventario', section: 'fechamentos' },
+      tone: 'text-amber-600 dark:text-amber-400',
+    })
+  }
+  return list.slice(0, 6)
+})
+
 function formatMonth(closing) {
   if (!closing) return '-'
   return `${String(closing.month).padStart(2, '0')}/${closing.year}`
@@ -135,6 +246,10 @@ function formatMonth(closing) {
 function pageSlice(list, page) {
   const start = (page - 1) * DASHBOARD_PAGE_SIZE
   return list.slice(start, start + DASHBOARD_PAGE_SIZE)
+}
+
+function go(target) {
+  emit('go', target)
 }
 
 watch(lowStockAllRows, () => {
@@ -150,42 +265,104 @@ watch(topConsumedAllItems, () => {
   <div class="ds-page-stack">
     <header class="ds-page-header">
       <div>
-        <p class="ds-page-kicker">Visao geral</p>
+        <p class="ds-page-kicker">Visão geral</p>
         <h1 class="ds-page-title">Dashboard</h1>
-        <p class="ds-page-subtitle">Resumo operacional de estoque, movimentacoes, ordens e motores.</p>
+        <p class="ds-page-subtitle">Resumo operacional de estoque, movimentações, ordens e motores.</p>
       </div>
-      <button class="ds-segmented-item ds-segmented-item-active" @click="emit('go', 'fechamentos')">
+      <button class="ds-segmented-item ds-segmented-item-active" @click="go({ tab: 'inventario', section: 'fechamentos' })">
         Fechamentos
       </button>
     </header>
 
+    <section class="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-4">
+      <div class="ds-list-panel">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 class="ds-section-heading">Atalhos acionáveis</h2>
+            <p class="mt-1 text-xs ds-muted">Caminhos rápidos para as rotinas mais usadas.</p>
+          </div>
+          <span class="ds-chip">Operação</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+          <button
+            v-for="action in shortcutActions"
+            :key="action.id"
+            type="button"
+            class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-left transition-colors hover:border-primary-300 dark:hover:border-primary-700 hover:bg-gray-50 dark:hover:bg-white/[0.03] cursor-pointer"
+            :title="action.target.requiresAuth && !isLoggedIn ? 'Entre para usar este atalho' : action.description"
+            @click="go(action.target)"
+          >
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950" :class="action.tone">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="action.icon" />
+                </svg>
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ action.label }}</span>
+                <span class="mt-1 block text-xs ds-muted leading-5">{{ action.description }}</span>
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="ds-list-panel">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 class="ds-section-heading">Prioridades</h2>
+            <p class="mt-1 text-xs ds-muted">Pendências com destino direto para resolver.</p>
+          </div>
+          <span class="ds-chip">{{ priorityActions.length }}</span>
+        </div>
+        <div v-if="!priorityActions.length" class="p-4 text-sm ds-muted">Nenhuma prioridade operacional agora.</div>
+        <button
+          v-for="action in priorityActions"
+          :key="action.id"
+          type="button"
+          class="ds-list-row w-full text-left p-4 cursor-pointer"
+          @click="go(action.target)"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold truncate" :class="action.tone">{{ action.label }}</p>
+              <p class="mt-1 text-xs ds-muted truncate">{{ action.description }}</p>
+            </div>
+            <svg class="mt-1 h-4 w-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </div>
+        </button>
+      </div>
+    </section>
+
     <section class="ds-metric-grid">
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'inventario')">
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: 'zero' })">
         <p class="ds-metric-label">Sem estoque</p>
         <p class="ds-metric-value text-red-500">{{ stockStats.zero }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'inventario')">
-        <p class="ds-metric-label">Criticos / alerta</p>
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
+        <p class="ds-metric-label">Críticos / alerta</p>
         <p class="ds-metric-value text-amber-500">{{ stockStats.critical + stockStats.alert }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'inventario')">
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
         <p class="ds-metric-label">Destinos em alerta</p>
         <p class="ds-metric-value text-amber-500">{{ destinationAlerts.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'movimentacoes')">
-        <p class="ds-metric-label">Saidas no mes</p>
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'movimentacoes', subTab: 'historico' })">
+        <p class="ds-metric-label">Saídas no mês</p>
         <p class="ds-metric-value text-red-500">{{ movementStats.saidas }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'ordens')">
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'ordens', subTab: 'ordens' })">
         <p class="ds-metric-label">OS abertas</p>
         <p class="ds-metric-value">{{ openOrders.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'motores')">
-        <p class="ds-metric-label">Motores em manutencao</p>
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'motores' })">
+        <p class="ds-metric-label">Motores em manutenção</p>
         <p class="ds-metric-value">{{ motorsInMaintenance.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="emit('go', 'fechamentos')">
-        <p class="ds-metric-label">Ultimo fechamento</p>
+      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'fechamentos' })">
+        <p class="ds-metric-label">Último fechamento</p>
         <p class="ds-metric-value">{{ formatMonth(lastClosing) }}</p>
       </button>
     </section>
@@ -193,7 +370,7 @@ watch(topConsumedAllItems, () => {
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <section class="ds-list-panel">
         <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-          <h2 class="ds-section-heading">Estoque em atencao</h2>
+          <h2 class="ds-section-heading">Estoque em atenção</h2>
           <div class="flex items-center gap-2">
             <span class="ds-chip">{{ lowStockAllRows.length }} itens</span>
             <div v-if="lowStockTotalPages > 1" class="flex items-center gap-1">
@@ -208,7 +385,7 @@ watch(topConsumedAllItems, () => {
           v-for="row in lowStockRows"
           :key="row.variation.id"
           class="ds-list-row text-left p-4 cursor-pointer"
-          @click="emit('go', 'inventario')"
+          @click="go({ tab: 'inventario', section: 'estoque', status: row.status })"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -231,7 +408,7 @@ watch(topConsumedAllItems, () => {
           v-for="dest in destinationAlerts"
           :key="dest.id"
           class="ds-list-row text-left p-4 cursor-pointer"
-          @click="emit('go', 'inventario')"
+          @click="go({ tab: 'inventario', section: 'estoque', status: '' })"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -250,7 +427,7 @@ watch(topConsumedAllItems, () => {
 
       <section class="ds-list-panel">
         <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-          <h2 class="ds-section-heading">Mais consumidos no mes</h2>
+          <h2 class="ds-section-heading">Mais consumidos no mês</h2>
           <div class="flex items-center gap-2">
             <span class="ds-chip">Ranking</span>
             <div v-if="consumedTotalPages > 1" class="flex items-center gap-1">
@@ -260,7 +437,7 @@ watch(topConsumedAllItems, () => {
             </div>
           </div>
         </div>
-        <div v-if="!topConsumedItems.length" class="p-4 text-sm ds-muted">Nenhuma saida registrada neste mes.</div>
+        <div v-if="!topConsumedItems.length" class="p-4 text-sm ds-muted">Nenhuma saída registrada neste mês.</div>
         <div v-for="item in topConsumedItems" :key="item.label" class="ds-list-row p-4">
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-gray-900 dark:text-gray-100 truncate">{{ item.label }}</p>
@@ -271,9 +448,9 @@ watch(topConsumedAllItems, () => {
 
       <section class="ds-list-panel">
         <div class="p-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 class="ds-section-heading">Consumo por destino no mes</h2>
+          <h2 class="ds-section-heading">Consumo por destino no mês</h2>
         </div>
-        <div v-if="!topDestinations.length" class="p-4 text-sm ds-muted">Nenhum destino com saida neste mes.</div>
+        <div v-if="!topDestinations.length" class="p-4 text-sm ds-muted">Nenhum destino com saída neste mês.</div>
         <div v-for="dest in topDestinations" :key="dest.label" class="ds-list-row p-4">
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-gray-900 dark:text-gray-100 truncate">{{ dest.label }}</p>

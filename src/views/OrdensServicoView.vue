@@ -372,8 +372,20 @@ watch(() => props.createOnly, (createOnly) => {
 }, { immediate: true })
 
 watch(() => props.initialTab, (tab) => {
-  if (tab && visibleSubTabs.value.some(t => t.id === tab)) {
-    activeSubTab.value = tab
+  if (!tab || !visibleSubTabs.value.some(t => t.id === tab)) return
+  activeSubTab.value = tab
+  if (tab === 'nova') {
+    if (!canManageOs.value) {
+      activeSubTab.value = 'ordens'
+      showNewForm.value = false
+      return
+    }
+    editingOrderId.value = null
+    motorEventOrderId.value = null
+    showNewForm.value = true
+    resetOsForm()
+  } else if (tab !== 'ordens') {
+    showNewForm.value = false
   }
 }, { immediate: true })
 
