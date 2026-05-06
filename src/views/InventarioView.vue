@@ -64,12 +64,69 @@ function normalizeSearchText(value) {
     .toLowerCase()
 }
 
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function compareText(a, b) {
+  return collator.compare(String(a || ''), String(b || ''))
+}
+
+function rowVariationText(row) {
+  const values = Object.entries(row.variation.values || {}).map(([key, value]) => `${key}: ${value}`)
+  const extras = Object.entries(row.variation.extras || {}).map(([key, value]) => `${key}: ${value}`)
+  return [...values, ...extras].filter(Boolean).join(' ')
+}
+
+function compareInventoryRows(a, b) {
+  return compareText(a.item.group, b.item.group) ||
+    compareText(a.item.category, b.item.category) ||
+    compareText(a.item.subcategory, b.item.subcategory) ||
+    compareText(a.item.name, b.item.name) ||
+    compareText(rowVariationText(a), rowVariationText(b))
+}
+
+function compareNumber(a, b) {
+  return Number(a || 0) - Number(b || 0)
+}
+
+function compareStatus(a, b) {
+  const order = { zero: 0, critical: 1, alert: 2, ok: 3 }
+  return (order[a] ?? 99) - (order[b] ?? 99)
+}
+
 const searchNorm = computed(() => normalizeSearchText(searchQuery.value))
 
 // ===== Pagination =====
 const currentPage = ref(1)
 const pageSize = ref(20)
 const PAGE_SIZE_OPTIONS = [20, 40, 60, 100]
+const sortKey = ref('item')
+const sortDirection = ref('asc')
+
+function compareSortColumn(a, b) {
+  if (sortKey.value === 'variation') return compareText(rowVariationText(a), rowVariationText(b)) || compareInventoryRows(a, b)
+  if (sortKey.value === 'current') return compareNumber(a.variation.stock, b.variation.stock) || compareInventoryRows(a, b)
+  if (sortKey.value === 'min') return compareNumber(a.variation.minStock, b.variation.minStock) || compareInventoryRows(a, b)
+  if (sortKey.value === 'status') return compareStatus(a.status, b.status) || compareInventoryRows(a, b)
+  return compareInventoryRows(a, b)
+}
+
+function sortRows(list) {
+  const direction = sortDirection.value === 'desc' ? -1 : 1
+  return [...list].sort((a, b) => compareSortColumn(a, b) * direction)
+}
+
+function setSort(key) {
+  if (sortKey.value === key) sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  else {
+    sortKey.value = key
+    sortDirection.value = 'asc'
+  }
+}
+
+function sortArrow(key) {
+  if (sortKey.value !== key) return ''
+  return sortDirection.value === 'asc' ? '↑' : '↓'
+}
 
 // ===== Status filter =====
 const filterStatus = ref('all')
@@ -90,12 +147,17 @@ const allRows = computed(() => {
       rows.push({ variation: v, item, status })
     }
   }
-  const order = { zero: 0, critical: 1, alert: 2, ok: 3 }
-  return rows.sort((a, b) => order[a.status] - order[b.status])
+  return rows.sort(compareInventoryRows)
 })
 
 // All alert rows (unfiltered)
-const alertRows = computed(() => allRows.value.filter(r => r.status !== 'ok'))
+const alertRows = computed(() => {
+  const order = { zero: 0, critical: 1, alert: 2, ok: 3 }
+  return allRows.value
+    .filter(r => r.status !== 'ok')
+    .slice()
+    .sort((a, b) => order[a.status] - order[b.status] || compareInventoryRows(a, b))
+})
 
 // Base rows depending on active tab
 const baseRows = computed(() => filterStatus.value === 'all' ? allRows.value : alertRows.value)
@@ -139,16 +201,17 @@ const afterHierarchy = computed(() => {
 
 // Fully filtered rows (all active filters)
 const filteredRows = computed(() => applyAttrFilters(afterHierarchy.value))
+const sortedFilteredRows = computed(() => sortRows(filteredRows.value))
 
 // ===== Paginated rows =====
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)))
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedFilteredRows.value.length / pageSize.value)))
 const paginatedRows = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
-  return filteredRows.value.slice(start, start + pageSize.value)
+  return sortedFilteredRows.value.slice(start, start + pageSize.value)
 })
 
 // Reset page when filters change
-watch([searchQuery, filterStatus, filterGroup, filterCategory, filterSubcategory, filterAttrValues, pageSize], () => {
+watch([searchQuery, filterStatus, filterGroup, filterCategory, filterSubcategory, filterAttrValues, pageSize, sortKey, sortDirection], () => {
   currentPage.value = 1
 })
 
@@ -218,7 +281,7 @@ const facetGroups = computed(() => {
   if (filterCategory.value) rows = rows.filter(r => r.item.category === filterCategory.value)
   if (filterSubcategory.value) rows = rows.filter(r => r.item.subcategory === filterSubcategory.value)
   rows = applyAttrFilters(rows)
-  return [...new Set(rows.map(r => r.item.group).filter(Boolean))]
+  return [...new Set(rows.map(r => r.item.group).filter(Boolean))].sort(compareText)
 })
 
 const facetCategories = computed(() => {
@@ -226,7 +289,7 @@ const facetCategories = computed(() => {
   if (filterGroup.value) rows = rows.filter(r => r.item.group === filterGroup.value)
   if (filterSubcategory.value) rows = rows.filter(r => r.item.subcategory === filterSubcategory.value)
   rows = applyAttrFilters(rows)
-  return [...new Set(rows.map(r => r.item.category).filter(Boolean))]
+  return [...new Set(rows.map(r => r.item.category).filter(Boolean))].sort(compareText)
 })
 
 const facetSubcategories = computed(() => {
@@ -234,7 +297,7 @@ const facetSubcategories = computed(() => {
   if (filterGroup.value) rows = rows.filter(r => r.item.group === filterGroup.value)
   if (filterCategory.value) rows = rows.filter(r => r.item.category === filterCategory.value)
   rows = applyAttrFilters(rows)
-  return [...new Set(rows.map(r => r.item.subcategory).filter(Boolean))]
+  return [...new Set(rows.map(r => r.item.subcategory).filter(Boolean))].sort(compareText)
 })
 
 // ---- Attribute facet keys & values ----
@@ -249,7 +312,7 @@ const facetAttrKeys = computed(() => {
       if (r.variation.extras[k]) keys.add(k)
   }
   for (const k of Object.keys(filterAttrValues.value)) keys.add(k)
-  return [...keys]
+  return [...keys].sort(compareText)
 })
 
 // Values for key K: afterHierarchy with all attr filters EXCEPT K
@@ -260,7 +323,7 @@ function facetValuesForKey(key) {
     const v = r.variation.values?.[key] || r.variation.extras?.[key]
     if (v) vals.add(v)
   }
-  return [...vals].sort()
+  return [...vals].sort(compareText)
 }
 
 // Pre-computed map of attr values per key (avoids calling the function in template on every render)
@@ -543,7 +606,7 @@ function exportCSV() {
   const sep = ';'
   const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', `Saldo em ${cutoffLabel}`, 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local'].join(sep)
 
-  const rows = filteredRows.value.map(row => {
+  const rows = sortedFilteredRows.value.map(row => {
     const attrs = []
     for (const k of (row.item.attributes || [])) {
       const v = row.variation.values?.[k]
@@ -898,11 +961,31 @@ function exportCSV() {
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-                <th class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-[200px]">Item</th>
-                <th v-if="isColumnVisible('variation')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Variação</th>
-                <th v-if="isColumnVisible('current')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Qtd. atual</th>
-                <th v-if="isColumnVisible('min')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20">Mín.</th>
-                <th v-if="isColumnVisible('status')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32">Status</th>
+                <th class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-[200px]">
+                  <button type="button" class="inline-flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('item')">
+                    Item <span class="text-[10px]">{{ sortArrow('item') }}</span>
+                  </button>
+                </th>
+                <th v-if="isColumnVisible('variation')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                  <button type="button" class="inline-flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('variation')">
+                    Variação <span class="text-[10px]">{{ sortArrow('variation') }}</span>
+                  </button>
+                </th>
+                <th v-if="isColumnVisible('current')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">
+                  <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('current')">
+                    Qtd. atual <span class="text-[10px]">{{ sortArrow('current') }}</span>
+                  </button>
+                </th>
+                <th v-if="isColumnVisible('min')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20">
+                  <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('min')">
+                    Mín. <span class="text-[10px]">{{ sortArrow('min') }}</span>
+                  </button>
+                </th>
+                <th v-if="isColumnVisible('status')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32">
+                  <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('status')">
+                    Status <span class="text-[10px]">{{ sortArrow('status') }}</span>
+                  </button>
+                </th>
                 <th v-if="isColumnVisible('history')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28">Histórico</th>
                 <th v-if="isAdmin && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-36">Ajustar estoque</th>
               </tr>
@@ -1052,7 +1135,7 @@ function exportCSV() {
               </select>
               <span>por página</span>
               <span class="text-gray-400 dark:text-gray-500 ml-2">
-                {{ (currentPage - 1) * pageSize + 1 }}–{{ Math.min(currentPage * pageSize, filteredRows.length) }} de {{ filteredRows.length }}
+                {{ (currentPage - 1) * pageSize + 1 }}–{{ Math.min(currentPage * pageSize, sortedFilteredRows.length) }} de {{ sortedFilteredRows.length }}
               </span>
             </div>
 

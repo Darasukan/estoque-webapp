@@ -18,16 +18,33 @@ function movementVariationLabel(m) {
   return parts.length ? parts.join(' - ') : '-'
 }
 
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function compareText(a, b) {
+  return collator.compare(String(a || ''), String(b || ''))
+}
+
+function compareMaterial(a, b) {
+  return compareText(a.itemGroup, b.itemGroup) ||
+    compareText(a.itemCategory, b.itemCategory) ||
+    compareText(a.itemSubcategory, b.itemSubcategory) ||
+    compareText(a.itemName, b.itemName) ||
+    compareText(a.variation, b.variation)
+}
+
 export function useDestinationSummary({ destinations, movements, getDestFullName }) {
   const summarySearch = ref('')
   const expandedSummaryDestId = ref(null)
 
   const orderedRegisteredDestinations = computed(() => {
     const list = []
-    const parents = destinations.value.filter(d => !d.parentId)
+    const parents = destinations.value.filter(d => !d.parentId).sort((a, b) => compareText(a.name, b.name))
     for (const parent of parents) {
       list.push(parent)
-      for (const child of destinations.value.filter(d => d.parentId === parent.id)) {
+      const children = destinations.value
+        .filter(d => d.parentId === parent.id)
+        .sort((a, b) => compareText(a.name, b.name))
+      for (const child of children) {
         list.push(child)
       }
     }
@@ -75,7 +92,7 @@ export function useDestinationSummary({ destinations, movements, getDestFullName
         if (new Date(m.date) > new Date(materialMap[key].lastDate)) materialMap[key].lastDate = m.date
       }
 
-      const materials = Object.values(materialMap).sort((a, b) => b.qty - a.qty)
+      const materials = Object.values(materialMap).sort(compareMaterial)
       return {
         id: dest.id,
         name: dest.name,

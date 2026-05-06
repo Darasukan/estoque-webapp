@@ -30,6 +30,8 @@ const search = ref('')
 const statusFilter = ref('')
 const motorPage = ref(1)
 const MOTOR_PAGE_SIZE = 8
+const motorSortKey = ref('tag')
+const motorSortDirection = ref('asc')
 const motorViewMode = ref('motores')
 const selectedMotorId = ref('')
 const showForm = ref(false)
@@ -43,6 +45,43 @@ const locationTrailOpen = ref(false)
 const selectedEventCountType = ref('rebobinado')
 
 const motorForm = ref(emptyMotorForm())
+
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function compareText(a, b) {
+  return collator.compare(String(a || ''), String(b || ''))
+}
+
+function compareMotorSort(a, b) {
+  if (motorSortKey.value === 'name') {
+    return compareText(a.name || a.manufacturer, b.name || b.manufacturer) || compareText(a.tag, b.tag)
+  }
+  if (motorSortKey.value === 'destination') {
+    return compareText(a.destinationName, b.destinationName) || compareText(a.tag, b.tag)
+  }
+  if (motorSortKey.value === 'status') {
+    return compareText(motorStatusLabel(a.status), motorStatusLabel(b.status)) || compareText(a.tag, b.tag)
+  }
+  return compareText(a.tag, b.tag)
+}
+
+function sortMotors(list) {
+  const direction = motorSortDirection.value === 'desc' ? -1 : 1
+  return [...list].sort((a, b) => compareMotorSort(a, b) * direction)
+}
+
+function setMotorSort(key) {
+  if (motorSortKey.value === key) motorSortDirection.value = motorSortDirection.value === 'asc' ? 'desc' : 'asc'
+  else {
+    motorSortKey.value = key
+    motorSortDirection.value = 'asc'
+  }
+}
+
+function motorSortArrow(key) {
+  if (motorSortKey.value !== key) return ''
+  return motorSortDirection.value === 'asc' ? '↑' : '↓'
+}
 
 function emptyMotorForm() {
   return {
@@ -70,7 +109,7 @@ const orderedDestinations = computed(() => {
 
 const filteredMotors = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return motors.value.filter(m => {
+  return sortMotors(motors.value.filter(m => {
     if (statusFilter.value && m.status !== statusFilter.value) return false
     if (!q) return true
     const haystack = [
@@ -78,7 +117,7 @@ const filteredMotors = computed(() => {
       m.destinationName, m.status, m.notes,
     ].join(' ').toLowerCase()
     return haystack.includes(q)
-  })
+  }))
 })
 
 const selectedMotor = computed(() =>
@@ -174,7 +213,7 @@ watch(selectedMotor, (motor) => {
   locationTrailOpen.value = false
 }, { immediate: true })
 
-watch([search, statusFilter, filteredMotors], () => {
+watch([search, statusFilter, filteredMotors, motorSortKey, motorSortDirection], () => {
   if (motorPage.value > motorTotalPages.value) motorPage.value = motorTotalPages.value
   if (motorPage.value < 1) motorPage.value = 1
 })
@@ -452,6 +491,25 @@ function workOrderEndLabel(order) {
           <option value="">Todos</option>
           <option v-for="s in MOTOR_STATUSES" :key="s.id" :value="s.id">{{ s.label }}</option>
         </select>
+      </div>
+
+      <div class="ds-toolbar flex-wrap gap-1.5">
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mr-1">Ordenar</span>
+        <button
+          v-for="option in [
+            { key: 'tag', label: 'Tag' },
+            { key: 'name', label: 'Nome' },
+            { key: 'destination', label: 'Local' },
+            { key: 'status', label: 'Status' },
+          ]"
+          :key="option.key"
+          type="button"
+          class="ds-chip cursor-pointer transition-colors"
+          :class="motorSortKey === option.key ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+          @click="setMotorSort(option.key)"
+        >
+          {{ option.label }} {{ motorSortArrow(option.key) }}
+        </button>
       </div>
 
       <div class="ds-list-panel">

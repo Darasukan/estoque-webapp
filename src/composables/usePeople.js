@@ -3,14 +3,22 @@ import * as api from '../services/api.js'
 
 // Singleton state
 const people = ref([])
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function sortByName(list) {
+  return [...list].sort((a, b) =>
+    collator.compare(a.name || '', b.name || '') ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
 
 export function usePeople() {
   async function loadData() {
-    people.value = await api.getPeople()
+    people.value = sortByName(await api.getPeople())
   }
 
   const activePeople = computed(() =>
-    people.value.filter(p => p.active)
+    sortByName(people.value.filter(p => p.active))
   )
 
   async function addPerson(name, role = '') {
@@ -25,6 +33,7 @@ export function usePeople() {
       active: true,
     })
     people.value.push(created)
+    people.value = sortByName(people.value)
     return { ok: true, person: created }
   }
 
@@ -40,6 +49,7 @@ export function usePeople() {
     }
     const updated = await api.updatePerson(id, { ...p, ...changes })
     Object.assign(p, updated)
+    people.value = sortByName(people.value)
     return { ok: true }
   }
 

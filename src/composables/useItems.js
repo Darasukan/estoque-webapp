@@ -25,6 +25,34 @@ const activeCategory = ref(null)
 const activeSubcategory = ref(null)
 const activeFilters = ref({})
 const viewingItemId = ref(null) // item currently open in detail view
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function compareText(a, b) {
+  return collator.compare(String(a || ''), String(b || ''))
+}
+
+function variationSortText(variation) {
+  const values = Object.entries(variation.values || {}).map(([key, value]) => `${key}: ${value}`)
+  const extras = Object.entries(variation.extras || {}).map(([key, value]) => `${key}: ${value}`)
+  return [...values, ...extras].filter(Boolean).join(' ')
+}
+
+function sortItems(list) {
+  return [...list].sort((a, b) =>
+    compareText(a.group, b.group) ||
+    compareText(a.category, b.category) ||
+    compareText(a.subcategory, b.subcategory) ||
+    compareText(a.name, b.name) ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
+
+function sortVariations(list) {
+  return [...list].sort((a, b) =>
+    compareText(variationSortText(a), variationSortText(b)) ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
 
 // ===== Faceted filter helpers (pure functions) =====
 function _splitFilters(filters) {
@@ -87,8 +115,8 @@ export function useItems() {
       api.getVariations(),
       api.getDisplayOrder()
     ])
-    if (itemsRes.status === 'fulfilled') items.value = itemsRes.value
-    if (varsRes.status === 'fulfilled') variations.value = varsRes.value
+    if (itemsRes.status === 'fulfilled') items.value = sortItems(itemsRes.value)
+    if (varsRes.status === 'fulfilled') variations.value = sortVariations(varsRes.value)
     if (orderRes.status === 'fulfilled') orderData.value = orderRes.value || {}
   }
 
@@ -106,6 +134,7 @@ export function useItems() {
       location: data.location || ''
     })
     items.value.push(created)
+    items.value = sortItems(items.value)
   }
 
   async function editItem(id, changes) {
@@ -115,6 +144,7 @@ export function useItems() {
     const merged = { ...item, ...changes }
     await api.updateItem(id, merged)
     Object.assign(item, changes)
+    items.value = sortItems(items.value)
   }
 
   async function deleteItem(id) {
@@ -125,7 +155,7 @@ export function useItems() {
 
   // ===== Variations CRUD =====
   function getVariationsForItem(itemId) {
-    return variations.value.filter(v => v.itemId === itemId)
+    return sortVariations(variations.value.filter(v => v.itemId === itemId))
   }
 
   /**
@@ -149,6 +179,7 @@ export function useItems() {
       destinations: Array.isArray(destinations) ? [...destinations] : [],
     })
     variations.value.push(created)
+    variations.value = sortVariations(variations.value)
     return { ok: true, variation: created }
   }
 
@@ -169,6 +200,7 @@ export function useItems() {
     if (changes.destinations !== undefined) updated.destinations = Array.isArray(changes.destinations) ? [...changes.destinations] : []
     const result = await api.updateVariation(id, updated)
     Object.assign(v, result)
+    variations.value = sortVariations(variations.value)
     return { ok: true }
   }
 
@@ -186,8 +218,8 @@ export function useItems() {
   // ===== Seed (mass data) =====
   async function seedDatabase(seedItems, seedVars, seedExtras = {}) {
     await api.seedPopulate(seedItems, seedVars, seedExtras)
-    items.value = seedItems
-    variations.value = seedVars
+    items.value = sortItems(seedItems)
+    variations.value = sortVariations(seedVars)
     activeGroup.value = null
     activeFilters.value = {}
     window.dispatchEvent(new CustomEvent('app:data-invalidated'))
@@ -197,10 +229,11 @@ export function useItems() {
 
   // Apply a stored order to a list: ordered items first, then any new ones appended
   function _applyOrder(all, stored) {
-    if (!stored || !stored.length) return all
+    const sortedAll = [...all].sort(compareText)
+    if (!stored || !stored.length) return sortedAll
     return [
-      ...stored.filter(x => all.includes(x)),
-      ...all.filter(x => !stored.includes(x))
+      ...stored.filter(x => sortedAll.includes(x)),
+      ...sortedAll.filter(x => !stored.includes(x))
     ]
   }
 
@@ -534,7 +567,7 @@ export function useItems() {
     let r = groupItems.value
     if (activeCategory.value) r = r.filter(i => i.category === activeCategory.value)
     if (activeSubcategory.value) r = r.filter(i => i.subcategory === activeSubcategory.value)
-    return r
+    return sortItems(r)
   })
 
   const filteredResults = computed(() => {
@@ -549,7 +582,7 @@ export function useItems() {
         return vs.some(v => _varMatchesA(v, attrs))
       })
     }
-    return r
+    return sortItems(r)
   })
 
   const facets = computed(() => {
@@ -570,7 +603,7 @@ export function useItems() {
           const val = v.values?.[an] || ''
           if (val) counts[val] = (counts[val] || 0) + 1
         }
-        const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))
+        const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => compareText(a.value, b.value))
         if (opts.length >= 2) {
           out.push({ key: fk, label: an, options: opts, selected: aF[fk] || [] })
         }
@@ -605,7 +638,7 @@ export function useItems() {
       }
       const counts = {}
       for (const item of c) { const val = d.get(item); if (val) counts[val] = (counts[val] || 0) + 1 }
-      const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))
+      const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => compareText(a.value, b.value))
       if (opts.length >= 2 || hF[d.key]?.length) {
         out.push({ key: d.key, label: d.label, options: opts, selected: hF[d.key] || [] })
       }
@@ -615,7 +648,7 @@ export function useItems() {
     const hFilteredItems = Object.keys(hF).length ? all.filter(i => _itemMatchesH(i, hF)) : all
     const attrSet = new Set()
     for (const item of hFilteredItems) for (const a of item.attributes || []) attrSet.add(a)
-    for (const an of [...attrSet].sort()) {
+    for (const an of [...attrSet].sort(compareText)) {
       const fk = `attr:${an}`
       let c = hFilteredItems
       const oA = { ...aF }; delete oA[fk]
@@ -628,7 +661,7 @@ export function useItems() {
           if (val) counts[val] = (counts[val] || 0) + 1
         }
       }
-      const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))
+      const opts = Object.entries(counts).map(([value, count]) => ({ value, count })).sort((a, b) => compareText(a.value, b.value))
       if (opts.length >= 2 || aF[fk]?.length) {
         out.push({ key: fk, label: an, options: opts, selected: aF[fk] || [] })
       }

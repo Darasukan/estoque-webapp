@@ -2,13 +2,21 @@ import { ref, computed } from 'vue'
 import * as api from '../services/api.js'
 
 const users = ref([])
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function sortByName(list) {
+  return [...list].sort((a, b) =>
+    collator.compare(a.name || '', b.name || '') ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
 
 export function useUsers() {
   async function loadData() {
-    users.value = await api.getUsers()
+    users.value = sortByName(await api.getUsers())
   }
 
-  const activeUsers = computed(() => users.value.filter(u => u.active))
+  const activeUsers = computed(() => sortByName(users.value.filter(u => u.active)))
 
   async function addUser(name, pin, role = 'operador') {
     const trimmed = name.trim()
@@ -17,6 +25,7 @@ export function useUsers() {
     try {
       const created = await api.createUser({ name: trimmed, pin, role })
       users.value.push(created)
+      users.value = sortByName(users.value)
       return { ok: true, user: created }
     } catch (e) {
       return { ok: false, error: e.message }
@@ -28,6 +37,7 @@ export function useUsers() {
       const updated = await api.updateUser(id, changes)
       const u = users.value.find(u => u.id === id)
       if (u) Object.assign(u, updated)
+      users.value = sortByName(users.value)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e.message }

@@ -3,32 +3,40 @@ import * as api from '../services/api.js'
 
 // Singleton state
 const locais = ref([])
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function sortByName(list) {
+  return [...list].sort((a, b) =>
+    collator.compare(a.name || '', b.name || '') ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
 
 export function useLocations() {
   async function loadData() {
-    locais.value = await api.getLocations()
+    locais.value = sortByName(await api.getLocations())
   }
 
   const activeLocais = computed(() =>
-    locais.value.filter(l => l.active)
+    sortByName(locais.value.filter(l => l.active))
   )
 
   /** Top-level locations (no parent) */
   const topLevelLocais = computed(() =>
-    locais.value.filter(l => !l.parentId)
+    sortByName(locais.value.filter(l => !l.parentId))
   )
 
   const activeTopLevel = computed(() =>
-    locais.value.filter(l => !l.parentId && l.active)
+    sortByName(locais.value.filter(l => !l.parentId && l.active))
   )
 
   /** Get active children of a parent */
   function getChildren(parentId) {
-    return locais.value.filter(l => l.parentId === parentId)
+    return sortByName(locais.value.filter(l => l.parentId === parentId))
   }
 
   function getActiveChildren(parentId) {
-    return locais.value.filter(l => l.parentId === parentId && l.active)
+    return sortByName(locais.value.filter(l => l.parentId === parentId && l.active))
   }
 
   /** Get full display name: "Parent > Child" or just "Name" */
@@ -80,6 +88,7 @@ export function useLocations() {
       parentId: parentId || null,
     })
     locais.value.push(created)
+    locais.value = sortByName(locais.value)
     return { ok: true, local: created }
   }
 
@@ -96,6 +105,7 @@ export function useLocations() {
     }
     const updated = await api.updateLocation(id, { ...l, ...changes })
     Object.assign(l, updated)
+    locais.value = sortByName(locais.value)
     return { ok: true }
   }
 

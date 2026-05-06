@@ -3,30 +3,38 @@ import * as api from '../services/api.js'
 
 // Singleton state
 const destinations = ref([])
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+function sortByName(list) {
+  return [...list].sort((a, b) =>
+    collator.compare(a.name || '', b.name || '') ||
+    String(a.id || '').localeCompare(String(b.id || ''))
+  )
+}
 
 export function useDestinations() {
   async function loadData() {
-    destinations.value = await api.getDestinations()
+    destinations.value = sortByName(await api.getDestinations())
   }
 
   const activeDestinations = computed(() =>
-    destinations.value.filter(d => d.active)
+    sortByName(destinations.value.filter(d => d.active))
   )
 
   const topLevelDestinations = computed(() =>
-    destinations.value.filter(d => !d.parentId)
+    sortByName(destinations.value.filter(d => !d.parentId))
   )
 
   const activeTopLevelDest = computed(() =>
-    destinations.value.filter(d => !d.parentId && d.active)
+    sortByName(destinations.value.filter(d => !d.parentId && d.active))
   )
 
   function getDestChildren(parentId) {
-    return destinations.value.filter(d => d.parentId === parentId)
+    return sortByName(destinations.value.filter(d => d.parentId === parentId))
   }
 
   function getActiveDestChildren(parentId) {
-    return destinations.value.filter(d => d.parentId === parentId && d.active)
+    return sortByName(destinations.value.filter(d => d.parentId === parentId && d.active))
   }
 
   function getDestFullName(idOrName) {
@@ -69,6 +77,7 @@ export function useDestinations() {
       parentId: parentId || null,
     })
     destinations.value.push(created)
+    destinations.value = sortByName(destinations.value)
     return { ok: true, destination: created }
   }
 
@@ -85,6 +94,7 @@ export function useDestinations() {
     }
     const updated = await api.updateDestination(id, { ...d, ...changes })
     Object.assign(d, updated)
+    destinations.value = sortByName(destinations.value)
     return { ok: true }
   }
 
