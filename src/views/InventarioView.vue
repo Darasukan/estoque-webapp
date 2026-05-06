@@ -4,12 +4,53 @@ import { useItems } from '../composables/useItems.js'
 import { stockAlertStatus } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useToast } from '../composables/useToast.js'
+import FechamentosView from './FechamentosView.vue'
 
+const props = defineProps({
+  initialSection: {
+    type: String,
+    default: 'estoque',
+  },
+})
 const isAdmin = inject('isAdmin')
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
 const { movements, addMovement } = useMovements()
 const { success, error } = useToast()
+const inventorySection = ref(['estoque', 'fechamentos'].includes(props.initialSection) ? props.initialSection : 'estoque')
+const columnMenuOpen = ref(false)
+const visibleColumns = ref({
+  variation: true,
+  current: true,
+  min: true,
+  status: true,
+  history: true,
+  adjust: true,
+})
+
+const columnOptions = computed(() => [
+  { key: 'variation', label: 'Variação' },
+  { key: 'current', label: 'Qtd. atual' },
+  { key: 'min', label: 'Mín.' },
+  { key: 'status', label: 'Status' },
+  { key: 'history', label: 'Histórico por item' },
+  ...(isAdmin?.value ? [{ key: 'adjust', label: 'Ajustar estoque' }] : []),
+])
+
+watch(() => props.initialSection, section => {
+  if (['estoque', 'fechamentos'].includes(section)) inventorySection.value = section
+})
+
+function isColumnVisible(key) {
+  return visibleColumns.value[key] !== false
+}
+
+function toggleColumn(key) {
+  visibleColumns.value = {
+    ...visibleColumns.value,
+    [key]: !isColumnVisible(key),
+  }
+}
 
 // ===== Search =====
 const searchQuery = ref('')
@@ -341,6 +382,55 @@ function onAdjustKeydown(e, varId) {
   else if (e.key === 'Escape') cancelAdjust()
 }
 
+// ===== Variation movement history =====
+const historyRow = ref(null)
+
+const historyMovements = computed(() => {
+  if (!historyRow.value) return []
+  return movements.value
+    .filter(m => m.variationId === historyRow.value.variation.id)
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+})
+
+const historyTotals = computed(() => {
+  const totals = { entradas: 0, saidas: 0 }
+  for (const movement of historyMovements.value) {
+    if (movement.type === 'entrada') totals.entradas += Number(movement.qty || 0)
+    else totals.saidas += Number(movement.qty || 0)
+  }
+  return totals
+})
+
+function openVariationHistory(row) {
+  historyRow.value = row
+}
+
+function closeVariationHistory() {
+  historyRow.value = null
+}
+
+function formatHistoryDate(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR')
+}
+
+function movementResponsible(movement) {
+  return movement.supplier || movement.requestedBy || '-'
+}
+
+function movementPlace(movement) {
+  return movement.destination || movement.location || movement.note || '-'
+}
+
+function movementStock(movement) {
+  const before = movement.stockBefore ?? movement.beforeStock
+  const after = movement.stockAfter ?? movement.afterStock
+  if (before === undefined || after === undefined) return '-'
+  return `${before} -> ${after}`
+}
+
 // ===== Collapsible attr sections =====
 const collapsedAttrs = ref({})
 
@@ -515,6 +605,26 @@ function exportCSV() {
       </div>
     </div>
 
+    <div class="ds-segmented">
+      <button
+        type="button"
+        class="ds-segmented-item"
+        :class="inventorySection === 'estoque' ? 'ds-segmented-item-active' : ''"
+        @click="inventorySection = 'estoque'"
+      >
+        Estoque
+      </button>
+      <button
+        type="button"
+        class="ds-segmented-item"
+        :class="inventorySection === 'fechamentos' ? 'ds-segmented-item-active' : ''"
+        @click="inventorySection = 'fechamentos'"
+      >
+        Fechamentos
+      </button>
+    </div>
+
+    <template v-if="inventorySection === 'estoque'">
     <!-- Filter tabs + CSV export -->
     <div class="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-1">
@@ -542,6 +652,42 @@ function exportCSV() {
 
       <!-- CSV export -->
       <div class="flex items-center gap-2 pb-1">
+        <div class="relative">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-500 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+            @click="columnMenuOpen = !columnMenuOpen"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5" />
+            </svg>
+            Colunas
+          </button>
+          <div
+            v-if="columnMenuOpen"
+            class="absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+          >
+            <button
+              v-for="column in columnOptions"
+              :key="column.key"
+              type="button"
+              class="w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              @click="toggleColumn(column.key)"
+            >
+              <span
+                class="flex h-4 w-4 items-center justify-center rounded border"
+                :class="isColumnVisible(column.key)
+                  ? 'border-primary-500 bg-primary-600 text-white'
+                  : 'border-gray-300 dark:border-gray-600'"
+              >
+                <svg v-if="isColumnVisible(column.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              </span>
+              {{ column.label }}
+            </button>
+          </div>
+        </div>
         <select
           v-model="csvSelectedMonth"
           class="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
@@ -748,15 +894,17 @@ function exportCSV() {
         </div>
 
         <div v-else>
+          <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
                 <th class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-[200px]">Item</th>
-                <th class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Variação</th>
-                <th class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Qtd. atual</th>
-                <th class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20">Mín.</th>
-                <th class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32">Status</th>
-                <th v-if="isAdmin" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-36">Ajustar estoque</th>
+                <th v-if="isColumnVisible('variation')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Variação</th>
+                <th v-if="isColumnVisible('current')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Qtd. atual</th>
+                <th v-if="isColumnVisible('min')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20">Mín.</th>
+                <th v-if="isColumnVisible('status')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32">Status</th>
+                <th v-if="isColumnVisible('history')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28">Histórico</th>
+                <th v-if="isAdmin && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-36">Ajustar estoque</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -772,7 +920,7 @@ function exportCSV() {
                 </td>
 
                 <!-- Variação: attribute pills -->
-                <td class="px-4 py-3">
+                <td v-if="isColumnVisible('variation')" class="px-4 py-3">
                   <div class="flex flex-wrap gap-1">
                     <!-- Template attribute pills (blue) -->
                     <template v-for="attr in (row.item.attributes || [])" :key="attr">
@@ -803,7 +951,7 @@ function exportCSV() {
                 </td>
 
                 <!-- Qtd atual -->
-                <td class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('current')" class="px-4 py-3 text-center">
                   <span
                     class="text-base font-semibold"
                     :class="row.status === 'zero'
@@ -818,21 +966,34 @@ function exportCSV() {
                 </td>
 
                 <!-- Mín. -->
-                <td class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('min')" class="px-4 py-3 text-center">
                   <span v-if="row.variation.minStock > 0" class="text-gray-600 dark:text-gray-400">{{ row.variation.minStock }}</span>
                   <span v-else class="text-gray-300 dark:text-gray-600">—</span>
                 </td>
 
                 <!-- Status pill -->
-                <td class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('status')" class="px-4 py-3 text-center">
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
                     :class="STATUS_CONFIG[row.status].pillClass"
                   >{{ STATUS_CONFIG[row.status].label }}</span>
                 </td>
 
+                <!-- Histórico -->
+                <td v-if="isColumnVisible('history')" class="px-4 py-3 text-center">
+                  <button
+                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                    @click="openVariationHistory(row)"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    Histórico
+                  </button>
+                </td>
+
                 <!-- Ajustar estoque -->
-                <td v-if="isAdmin" class="px-4 py-3 text-center">
+                <td v-if="isAdmin && isColumnVisible('adjust')" class="px-4 py-3 text-center">
                   <div v-if="adjustingId === row.variation.id" class="flex items-center justify-center gap-1">
                     <input
                       ref="adjustInput"
@@ -844,7 +1005,7 @@ function exportCSV() {
                       @keydown="onAdjustKeydown($event, row.variation.id)"
                     />
                     <button
-                      class="p-1 rounded text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
+                      class="p-1 rounded text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors cursor-pointer"
                       title="Confirmar"
                       @click="confirmAdjust(row.variation.id)"
                     >
@@ -853,7 +1014,7 @@ function exportCSV() {
                       </svg>
                     </button>
                     <button
-                      class="p-1 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      class="p-1 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                       title="Cancelar"
                       @click="cancelAdjust"
                     >
@@ -864,7 +1025,7 @@ function exportCSV() {
                   </div>
                   <button
                     v-else
-                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
                     @click="startAdjust(row.variation.id, row.variation.stock)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -876,6 +1037,7 @@ function exportCSV() {
               </tr>
             </tbody>
           </table>
+          </div>
 
           <!-- Pagination controls -->
           <div class="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40">
@@ -942,6 +1104,112 @@ function exportCSV() {
         </div>
 
       </div>
+    </div>
+
+    </template>
+
+    <FechamentosView v-else />
+
+    <div
+      v-if="historyRow"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click.self="closeVariationHistory"
+    >
+      <section class="w-full max-w-5xl max-h-[86vh] overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div class="flex items-start justify-between gap-4 border-b border-gray-200 dark:border-gray-700 p-4">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Histórico por item / variação</p>
+            <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">{{ historyRow.item.name }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">{{ hierarchyLabel(historyRow.item) }}</p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              <template v-for="attr in (historyRow.item.attributes || [])" :key="attr">
+                <span
+                  v-if="historyRow.variation.values && historyRow.variation.values[attr]"
+                  class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-100 dark:border-primary-800"
+                >
+                  <span class="font-medium opacity-60">{{ attr }}:</span>
+                  <span>{{ historyRow.variation.values[attr] }}</span>
+                </span>
+              </template>
+              <template v-for="(val, key) in (historyRow.variation.extras || {})" :key="'history-' + key">
+                <span
+                  v-if="val"
+                  class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800"
+                >
+                  <span class="font-medium opacity-60">{{ key }}:</span>
+                  <span>{{ val }}</span>
+                </span>
+              </template>
+            </div>
+          </div>
+          <button
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            title="Fechar"
+            @click="closeVariationHistory"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-gray-200 dark:border-gray-700 p-4">
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Estoque atual</p>
+            <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{{ historyRow.variation.stock }} {{ historyRow.item.unit }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Entradas registradas</p>
+            <p class="mt-1 text-xl font-semibold text-green-600 dark:text-green-400">{{ historyTotals.entradas }} {{ historyRow.item.unit }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Saídas registradas</p>
+            <p class="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{{ historyTotals.saidas }} {{ historyRow.item.unit }}</p>
+          </div>
+        </div>
+
+        <div class="max-h-[48vh] overflow-auto">
+          <div v-if="!historyMovements.length" class="p-6 text-sm text-gray-500 dark:text-gray-400">
+            Nenhuma movimentação registrada para esta variação.
+          </div>
+          <table v-else class="w-full text-sm">
+            <thead class="sticky top-0 bg-gray-50 dark:bg-gray-800">
+              <tr class="border-b border-gray-200 dark:border-gray-700">
+                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Data</th>
+                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Tipo</th>
+                <th class="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Qtd.</th>
+                <th class="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Estoque</th>
+                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Responsável / local</th>
+                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Doc</th>
+                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Operador</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <tr v-for="movement in historyMovements" :key="movement.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+                <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ formatHistoryDate(movement.date) }}</td>
+                <td class="px-4 py-3">
+                  <span
+                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    :class="movement.type === 'entrada'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'"
+                  >
+                    {{ movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100">{{ movement.qty }} {{ historyRow.item.unit }}</td>
+                <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ movementStock(movement) }}</td>
+                <td class="px-4 py-3">
+                  <p class="text-gray-900 dark:text-gray-100">{{ movementResponsible(movement) }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ movementPlace(movement) }}</p>
+                </td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ movement.docRef || '-' }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ movement.operatorName || movement.operator || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
   </div>

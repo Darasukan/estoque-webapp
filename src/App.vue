@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, provide, onMounted, onUnmounted, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
@@ -25,7 +25,6 @@ const InventarioView = defineAsyncComponent(() => import('./views/InventarioView
 const MovimentacoesView = defineAsyncComponent(() => import('./views/MovimentacoesView.vue'))
 const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
-const FechamentosView = defineAsyncComponent(() => import('./views/FechamentosView.vue'))
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
@@ -46,9 +45,12 @@ const sidebarCollapsed = ref(false)
 const catalogSearch = ref('')
 const catalogRef = ref(null)
 const activeTab = ref('dashboard')
+const requestedInventorySection = ref('estoque')
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
+const requestedMovSubTab = ref('entrada')
 const movRef = ref(null)
+const quickActionsOpen = ref(false)
 
 const showCatalogSidebar = computed(() =>
   activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
@@ -60,7 +62,6 @@ const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar
 
 const allTabs = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'fechamentos', label: 'Fechamentos' },
   { id: 'catalogo', label: 'Catálogo' },
   { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
@@ -93,10 +94,12 @@ onMounted(async () => {
   await checkSession()
   await loadAllData()
   window.addEventListener('app:data-invalidated', loadAllData)
+  window.addEventListener('keydown', handleQuickMovementKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('app:data-invalidated', loadAllData)
+  window.removeEventListener('keydown', handleQuickMovementKeydown)
 })
 
 // Reload data after login
@@ -106,6 +109,41 @@ watch(user, (newUser, oldUser) => {
 
 function onLoginClose() {
   showLoginModal.value = false
+}
+
+function openMovementTab(tab) {
+  if (!isLoggedIn.value) return
+  quickActionsOpen.value = false
+  activeTab.value = 'movimentacoes'
+  requestedMovSubTab.value = ''
+  nextTick(() => {
+    requestedMovSubTab.value = tab
+  })
+}
+
+function navigateTab(tab) {
+  if (tab === 'fechamentos') {
+    requestedInventorySection.value = 'fechamentos'
+    activeTab.value = 'inventario'
+    return
+  }
+  if (tab === 'inventario') requestedInventorySection.value = 'estoque'
+  activeTab.value = tab
+}
+
+function handleQuickMovementKeydown(event) {
+  if (!isLoggedIn.value || !event.altKey || event.ctrlKey || event.metaKey) return
+  const target = event.target
+  const tagName = String(target?.tagName || '').toLowerCase()
+  if (target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName)) return
+  const key = String(event.key || '').toLowerCase()
+  if (key === 'e') {
+    event.preventDefault()
+    openMovementTab('entrada')
+  } else if (key === 's') {
+    event.preventDefault()
+    openMovementTab('saida')
+  }
 }
 
 </script>
@@ -216,7 +254,7 @@ function onLoginClose() {
 
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
-        <DashboardView v-if="activeTab === 'dashboard'" @go="tab => activeTab = tab" />
+        <DashboardView v-if="activeTab === 'dashboard'" @go="navigateTab" />
 
         <!-- Catálogo tab -->
         <CatalogView v-else-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
@@ -225,11 +263,16 @@ function onLoginClose() {
         <CadastrosView v-else-if="activeTab === 'cadastros'" />
 
         <!-- Inventário tab -->
-        <InventarioView v-else-if="activeTab === 'inventario'" />
-        <FechamentosView v-else-if="activeTab === 'fechamentos'" />
+        <InventarioView v-else-if="activeTab === 'inventario'" :initial-section="requestedInventorySection" />
 
         <!-- Movimentações tab -->
-        <MovimentacoesView v-else-if="activeTab === 'movimentacoes'" ref="movRef" @update:browsing="v => movBrowsing = v" @update:sub-tab="v => movSubTab = v" />
+        <MovimentacoesView
+          v-else-if="activeTab === 'movimentacoes'"
+          ref="movRef"
+          :initial-sub-tab="requestedMovSubTab"
+          @update:browsing="v => movBrowsing = v"
+          @update:sub-tab="v => movSubTab = v"
+        />
 
         <!-- Ordens de Serviço tab -->
         <OrdensServicoView
@@ -244,6 +287,42 @@ function onLoginClose() {
 
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />
+
+    <div v-if="isLoggedIn" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+      <div
+        v-if="quickActionsOpen"
+        class="w-48 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+      >
+        <button
+          type="button"
+          class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+          @click="openMovementTab('entrada')"
+        >
+          <span>Entrada</span>
+          <span class="text-[11px] text-gray-400">Alt+E</span>
+        </button>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
+          @click="openMovementTab('saida')"
+        >
+          <span>Saída</span>
+          <span class="text-[11px] text-red-300 dark:text-red-400">Alt+S</span>
+        </button>
+      </div>
+      <button
+        type="button"
+        class="inline-flex h-11 items-center gap-2 rounded-full border border-primary-500 bg-primary-600 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-500 cursor-pointer"
+        :aria-expanded="quickActionsOpen"
+        title="Ações rápidas de movimentação"
+        @click="quickActionsOpen = !quickActionsOpen"
+      >
+        <svg class="h-4 w-4 transition-transform" :class="quickActionsOpen ? 'rotate-45' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m7-7H5" />
+        </svg>
+        Movimentar
+      </button>
+    </div>
 
     <!-- Toasts -->
     <ToastContainer />

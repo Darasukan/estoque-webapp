@@ -12,6 +12,12 @@ import DestinationSummaryPanel from '../components/movements/DestinationSummaryP
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
+const props = defineProps({
+  initialSubTab: {
+    type: String,
+    default: '',
+  },
+})
 
 const {
   items, variations, getVariationsForItem, getTotalStock,
@@ -34,7 +40,7 @@ function focusRef(target) {
 }
 
 // ===== Sub-tabs =====
-const activeSubTab = ref('entrada') // 'entrada' | 'saida' | 'historico'
+const activeSubTab = ref(['entrada', 'saida', 'historico', 'resumo'].includes(props.initialSubTab) ? props.initialSubTab : 'entrada')
 
 const visibleSubTabs = computed(() => {
   const all = [
@@ -106,6 +112,13 @@ function resetFlow() {
   nextTick(() => focusRef(searchInputEl))
 }
 
+watch(() => props.initialSubTab, tab => {
+  if (!tab || activeSubTab.value === tab) return
+  if (!['entrada', 'saida', 'historico', 'resumo'].includes(tab)) return
+  activeSubTab.value = tab
+  resetFlow()
+})
+
 function resetCurrentItem() {
   step.value = 1
   itemSearch.value = ''
@@ -152,7 +165,15 @@ function subcategoryStockTotal(sub) {
 }
 
 // ===== Item search (step 1) =====
-const searchNorm = computed(() => itemSearch.value.trim().toLowerCase())
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+const searchNorm = computed(() => normalizeText(itemSearch.value))
 
 // When searching, search across all items; when browsing, use navigation
 const itemResults = computed(() => {
@@ -160,16 +181,16 @@ const itemResults = computed(() => {
   if (!q) return []
   return items.value.filter(item => {
     if (
-      item.name.toLowerCase().includes(q) ||
-      (item.group || '').toLowerCase().includes(q) ||
-      (item.category || '').toLowerCase().includes(q) ||
-      (item.subcategory || '').toLowerCase().includes(q)
+      normalizeText(item.name).includes(q) ||
+      normalizeText(item.group).includes(q) ||
+      normalizeText(item.category).includes(q) ||
+      normalizeText(item.subcategory).includes(q)
     ) return true
     const vars = getVariationsForItem(item.id)
     return vars.some(v => {
-      if (Object.values(v.values || {}).some(val => (val || '').toLowerCase().includes(q))) return true
-      if (Object.values(v.extras || {}).some(val => (val || '').toLowerCase().includes(q))) return true
-      if ((v.location || '').toLowerCase().includes(q)) return true
+      if (Object.values(v.values || {}).some(val => normalizeText(val).includes(q))) return true
+      if (Object.values(v.extras || {}).some(val => normalizeText(val).includes(q))) return true
+      if (normalizeText(v.location).includes(q)) return true
       return false
     })
   }).slice(0, 50)
@@ -178,6 +199,46 @@ const itemResults = computed(() => {
 function selectItem(item) {
   selectedItem.value = item
   step.value = 2
+}
+
+function findSingleHierarchySearchMatch(q) {
+  const levels = [
+    { key: 'subcategory', fields: ['group', 'category', 'subcategory'] },
+    { key: 'category', fields: ['group', 'category'] },
+    { key: 'group', fields: ['group'] },
+  ]
+  for (const level of levels) {
+    const matches = items.value.filter(item => normalizeText(item[level.key]) === q)
+    const paths = new Map()
+    for (const item of matches) {
+      const path = {
+        group: item.group || '',
+        category: level.fields.includes('category') ? item.category || '' : '',
+        subcategory: level.fields.includes('subcategory') ? item.subcategory || '' : '',
+      }
+      paths.set(JSON.stringify(path), path)
+    }
+    if (paths.size === 1) return [...paths.values()][0]
+  }
+  return null
+}
+
+function handleItemSearchEnter() {
+  const q = searchNorm.value
+  if (!q) return
+  if (itemResults.value.length === 1) {
+    selectItem(itemResults.value[0])
+    return
+  }
+  const match = findSingleHierarchySearchMatch(q)
+  if (!match) return
+  setActiveGroup(match.group || null)
+  setActiveCategory(match.category || null)
+  setActiveSubcategory(match.subcategory || null)
+  itemSearch.value = ''
+  nextTick(() => {
+    if (navigationItems.value.length === 1) selectItem(navigationItems.value[0])
+  })
 }
 
 function backToStep1() {
@@ -617,10 +678,11 @@ defineExpose({
               type="text"
               placeholder="Buscar por nome, grupo, categoria, marca, CA..."
               class="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              @keydown.enter.prevent="handleItemSearchEnter"
             />
             <button
               v-if="itemSearch"
-              class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer"
               @click="itemSearch = ''"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>

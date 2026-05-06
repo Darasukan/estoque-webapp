@@ -28,6 +28,8 @@ const { success, error } = useToast()
 
 const search = ref('')
 const statusFilter = ref('')
+const motorPage = ref(1)
+const MOTOR_PAGE_SIZE = 8
 const motorViewMode = ref('motores')
 const selectedMotorId = ref('')
 const showForm = ref(false)
@@ -80,8 +82,15 @@ const filteredMotors = computed(() => {
 })
 
 const selectedMotor = computed(() =>
-  motors.value.find(m => m.id === selectedMotorId.value) || filteredMotors.value[0] || null
+  filteredMotors.value.find(m => m.id === selectedMotorId.value) || filteredMotors.value[0] || null
 )
+
+const motorTotalPages = computed(() => Math.max(1, Math.ceil(filteredMotors.value.length / MOTOR_PAGE_SIZE)))
+
+const paginatedMotors = computed(() => {
+  const start = (motorPage.value - 1) * MOTOR_PAGE_SIZE
+  return filteredMotors.value.slice(start, start + MOTOR_PAGE_SIZE)
+})
 
 const selectedWorkOrders = computed(() =>
   selectedMotor.value
@@ -164,6 +173,11 @@ watch(selectedMotor, (motor) => {
   if (motor) loadEvents(motor.id).catch(() => {})
   locationTrailOpen.value = false
 }, { immediate: true })
+
+watch([search, statusFilter, filteredMotors], () => {
+  if (motorPage.value > motorTotalPages.value) motorPage.value = motorTotalPages.value
+  if (motorPage.value < 1) motorPage.value = 1
+})
 
 function selectMotor(motor) {
   selectedMotorId.value = motor.id
@@ -442,9 +456,9 @@ function workOrderEndLabel(order) {
 
       <div class="ds-list-panel">
         <button
-          v-for="motor in filteredMotors"
+          v-for="motor in paginatedMotors"
           :key="motor.id"
-          class="ds-list-row text-left px-4 py-3"
+          class="ds-list-row text-left px-4 py-3 cursor-pointer"
           :class="selectedMotor?.id === motor.id ? 'ds-list-row-active' : ''"
           @click="selectMotor(motor)"
         >
@@ -460,6 +474,28 @@ function workOrderEndLabel(order) {
           title="Nenhum motor encontrado."
           text="Ajuste os filtros ou cadastre um novo motor."
         />
+        <div
+          v-if="filteredMotors.length > MOTOR_PAGE_SIZE"
+          class="px-3 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2"
+        >
+          <AppButton
+            variant="ghost"
+            size="xs"
+            :disabled="motorPage <= 1"
+            @click="motorPage--"
+          >
+            Anterior
+          </AppButton>
+          <span class="text-xs text-gray-400 dark:text-gray-500">{{ motorPage }} / {{ motorTotalPages }}</span>
+          <AppButton
+            variant="ghost"
+            size="xs"
+            :disabled="motorPage >= motorTotalPages"
+            @click="motorPage++"
+          >
+            Próxima
+          </AppButton>
+        </div>
       </div>
     </aside>
 
@@ -564,7 +600,7 @@ function workOrderEndLabel(order) {
 
             <div>
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 class="ds-section-heading">Historico de OS do motor</h3>
+                <h3 class="ds-section-heading">OS vinculadas ao motor</h3>
               </div>
               <div class="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden">
                 <div
