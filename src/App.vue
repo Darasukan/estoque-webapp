@@ -49,6 +49,7 @@ const requestedInventorySection = ref('estoque')
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
 const requestedMovSubTab = ref('entrada')
+const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
 const quickActionsOpen = ref(false)
 
@@ -111,14 +112,19 @@ function onLoginClose() {
   showLoginModal.value = false
 }
 
-function openMovementTab(tab) {
+function openMovementTab(tab, prefill = null) {
   if (!isLoggedIn.value) return
   quickActionsOpen.value = false
   activeTab.value = 'movimentacoes'
+  requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
   nextTick(() => {
     requestedMovSubTab.value = tab
   })
+}
+
+function openInventoryQuickMovement(payload) {
+  openMovementTab(payload.type, payload)
 }
 
 function navigateTab(tab) {
@@ -263,13 +269,18 @@ function handleQuickMovementKeydown(event) {
         <CadastrosView v-else-if="activeTab === 'cadastros'" />
 
         <!-- Inventário tab -->
-        <InventarioView v-else-if="activeTab === 'inventario'" :initial-section="requestedInventorySection" />
+        <InventarioView
+          v-else-if="activeTab === 'inventario'"
+          :initial-section="requestedInventorySection"
+          @quick-movement="openInventoryQuickMovement"
+        />
 
         <!-- Movimentações tab -->
         <MovimentacoesView
           v-else-if="activeTab === 'movimentacoes'"
           ref="movRef"
           :initial-sub-tab="requestedMovSubTab"
+          :prefill-movement="requestedMovementPrefill"
           @update:browsing="v => movBrowsing = v"
           @update:sub-tab="v => movSubTab = v"
         />

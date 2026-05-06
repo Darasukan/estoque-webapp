@@ -325,14 +325,14 @@ function onNewItemAttrKeydown(e) {
   }
 }
 
-function saveAddItem(sub) {
+async function saveAddItem(sub) {
   if (!selectedGroup.value) return
   // Inherit unit from existing items in the category, minStock from the subcategory
   const catItems = items.value.filter(i => i.group === selectedGroup.value && i.category === selectedCategory.value)
   const subItems = getItemsForSubcategory(selectedGroup.value, selectedCategory.value, sub)
   const inheritedUnit = catItems[0]?.unit || 'UN'
   const inheritedMinStock = subItems[0]?.minStock ?? 0
-  addItem({
+  const result = await addItem({
     group: selectedGroup.value,
     category: selectedCategory.value || null,
     subcategory: sub || null,
@@ -341,6 +341,7 @@ function saveAddItem(sub) {
     minStock: inheritedMinStock,
     attributes: [...newItemAttrs.value]
   })
+  if (!result.ok) { error(result.error); return }
   success(`Item adicionado em "${sub}".`)
   cancelAddItem()
 }
@@ -461,11 +462,12 @@ function cancelAddGroup() {
   addingGroup.value = false
   newGroupName.value = ''
 }
-function saveAddGroup() {
+async function saveAddGroup() {
   const name = newGroupName.value.trim()
   if (!name) { cancelAddGroup(); return }
   if (uniqueGroups.value.includes(name)) { error(`Grupo "${name}" já existe.`); return }
-  addItem({ group: name })
+  const result = await addItem({ group: name })
+  if (!result.ok) { error(result.error); return }
   selectedGroup.value = name
   success(`Grupo "${name}" criado.`)
   cancelAddGroup()
@@ -489,12 +491,13 @@ function cancelAddCategory() {
   addingCategory.value = false
   newCategoryName.value = ''
 }
-function saveAddCategory() {
+async function saveAddCategory() {
   const name = newCategoryName.value.trim()
   if (!name) { cancelAddCategory(); return }
   const existing = getCategoriesForGroup(selectedGroup.value)
   if (existing.includes(name)) { error(`Categoria "${name}" já existe.`); return }
-  addItem({ group: selectedGroup.value, category: name })
+  const result = await addItem({ group: selectedGroup.value, category: name })
+  if (!result.ok) { error(result.error); return }
   success(`Categoria "${name}" criada.`)
   cancelAddCategory()
 }
@@ -520,12 +523,13 @@ function cancelAddSubcategory() {
   newSubcategoryName.value = ''
   newSubcategoryUnit.value = 'UN'
 }
-function saveAddSubcategory() {
+async function saveAddSubcategory() {
   const name = newSubcategoryName.value.trim()
   if (!name) { cancelAddSubcategory(); return }
   const existing = getSubcategoriesForCategory(selectedGroup.value, selectedCategory.value)
   if (existing.includes(name)) { error(`Subcategoria "${name}" já existe.`); return }
-  addItem({ group: selectedGroup.value, category: selectedCategory.value, subcategory: name, unit: newSubcategoryUnit.value })
+  const result = await addItem({ group: selectedGroup.value, category: selectedCategory.value, subcategory: name, unit: newSubcategoryUnit.value })
+  if (!result.ok) { error(result.error); return }
   success(`Subcategoria "${name}" criada.`)
   cancelAddSubcategory()
 }

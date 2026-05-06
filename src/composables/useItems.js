@@ -37,6 +37,23 @@ function variationSortText(variation) {
   return [...values, ...extras].filter(Boolean).join(' ')
 }
 
+function normalizeDuplicateText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(d[aeo]s?|de|para|por|com|em|a|o|as|os)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+}
+
+function itemDuplicateName(item) {
+  return item.name || item.subcategory || item.category || item.group
+}
+
 function sortItems(list) {
   return [...list].sort((a, b) =>
     compareText(a.group, b.group) ||
@@ -102,8 +119,24 @@ function _hasDuplicateVariation(itemId, values, excludeId = null) {
     if (v.id === excludeId) return false
     const keys = Object.keys(values)
     if (keys.length !== Object.keys(v.values || {}).length) return false
-    return keys.every(k => (v.values[k] || '') === (values[k] || ''))
+    return keys.every(k => normalizeDuplicateText(v.values[k]) === normalizeDuplicateText(values[k]))
   })
+}
+
+function _findDuplicateItem(data, excludeId = null) {
+  const group = normalizeDuplicateText(data.group)
+  const category = normalizeDuplicateText(data.category)
+  const subcategory = normalizeDuplicateText(data.subcategory)
+  const name = normalizeDuplicateText(data.name || data.subcategory || data.category || data.group)
+  if (!group || !name) return null
+
+  return items.value.find(item => {
+    if (item.id === excludeId) return false
+    return normalizeDuplicateText(item.group) === group &&
+      normalizeDuplicateText(item.category) === category &&
+      normalizeDuplicateText(item.subcategory) === subcategory &&
+      normalizeDuplicateText(itemDuplicateName(item)) === name
+  }) || null
 }
 
 export function useItems() {
@@ -123,6 +156,14 @@ export function useItems() {
   // ===== CRUD =====
   async function addItem(data) {
     const resolvedName = data.name || data.subcategory || data.category || data.group
+    const duplicate = _findDuplicateItem({ ...data, name: resolvedName })
+    if (duplicate) {
+      return {
+        ok: false,
+        error: `Já existe um item parecido neste caminho: "${itemDuplicateName(duplicate)}".`,
+        duplicate,
+      }
+    }
     const created = await api.createItem({
       name: resolvedName,
       group: data.group,
@@ -135,16 +176,26 @@ export function useItems() {
     })
     items.value.push(created)
     items.value = sortItems(items.value)
+    return { ok: true, item: created }
   }
 
   async function editItem(id, changes) {
     const item = items.value.find(i => i.id === id)
-    if (!item) return
+    if (!item) return { ok: false, error: 'Item não encontrado.' }
     if (changes.minStock !== undefined) changes.minStock = _sanitizeNumber(changes.minStock)
     const merged = { ...item, ...changes }
+    const duplicate = _findDuplicateItem(merged, id)
+    if (duplicate) {
+      return {
+        ok: false,
+        error: `Já existe um item parecido neste caminho: "${itemDuplicateName(duplicate)}".`,
+        duplicate,
+      }
+    }
     await api.updateItem(id, merged)
     Object.assign(item, changes)
     items.value = sortItems(items.value)
+    return { ok: true, item }
   }
 
   async function deleteItem(id) {

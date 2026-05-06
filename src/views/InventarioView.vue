@@ -3,6 +3,8 @@ import { ref, computed, nextTick, inject, watch } from 'vue'
 import { useItems } from '../composables/useItems.js'
 import { stockAlertStatus } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
+import { useWorkOrders } from '../composables/useWorkOrders.js'
+import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 import FechamentosView from './FechamentosView.vue'
 
@@ -13,9 +15,13 @@ const props = defineProps({
   },
 })
 const isAdmin = inject('isAdmin')
+const isLoggedIn = inject('isLoggedIn')
+const emit = defineEmits(['quick-movement'])
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
 const { movements, addMovement } = useMovements()
+const { workOrders } = useWorkOrders()
+const { getDestFullName } = useDestinations()
 const { success, error } = useToast()
 const inventorySection = ref(['estoque', 'fechamentos'].includes(props.initialSection) ? props.initialSection : 'estoque')
 const columnMenuOpen = ref(false)
@@ -34,7 +40,7 @@ const columnOptions = computed(() => [
   { key: 'min', label: 'Mín.' },
   { key: 'status', label: 'Status' },
   { key: 'history', label: 'Histórico por item' },
-  ...(isAdmin?.value ? [{ key: 'adjust', label: 'Ajustar estoque' }] : []),
+  ...((isLoggedIn?.value ?? isLoggedIn) ? [{ key: 'adjust', label: 'Ações rápidas' }] : []),
 ])
 
 watch(() => props.initialSection, section => {
@@ -402,6 +408,16 @@ function startAdjust(varId, currentStock) {
   nextTick(() => adjustInput.value?.focus())
 }
 
+function quickMovement(row, type) {
+  if (!(isLoggedIn?.value ?? isLoggedIn)) return
+  emit('quick-movement', {
+    type,
+    itemId: row.item.id,
+    variationId: row.variation.id,
+    nonce: Date.now(),
+  })
+}
+
 function cancelAdjust() {
   adjustingId.value = null
   adjustValue.value = ''
@@ -457,13 +473,35 @@ const historyMovements = computed(() => {
 })
 
 const historyTotals = computed(() => {
-  const totals = { entradas: 0, saidas: 0 }
+  const totals = { entradas: 0, saidas: 0, ajustes: 0, os: 0 }
+  const osNumbers = new Set()
   for (const movement of historyMovements.value) {
     if (movement.type === 'entrada') totals.entradas += Number(movement.qty || 0)
     else totals.saidas += Number(movement.qty || 0)
+    if (movement.docRef === 'AJUSTE') totals.ajustes += 1
+    const order = workOrderFromMovement(movement)
+    if (order?.number) osNumbers.add(order.number)
   }
+  totals.os = osNumbers.size
   return totals
 })
+
+const historyLinkedDestinations = computed(() => {
+  if (!historyRow.value) return []
+  return (historyRow.value.variation.destinations || [])
+    .map(id => ({ id, name: getDestFullName(id) }))
+    .filter(dest => dest.name)
+    .sort((a, b) => compareText(a.name, b.name))
+})
+
+const historyTimeline = computed(() =>
+  historyMovements.value.map(movement => ({
+    movement,
+    order: workOrderFromMovement(movement),
+    title: movementTimelineTitle(movement),
+    subtitle: movementTimelineSubtitle(movement),
+  }))
+)
 
 function openVariationHistory(row) {
   historyRow.value = row
@@ -477,6 +515,34 @@ function formatHistoryDate(value) {
   if (!value) return '-'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR')
+}
+
+function workOrderNumberFromMovement(movement) {
+  const match = String(movement.docRef || movement.note || '').match(/OS\s*#\s*(\d+)/i)
+  return match ? Number(match[1]) : null
+}
+
+function workOrderFromMovement(movement) {
+  const number = workOrderNumberFromMovement(movement)
+  if (!number) return null
+  return workOrders.value.find(order => Number(order.number) === number) || null
+}
+
+function movementTimelineTitle(movement) {
+  const orderNumber = workOrderNumberFromMovement(movement)
+  if (orderNumber) return `Baixa por OS #${orderNumber}`
+  if (movement.docRef === 'AJUSTE') return movement.type === 'entrada' ? 'Ajuste de entrada' : 'Ajuste de saída'
+  return movement.type === 'entrada' ? 'Entrada avulsa' : 'Saída avulsa'
+}
+
+function movementTimelineSubtitle(movement) {
+  const parts = []
+  const responsible = movementResponsible(movement)
+  const place = movementPlace(movement)
+  if (responsible && responsible !== '-') parts.push(responsible)
+  if (place && place !== '-') parts.push(place)
+  if (movement.docRef && movement.docRef !== 'AJUSTE') parts.push(movement.docRef)
+  return parts.join(' · ') || '-'
 }
 
 function movementResponsible(movement) {
@@ -987,7 +1053,7 @@ function exportCSV() {
                   </button>
                 </th>
                 <th v-if="isColumnVisible('history')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28">Histórico</th>
-                <th v-if="isAdmin && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-36">Ajustar estoque</th>
+                <th v-if="isLoggedIn && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-44">Ações</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1075,8 +1141,8 @@ function exportCSV() {
                   </button>
                 </td>
 
-                <!-- Ajustar estoque -->
-                <td v-if="isAdmin && isColumnVisible('adjust')" class="px-4 py-3 text-center">
+                <!-- Ações rápidas -->
+                <td v-if="isLoggedIn && isColumnVisible('adjust')" class="px-4 py-3 text-center">
                   <div v-if="adjustingId === row.variation.id" class="flex items-center justify-center gap-1">
                     <input
                       ref="adjustInput"
@@ -1106,16 +1172,39 @@ function exportCSV() {
                       </svg>
                     </button>
                   </div>
-                  <button
-                    v-else
-                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
-                    @click="startAdjust(row.variation.id, row.variation.stock)"
-                  >
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
-                    </svg>
-                    Ajustar
-                  </button>
+                  <div v-else class="flex flex-wrap items-center justify-center gap-1.5">
+                    <button
+                      v-if="isAdmin"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                      title="Corrigir saldo manualmente"
+                      @click="startAdjust(row.variation.id, row.variation.stock)"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                      </svg>
+                      Ajustar
+                    </button>
+                    <button
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
+                      title="Registrar entrada para esta variação"
+                      @click="quickMovement(row, 'entrada')"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
+                      </svg>
+                      Entrada
+                    </button>
+                    <button
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer"
+                      title="Registrar saída para esta variação"
+                      @click="quickMovement(row, 'saida')"
+                    >
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
+                      </svg>
+                      Saída
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -1236,7 +1325,7 @@ function exportCSV() {
           </button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-gray-200 dark:border-gray-700 p-4">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 border-b border-gray-200 dark:border-gray-700 p-4">
           <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
             <p class="text-xs text-gray-500 dark:text-gray-400">Estoque atual</p>
             <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{{ historyRow.variation.stock }} {{ historyRow.item.unit }}</p>
@@ -1249,48 +1338,107 @@ function exportCSV() {
             <p class="text-xs text-gray-500 dark:text-gray-400">Saídas registradas</p>
             <p class="mt-1 text-xl font-semibold text-red-600 dark:text-red-400">{{ historyTotals.saidas }} {{ historyRow.item.unit }}</p>
           </div>
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400">OS vinculadas</p>
+            <p class="mt-1 text-xl font-semibold text-primary-600 dark:text-primary-400">{{ historyTotals.os }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Destinos vinculados</p>
+            <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{{ historyLinkedDestinations.length }}</p>
+          </div>
         </div>
 
-        <div class="max-h-[48vh] overflow-auto">
-          <div v-if="!historyMovements.length" class="p-6 text-sm text-gray-500 dark:text-gray-400">
-            Nenhuma movimentação registrada para esta variação.
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4 max-h-[48vh] overflow-auto p-4">
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Linha do tempo</h3>
+            <div v-if="!historyTimeline.length" class="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400">
+              Nenhuma movimentação registrada para esta variação.
+            </div>
+            <div v-else class="space-y-3">
+              <article
+                v-for="entry in historyTimeline"
+                :key="entry.movement.id"
+                class="relative rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 p-3 pl-4"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span
+                        class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        :class="entry.movement.type === 'entrada'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'"
+                      >
+                        {{ entry.movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
+                      </span>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ entry.title }}</h4>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ entry.subtitle }}</p>
+                    <p v-if="entry.order" class="mt-1 text-xs text-primary-700 dark:text-primary-300">
+                      {{ entry.order.title || entry.order.equipment || 'Ordem de serviço' }}
+                    </p>
+                    <p v-if="entry.movement.note" class="mt-2 text-xs text-gray-600 dark:text-gray-300">{{ entry.movement.note }}</p>
+                  </div>
+                  <div class="text-right text-xs text-gray-500 dark:text-gray-400">
+                    <p>{{ formatHistoryDate(entry.movement.date) }}</p>
+                    <p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">{{ entry.movement.qty }} {{ historyRow.item.unit }}</p>
+                  </div>
+                </div>
+                <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <span class="text-gray-400 dark:text-gray-500">Estoque</span>
+                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ movementStock(entry.movement) }}</p>
+                  </div>
+                  <div>
+                    <span class="text-gray-400 dark:text-gray-500">Responsável</span>
+                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ movementResponsible(entry.movement) }}</p>
+                  </div>
+                  <div>
+                    <span class="text-gray-400 dark:text-gray-500">Local</span>
+                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ movementPlace(entry.movement) }}</p>
+                  </div>
+                  <div>
+                    <span class="text-gray-400 dark:text-gray-500">Operador</span>
+                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ entry.movement.operatorName || entry.movement.operator || '-' }}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
           </div>
-          <table v-else class="w-full text-sm">
-            <thead class="sticky top-0 bg-gray-50 dark:bg-gray-800">
-              <tr class="border-b border-gray-200 dark:border-gray-700">
-                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Data</th>
-                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Tipo</th>
-                <th class="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Qtd.</th>
-                <th class="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Estoque</th>
-                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Responsável / local</th>
-                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Doc</th>
-                <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Operador</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-              <tr v-for="movement in historyMovements" :key="movement.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
-                <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ formatHistoryDate(movement.date) }}</td>
-                <td class="px-4 py-3">
-                  <span
-                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                    :class="movement.type === 'entrada'
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'"
-                  >
-                    {{ movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-center font-semibold text-gray-900 dark:text-gray-100">{{ movement.qty }} {{ historyRow.item.unit }}</td>
-                <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ movementStock(movement) }}</td>
-                <td class="px-4 py-3">
-                  <p class="text-gray-900 dark:text-gray-100">{{ movementResponsible(movement) }}</p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ movementPlace(movement) }}</p>
-                </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ movement.docRef || '-' }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ movement.operatorName || movement.operator || '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
+
+          <aside class="space-y-3">
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Destinos vinculados</h3>
+              <div v-if="historyLinkedDestinations.length" class="mt-3 flex flex-wrap gap-1.5">
+                <span
+                  v-for="dest in historyLinkedDestinations"
+                  :key="dest.id"
+                  class="inline-flex rounded px-2 py-1 text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                >
+                  {{ dest.name }}
+                </span>
+              </div>
+              <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">Nenhum destino vinculado no cadastro.</p>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Resumo</h3>
+              <dl class="mt-3 space-y-2 text-sm">
+                <div class="flex justify-between gap-3">
+                  <dt class="text-gray-500 dark:text-gray-400">Ajustes</dt>
+                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ historyTotals.ajustes }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-gray-500 dark:text-gray-400">Movimentações</dt>
+                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ historyMovements.length }}</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-gray-500 dark:text-gray-400">Último movimento</dt>
+                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ historyMovements[0] ? formatHistoryDate(historyMovements[0].date) : '-' }}</dd>
+                </div>
+              </dl>
+            </div>
+          </aside>
         </div>
       </section>
     </div>

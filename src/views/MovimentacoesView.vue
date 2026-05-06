@@ -17,6 +17,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  prefillMovement: {
+    type: Object,
+    default: null,
+  },
 })
 
 const {
@@ -56,6 +60,7 @@ const visibleSubTabs = computed(() => {
 watch(isLoggedIn, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubTab.value = 'historico' }, { immediate: true })
 
 function switchSubTab(tab) {
+  suppressFlowReset.value = true
   activeSubTab.value = tab
   resetFlow()
 }
@@ -82,6 +87,7 @@ const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
 const batchItems = ref([])
+const suppressFlowReset = ref(false)
 
 function selectDocType(v) {
   docType.value = v
@@ -112,12 +118,40 @@ function resetFlow() {
   nextTick(() => focusRef(searchInputEl))
 }
 
+function applyMovementPrefill(prefill) {
+  if (!prefill || !isLoggedIn.value) return
+  const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
+  const item = items.value.find(i => i.id === prefill.itemId)
+  const variation = variations.value.find(v => v.id === prefill.variationId)
+  if (!item || !variation) {
+    error('Item ou variação não encontrada para movimentação rápida.')
+    return
+  }
+
+  activeSubTab.value = tab
+  resetFlow()
+  selectedItem.value = item
+  selectedVariation.value = variation
+  step.value = 3
+  setViewingItem(item.id)
+  nextTick(() => {
+    suppressFlowReset.value = false
+    focusRef(qtyInputEl)
+  })
+}
+
 watch(() => props.initialSubTab, tab => {
   if (!tab || activeSubTab.value === tab) return
   if (!['entrada', 'saida', 'historico', 'resumo'].includes(tab)) return
+  if (props.prefillMovement && props.prefillMovement.type === tab) {
+    applyMovementPrefill(props.prefillMovement)
+    return
+  }
   activeSubTab.value = tab
   resetFlow()
 })
+
+watch(() => props.prefillMovement, applyMovementPrefill, { immediate: true })
 
 function resetCurrentItem() {
   step.value = 1
@@ -129,7 +163,10 @@ function resetCurrentItem() {
   nextTick(() => focusRef(searchInputEl))
 }
 
-watch(activeSubTab, () => resetFlow())
+watch(activeSubTab, () => {
+  if (suppressFlowReset.value) return
+  resetFlow()
+})
 
 // Emit browsing state and manage viewingItemId
 watch([step, activeSubTab], ([v, tab]) => {

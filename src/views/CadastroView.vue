@@ -111,12 +111,12 @@ function clearAllData() {
 }
 
 // ===== Save =====
-function save() {
+async function save() {
   const trimmedGroup = group.value.trim()
   const trimmedName = name.value.trim()
   if (!trimmedGroup) { error('Grupo é obrigatório.'); return }
 
-  addItem({
+  const result = await addItem({
     name: trimmedName || null,
     group: trimmedGroup,
     category: category.value.trim() || null,
@@ -125,6 +125,7 @@ function save() {
     minStock: 0,
     attributes: [...attributes.value]
   })
+  if (!result.ok) { error(result.error); return }
 
   success('Item cadastrado!')
   resetForm()

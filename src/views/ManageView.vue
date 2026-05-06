@@ -130,7 +130,7 @@ function startEdit(item) {
   })
 }
 
-function confirmEdit() {
+async function confirmEdit() {
   if (!editingId.value) return
   const trimmedName = editForm.value.name.trim()
   const trimmedGroup = editForm.value.group.trim()
@@ -140,7 +140,7 @@ function confirmEdit() {
   if (!isFinite(minStockNum) || isNaN(minStockNum)) { error('Estoque mínimo deve ser um número válido.'); return }
   if (minStockNum < 0) { error('Estoque mínimo não pode ser negativo.'); return }
 
-  editItem(editingId.value, {
+  const result = await editItem(editingId.value, {
     name: trimmedName,
     group: trimmedGroup,
     category: editForm.value.category.trim() || null,
@@ -148,6 +148,7 @@ function confirmEdit() {
     unit: editForm.value.unit,
     minStock: Number(editForm.value.minStock) || 0
   })
+  if (!result.ok) { error(result.error); return }
   editingId.value = null
   success('Item atualizado!')
 }
