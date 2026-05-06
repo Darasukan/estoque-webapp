@@ -130,7 +130,7 @@ function variationText(row) {
     <section class="ds-toolbar">
       <div class="grid grid-cols-1 md:grid-cols-[160px_120px_minmax(220px,1fr)_auto] gap-3 w-full items-end">
         <label>
-          <span class="ds-label">Mes</span>
+          <span class="ds-label">Mês</span>
           <select v-model.number="selectedMonth" class="ds-input">
             <option v-for="month in MONTHS" :key="month.value" :value="month.value">{{ month.label }}</option>
           </select>
@@ -142,7 +142,7 @@ function variationText(row) {
           </select>
         </label>
         <label>
-          <span class="ds-label">Observacao</span>
+          <span class="ds-label">Observação</span>
           <input v-model="notes" class="ds-input" placeholder="Opcional" :disabled="!isAdmin" />
         </label>
         <button
@@ -195,7 +195,7 @@ function variationText(row) {
               <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ formatMonth(selectedClosing) }}</h2>
               <p class="text-sm ds-muted">Salvo em {{ formatDate(selectedClosing.closedAt) }}</p>
             </div>
-            <span class="ds-chip">{{ selectedClosing.summary?.variations || 0 }} variacoes</span>
+            <span class="ds-chip">{{ selectedClosing.summary?.variations || 0 }} variações</span>
           </div>
           <p v-if="selectedClosing.notes" class="mt-3 text-sm ds-muted">{{ selectedClosing.notes }}</p>
         </div>
@@ -206,11 +206,11 @@ function variationText(row) {
             <p class="ds-metric-value">{{ selectedClosing.summary?.totalStockAtClose || 0 }}</p>
           </div>
           <div class="ds-metric">
-            <p class="ds-metric-label">Entradas no mes</p>
+            <p class="ds-metric-label">Entradas no mês</p>
             <p class="ds-metric-value text-green-500">{{ selectedClosing.summary?.monthEntradas || 0 }}</p>
           </div>
           <div class="ds-metric">
-            <p class="ds-metric-label">Saidas no mes</p>
+            <p class="ds-metric-label">Saídas no mês</p>
             <p class="ds-metric-value text-red-500">{{ selectedClosing.summary?.monthSaidas || 0 }}</p>
           </div>
           <div class="ds-metric">
@@ -218,7 +218,7 @@ function variationText(row) {
             <p class="ds-metric-value text-red-500">{{ selectedClosing.summary?.zeroStock || 0 }}</p>
           </div>
           <div class="ds-metric">
-            <p class="ds-metric-label">Abaixo do minimo</p>
+            <p class="ds-metric-label">Abaixo do mínimo</p>
             <p class="ds-metric-value text-amber-500">{{ selectedClosing.summary?.belowMin || 0 }}</p>
           </div>
         </div>
@@ -228,10 +228,10 @@ function variationText(row) {
             <thead>
               <tr>
                 <th>Grupo</th>
-                <th>Variacoes</th>
+                <th>Variações</th>
                 <th>Saldo</th>
                 <th>Entradas</th>
-                <th>Saidas</th>
+                <th>Saídas</th>
               </tr>
             </thead>
             <tbody>

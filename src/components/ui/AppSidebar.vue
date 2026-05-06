@@ -29,7 +29,7 @@ function toggleSection(key) {
     <div class="border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center p-3" :class="collapsed ? 'justify-center' : ''">
         <button
-          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
           :title="collapsed ? 'Expandir menu' : 'Recolher menu'"
           @click="$emit('toggle')"
         >
@@ -43,7 +43,7 @@ function toggleSection(key) {
     <!-- ===== COLLAPSED MODE ===== -->
     <nav v-if="collapsed" class="flex-1 overflow-y-auto py-2">
       <button
-        class="w-full flex items-center justify-center py-2.5 transition-colors"
+        class="w-full flex items-center justify-center py-2.5 transition-colors cursor-pointer"
         :class="!activeGroup
           ? 'text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-gray-700'
           : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'"
@@ -57,7 +57,7 @@ function toggleSection(key) {
       <button
         v-for="group in groups"
         :key="group"
-        class="w-full flex items-center justify-center py-2.5 transition-colors"
+        class="w-full flex items-center justify-center py-2.5 transition-colors cursor-pointer"
         :class="activeGroup === group
           ? 'text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-gray-700'
           : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'"
@@ -73,7 +73,7 @@ function toggleSection(key) {
     <!-- ===== EXPANDED: NAVIGATION MODE (no group selected) ===== -->
     <template v-else-if="!activeGroup">
       <button
-        class="w-full text-left px-3 py-2 text-sm font-medium transition-colors truncate border-b border-gray-200 dark:border-gray-700 bg-primary-50 dark:bg-gray-700 text-primary-700 dark:text-primary-400 border-r-2 border-r-primary-700 dark:border-r-primary-400"
+        class="w-full text-left px-3 py-2 text-sm font-medium transition-colors truncate border-b border-gray-200 dark:border-gray-700 bg-primary-50 dark:bg-gray-700 text-primary-700 dark:text-primary-400 border-r-2 border-r-primary-700 dark:border-r-primary-400 cursor-pointer"
         @click="$emit('select-group', null)"
       >
         Todos os Grupos
@@ -95,7 +95,7 @@ function toggleSection(key) {
           />
           <button
             v-if="search"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
             @click="$emit('update:search', '')"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
@@ -107,7 +107,7 @@ function toggleSection(key) {
         <button
           v-for="group in groups"
           :key="group"
-          class="w-full text-left px-3 py-2 text-sm font-semibold transition-colors truncate text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          class="w-full text-left px-3 py-2 text-sm font-semibold transition-colors truncate text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
           :title="group"
           @click="$emit('select-group', group)"
         >
@@ -120,7 +120,7 @@ function toggleSection(key) {
     <template v-else>
       <!-- Back button -->
       <button
-        class="w-full text-left px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1.5"
+        class="w-full text-left px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1.5 cursor-pointer"
         @click="$emit('select-group', null)"
       >
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -150,7 +150,7 @@ function toggleSection(key) {
           />
           <button
             v-if="search"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
             @click="$emit('update:search', '')"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
@@ -161,7 +161,7 @@ function toggleSection(key) {
       <!-- Clear filters -->
       <button
         v-if="hasActiveFilters"
-        class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1"
+        class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1 cursor-pointer"
         @click="$emit('clear-filters')"
       >
         <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -175,7 +175,7 @@ function toggleSection(key) {
         <div v-for="facet in facets" :key="facet.key" class="border-b border-gray-100 dark:border-gray-700/50">
           <!-- Section header -->
           <button
-            class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors"
+            class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors cursor-pointer"
             :class="!expandedSections[facet.key]
               ? 'text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"

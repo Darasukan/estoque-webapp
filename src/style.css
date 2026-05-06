@@ -5,17 +5,17 @@
   --font-sans: "Inter Variable", Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "Berkeley Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --color-primary-50: #eef0ff;
-  --color-primary-100: #dfe2ff;
-  --color-primary-200: #c5c8ff;
-  --color-primary-300: #a8adff;
-  --color-primary-400: #828fff;
-  --color-primary-500: #7170ff;
-  --color-primary-600: #5e6ad2;
-  --color-primary-700: #4f58b8;
-  --color-primary-800: #424995;
-  --color-primary-900: #31375f;
-  --color-primary-950: #1b1f3d;
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  --color-primary-950: #172554;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -23,40 +23,54 @@
 @layer base {
   :root {
     color-scheme: light;
-    --ds-bg: #f7f8f8;
-    --ds-panel: #ffffff;
-    --ds-surface: #f3f4f5;
-    --ds-surface-hover: #e9ecef;
+    --ds-bg: #dfe6ef;
+    --ds-bg-wash: #f8f9fc;
+    --ds-panel: #f8fafc;
+    --ds-panel-tint: #eaf2ff;
+    --ds-surface: #edf2f8;
+    --ds-surface-strong: #d8e2ee;
+    --ds-surface-hover: #dbe5f0;
     --ds-text: #171717;
     --ds-text-soft: #404040;
     --ds-text-muted: #737373;
     --ds-text-subtle: #a3a3a3;
-    --ds-border-subtle: rgba(0, 0, 0, 0.08);
-    --ds-border: rgba(0, 0, 0, 0.12);
-    --ds-brand: #5e6ad2;
-    --ds-brand-hover: #7170ff;
+    --ds-border-subtle: rgba(24, 36, 56, 0.11);
+    --ds-border: rgba(24, 36, 56, 0.17);
+    --ds-brand: #2563eb;
+    --ds-brand-hover: #1d4ed8;
+    --ds-active-bg: #dbeafe;
+    --ds-active-text: #1e40af;
+    --ds-info: #2563eb;
     --ds-danger: #dc2626;
     --ds-warning: #d97706;
     --ds-success: #10b981;
     --ds-radius-control: 6px;
     --ds-radius-card: 8px;
-    --ds-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
-    --ds-focus-ring: 0 0 0 1px var(--ds-brand), 0 0 0 4px rgba(94, 106, 210, 0.18);
+    --ds-shadow-panel: 0 1px 2px rgba(20, 31, 50, 0.06), 0 14px 34px rgba(20, 31, 50, 0.10);
+    --ds-focus-ring: 0 0 0 1px var(--ds-brand), 0 0 0 4px rgba(37, 99, 235, 0.18);
   }
 
   .dark {
     color-scheme: dark;
-    --ds-bg: #08090a;
-    --ds-panel: #0f1011;
-    --ds-surface: #191a1b;
-    --ds-surface-hover: #28282c;
+    --ds-bg: #06080c;
+    --ds-bg-wash: #0c0f16;
+    --ds-panel: #121821;
+    --ds-panel-tint: #142238;
+    --ds-surface: #1b2430;
+    --ds-surface-strong: #263445;
+    --ds-surface-hover: #2d3d50;
     --ds-text: #f7f8f8;
     --ds-text-soft: #d0d6e0;
     --ds-text-muted: #8a8f98;
     --ds-text-subtle: #62666d;
-    --ds-border-subtle: rgba(255, 255, 255, 0.05);
-    --ds-border: rgba(255, 255, 255, 0.08);
-    --ds-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 16px 44px rgba(0, 0, 0, 0.38);
+    --ds-border-subtle: rgba(255, 255, 255, 0.08);
+    --ds-border: rgba(255, 255, 255, 0.13);
+    --ds-brand: #3b82f6;
+    --ds-brand-hover: #60a5fa;
+    --ds-active-bg: #1e3a8a;
+    --ds-active-text: #eff6ff;
+    --ds-info: #60a5fa;
+    --ds-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 44px rgba(0, 0, 0, 0.44);
 
     --color-gray-50: #f7f8f8;
     --color-gray-100: #e2e4e7;
@@ -80,9 +94,7 @@
     @apply antialiased transition-colors duration-200;
     min-height: 100%;
     margin: 0;
-    background:
-      radial-gradient(circle at top right, rgba(94, 106, 210, 0.08), transparent 34rem),
-      var(--ds-bg);
+    background: var(--ds-bg);
     color: var(--ds-text);
     font-family: var(--font-sans);
     font-feature-settings: "cv01", "ss03";
@@ -129,27 +141,25 @@
 @layer components {
   .ds-page {
     min-height: 100vh;
-    background:
-      radial-gradient(circle at top right, rgba(94, 106, 210, 0.08), transparent 34rem),
-      var(--ds-bg);
+    background: var(--ds-bg);
     color: var(--ds-text);
   }
 
   .ds-nav {
-    background: color-mix(in srgb, var(--ds-panel) 88%, transparent);
-    border-bottom: 1px solid var(--ds-border-subtle);
+    background: color-mix(in srgb, var(--ds-panel) 92%, transparent);
+    border-bottom: 1px solid var(--ds-border);
     backdrop-filter: blur(16px);
   }
 
   .ds-panel {
-    background: color-mix(in srgb, var(--ds-panel) 94%, transparent);
+    background: var(--ds-panel);
     border: 1px solid var(--ds-border);
     border-radius: var(--ds-radius-card);
     box-shadow: var(--ds-shadow-panel);
   }
 
   .ds-surface {
-    background: color-mix(in srgb, var(--ds-surface) 88%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 96%, transparent);
     border: 1px solid var(--ds-border-subtle);
     border-radius: var(--ds-radius-card);
   }
@@ -168,9 +178,7 @@
     padding: 1rem;
     border: 1px solid var(--ds-border);
     border-radius: 12px;
-    background:
-      linear-gradient(135deg, rgba(113, 112, 255, 0.10), transparent 46%),
-      color-mix(in srgb, var(--ds-panel) 92%, transparent);
+    background: color-mix(in srgb, var(--ds-panel) 88%, var(--ds-panel-tint));
     box-shadow: var(--ds-shadow-panel);
   }
 
@@ -207,7 +215,7 @@
     padding: 0.75rem;
     border: 1px solid var(--ds-border-subtle);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--ds-panel) 86%, transparent);
+    background: color-mix(in srgb, var(--ds-panel) 94%, transparent);
   }
 
   .ds-segmented {
@@ -217,7 +225,7 @@
     padding: 0.25rem;
     border: 1px solid var(--ds-border-subtle);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    background: color-mix(in srgb, var(--ds-surface-strong) 78%, transparent);
     overflow-x: auto;
   }
 
@@ -241,8 +249,8 @@
   }
 
   .ds-segmented-item-active {
-    color: var(--ds-text);
-    background: rgba(113, 112, 255, 0.16);
+    color: var(--ds-active-text);
+    background: var(--ds-active-bg);
   }
 
   .ds-metric-grid {
@@ -252,11 +260,65 @@
   }
 
   .ds-metric {
+    position: relative;
+    overflow: hidden;
     min-width: 0;
     padding: 0.75rem;
-    border: 1px solid var(--ds-border-subtle);
+    border: 1px solid var(--ds-border);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--ds-surface) 78%, transparent);
+    background: var(--ds-surface);
+    box-shadow: none;
+  }
+
+  .ds-metric::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: color-mix(in srgb, var(--ds-brand) 72%, transparent);
+  }
+
+  .ds-metric-danger::before { background: color-mix(in srgb, var(--ds-danger) 78%, transparent); }
+  .ds-metric-warning::before { background: color-mix(in srgb, var(--ds-warning) 78%, transparent); }
+  .ds-metric-success::before { background: color-mix(in srgb, var(--ds-success) 78%, transparent); }
+  .ds-metric-info::before { background: color-mix(in srgb, var(--ds-info) 78%, transparent); }
+  .ds-metric-brand::before { background: color-mix(in srgb, var(--ds-brand) 78%, transparent); }
+
+  .ds-metric:hover {
+    background: var(--ds-surface-hover);
+  }
+
+  .ds-action-card {
+    --ds-action-bg: var(--ds-active-bg);
+    --ds-action-border: var(--ds-brand);
+    --ds-action-icon-bg: color-mix(in srgb, var(--ds-brand) 14%, var(--ds-surface));
+    position: relative;
+    overflow: hidden;
+    border-color: var(--ds-action-border);
+    background: var(--ds-action-bg);
+  }
+
+  .ds-action-card:hover {
+    filter: brightness(0.985);
+  }
+
+  .dark .ds-action-card {
+    border-color: var(--ds-action-border-dark, var(--ds-action-border));
+    background: var(--ds-action-bg-dark, var(--ds-action-bg));
+  }
+
+  .dark .ds-action-card:hover {
+    filter: brightness(1.08);
+  }
+
+  .ds-action-icon {
+    border-color: var(--ds-action-border);
+    background: var(--ds-action-icon-bg);
+  }
+
+  .dark .ds-action-icon {
+    border-color: var(--ds-action-border-dark, var(--ds-action-border));
+    background: var(--ds-action-icon-bg-dark, var(--ds-action-icon-bg));
   }
 
   .ds-metric-label {
@@ -277,14 +339,18 @@
     overflow: hidden;
     border: 1px solid var(--ds-border);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--ds-panel) 94%, transparent);
+    background: var(--ds-panel);
     box-shadow: var(--ds-shadow-panel);
+  }
+
+  .ds-list-panel > :first-child {
+    background: color-mix(in srgb, var(--ds-surface) 58%, transparent);
   }
 
   .ds-list-row {
     width: 100%;
     border-bottom: 1px solid var(--ds-border-subtle);
-    background: transparent;
+    background: color-mix(in srgb, var(--ds-panel) 72%, transparent);
     transition: background 150ms ease;
   }
 
@@ -293,7 +359,7 @@
   }
 
   .ds-list-row:hover {
-    background: color-mix(in srgb, var(--ds-surface-hover) 42%, transparent);
+    background: color-mix(in srgb, var(--ds-surface-hover) 58%, transparent);
   }
 
   .ds-list-row-active {
@@ -312,9 +378,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    border: 1px solid var(--ds-border-subtle);
+    border: 1px solid var(--ds-border);
     border-radius: 9999px;
-    background: color-mix(in srgb, var(--ds-surface) 72%, transparent);
+    background: color-mix(in srgb, var(--ds-surface) 92%, transparent);
     color: var(--ds-text-muted);
     padding: 0.1875rem 0.5rem;
     font-size: 0.6875rem;
@@ -410,13 +476,13 @@
   }
 
   .ds-tab:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--ds-surface-hover);
     color: var(--ds-text);
   }
 
   .ds-tab-active {
-    color: var(--ds-text);
-    background: rgba(113, 112, 255, 0.12);
+    color: var(--ds-active-text);
+    background: var(--ds-active-bg);
   }
 
   .ds-tab-active::after {
@@ -427,7 +493,7 @@
     bottom: -1px;
     height: 1px;
     border-radius: 9999px;
-    background: var(--ds-brand-hover);
+    background: var(--ds-active-text);
   }
 
   .ds-scrollbar {

@@ -10,6 +10,13 @@ const FIELD_BY_FILTER = {
   operador: 'operatorName',
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 export function useMovementHistory(movements) {
   const histSearch = ref('')
   const histDateFrom = ref('')
@@ -18,7 +25,7 @@ export function useMovementHistory(movements) {
 
   const facetDefs = [
     { key: 'tipo', label: 'Tipo', group: 'main', priority: 10, defaultExpanded: true },
-    { key: 'responsavel', label: 'Responsavel', group: 'main', priority: 20 },
+    { key: 'responsavel', label: 'Responsável', group: 'main', priority: 20 },
     { key: 'local', label: 'Local', group: 'main', priority: 30 },
     { key: 'operador', label: 'Operador', group: 'main', priority: 50 },
     { key: 'grupo', label: 'Grupo', group: 'product', priority: 10 },
@@ -35,7 +42,7 @@ export function useMovementHistory(movements) {
   }
 
   function movementMatchesSearch(movement) {
-    const q = histSearch.value.trim().toLowerCase()
+    const q = normalizeSearchText(histSearch.value).trim()
     if (!q) return true
     const haystack = [
       movement.itemName, movement.itemGroup, movement.itemCategory, movement.itemSubcategory,
@@ -43,7 +50,7 @@ export function useMovementHistory(movements) {
       movement.docRef, movement.operatorName, movement.note,
       ...Object.values(movement.variationValues || {}),
       ...Object.values(movement.variationExtras || {}),
-    ].join(' ').toLowerCase()
+    ].map(normalizeSearchText).join(' ')
     return haystack.includes(q)
   }
 

@@ -17,6 +17,10 @@ const props = defineProps({
     type: String,
     default: 'all',
   },
+  initialSearch: {
+    type: String,
+    default: '',
+  },
 })
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -63,7 +67,7 @@ function toggleColumn(key) {
 }
 
 // ===== Search =====
-const searchQuery = ref('')
+const searchQuery = ref(props.initialSearch || '')
 const autoHierarchy = ref(null)
 
 function normalizeSearchText(value) {
@@ -144,6 +148,10 @@ const filterStatus = ref(inventoryStatusFilters.includes(props.initialStatus) ? 
 
 watch(() => props.initialStatus, status => {
   if (inventoryStatusFilters.includes(status)) filterStatus.value = status
+})
+
+watch(() => props.initialSearch, search => {
+  searchQuery.value = search || ''
 })
 
 // ===== Facet filters =====

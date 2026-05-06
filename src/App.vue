@@ -47,10 +47,13 @@ const catalogRef = ref(null)
 const activeTab = ref('dashboard')
 const requestedInventorySection = ref('estoque')
 const requestedInventoryStatus = ref('all')
+const requestedInventorySearch = ref('')
 const requestedOrdersTab = ref('ordens')
+const requestedOrderFocusId = ref('')
 const movBrowsing = ref(true)
 const movSubTab = ref('entrada')
 const requestedMovSubTab = ref('entrada')
+const requestedMovSearch = ref('')
 const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
 const quickActionsOpen = ref(false)
@@ -119,6 +122,7 @@ function openMovementTab(tab, prefill = null) {
   quickActionsOpen.value = false
   requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
+  requestedMovSearch.value = ''
   activeTab.value = 'movimentacoes'
   nextTick(() => {
     requestedMovSubTab.value = tab
@@ -127,6 +131,23 @@ function openMovementTab(tab, prefill = null) {
 
 function openInventoryQuickMovement(payload) {
   openMovementTab(payload.type, payload)
+}
+
+function selectMainTab(tabId) {
+  if (tabId === 'inventario') {
+    requestedInventorySection.value = 'estoque'
+    requestedInventoryStatus.value = 'all'
+    requestedInventorySearch.value = ''
+  }
+  if (tabId === 'movimentacoes') {
+    requestedMovSearch.value = ''
+    requestedMovementPrefill.value = null
+  }
+  if (tabId === 'ordens') {
+    requestedOrdersTab.value = 'ordens'
+    requestedOrderFocusId.value = ''
+  }
+  activeTab.value = tabId
 }
 
 function navigateTab(target) {
@@ -138,38 +159,47 @@ function navigateTab(target) {
   }
   if (tab === 'fechamentos') {
     requestedInventorySection.value = 'fechamentos'
+    requestedInventorySearch.value = ''
     activeTab.value = 'inventario'
     return
   }
   if (tab === 'inventario') {
     const section = target?.section || 'estoque'
     const status = target?.status ?? 'all'
+    const search = target?.search || ''
     requestedInventorySection.value = ''
     requestedInventoryStatus.value = '__pending__'
+    requestedInventorySearch.value = ''
     activeTab.value = 'inventario'
     nextTick(() => {
       requestedInventorySection.value = section
       requestedInventoryStatus.value = status
+      requestedInventorySearch.value = search
     })
     return
   }
   if (tab === 'movimentacoes' && target?.subTab) {
+    const search = target?.search || ''
     if (['entrada', 'saida'].includes(target.subTab)) {
       openMovementTab(target.subTab)
       return
     }
     requestedMovSubTab.value = ''
+    requestedMovSearch.value = ''
     activeTab.value = 'movimentacoes'
     nextTick(() => {
       requestedMovSubTab.value = target.subTab
+      requestedMovSearch.value = search
     })
     return
   }
   if (tab === 'ordens') {
     requestedOrdersTab.value = ''
+    requestedOrderFocusId.value = ''
     activeTab.value = 'ordens'
     nextTick(() => {
       requestedOrdersTab.value = target?.subTab || 'ordens'
+      requestedOrderFocusId.value = target?.orderId || ''
     })
     return
   }
@@ -244,7 +274,7 @@ function handleQuickMovementKeydown(event) {
               :key="tab.id"
               class="ds-tab"
               :class="activeTab === tab.id ? 'ds-tab-active' : ''"
-              @click="activeTab = tab.id"
+              @click="selectMainTab(tab.id)"
             >
               {{ tab.label }}
               <span
@@ -312,6 +342,7 @@ function handleQuickMovementKeydown(event) {
           v-else-if="activeTab === 'inventario'"
           :initial-section="requestedInventorySection"
           :initial-status="requestedInventoryStatus"
+          :initial-search="requestedInventorySearch"
           @quick-movement="openInventoryQuickMovement"
         />
 
@@ -320,6 +351,7 @@ function handleQuickMovementKeydown(event) {
           v-else-if="activeTab === 'movimentacoes'"
           ref="movRef"
           :initial-sub-tab="requestedMovSubTab"
+          :initial-history-search="requestedMovSearch"
           :prefill-movement="requestedMovementPrefill"
           @update:browsing="v => movBrowsing = v"
           @update:sub-tab="v => movSubTab = v"
@@ -330,6 +362,7 @@ function handleQuickMovementKeydown(event) {
           v-else-if="activeTab === 'ordens'"
           mode="general"
           :initial-tab="requestedOrdersTab"
+          :focus-order-id="requestedOrderFocusId"
         />
 
         <!-- Motores tab -->

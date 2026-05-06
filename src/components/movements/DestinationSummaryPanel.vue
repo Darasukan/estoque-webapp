@@ -53,7 +53,7 @@ function latestDate(a, b) {
 function aggregateCards(materials, key) {
   const map = new Map()
   for (const material of materials) {
-    const name = material[key] || 'Sem classificacao'
+    const name = material[key] || 'Sem classificação'
     if (!map.has(name)) {
       map.set(name, { name, qty: 0, variations: 0, moves: 0, lastDate: '' })
     }
@@ -107,7 +107,7 @@ const levelTitle = computed(() => {
   if (currentLevel.value === 'group') return 'Categorias'
   if (currentLevel.value === 'category') return 'Subcategorias'
   if (currentLevel.value === 'subcategory') return 'Materiais'
-  return 'Variacoes'
+  return 'Variações'
 })
 
 const paginatedVariations = computed(() => {
@@ -185,7 +185,7 @@ watch(variationsTotalPages, (total) => {
   </div>
 
   <div v-else-if="filteredDestinationSummaries.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
-    Nenhuma saida encontrada por destino.
+    Nenhuma saída encontrada por destino.
   </div>
 
   <div v-else class="space-y-2">
@@ -209,13 +209,13 @@ watch(variationsTotalPages, (total) => {
         <div class="flex-1 min-w-[180px]">
           <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ dest.fullName }}</p>
           <p class="text-xs text-gray-400 dark:text-gray-500">
-            {{ dest.lastDate ? 'Ultima saida: ' + formatDate(dest.lastDate) : 'Sem saida registrada' }}
+            {{ dest.lastDate ? 'Última saída: ' + formatDate(dest.lastDate) : 'Sem saída registrada' }}
           </p>
         </div>
 
         <div class="flex items-center gap-2 text-xs">
-          <span class="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">{{ dest.totalQty }} materiais sairam</span>
-          <span class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ dest.materials.length }} variacoes</span>
+          <span class="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">{{ dest.totalQty }} materiais saíram</span>
+          <span class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ dest.materials.length }} variações</span>
         </div>
       </button>
 
@@ -281,11 +281,11 @@ watch(variationsTotalPages, (total) => {
                 </div>
                 <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{{ card.name }}</p>
                 <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  {{ card.qty }} materiais sairam
+                  {{ card.qty }} materiais saíram
                 </p>
                 <div class="mt-3 flex items-center justify-between gap-2">
-                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ card.variations }} {{ card.variations === 1 ? 'variacao' : 'variacoes' }}</span>
-                  <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ card.moves }} {{ card.moves === 1 ? 'saida' : 'saidas' }}</span>
+                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ card.variations }} {{ card.variations === 1 ? 'variação' : 'variações' }}</span>
+                  <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ card.moves }} {{ card.moves === 1 ? 'saída' : 'saídas' }}</span>
                 </div>
               </button>
             </div>
@@ -293,7 +293,7 @@ watch(variationsTotalPages, (total) => {
 
           <div v-else class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Variacoes movimentadas</h4>
+              <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Variações movimentadas</h4>
               <span class="text-xs text-gray-400 dark:text-gray-500">
                 {{ variationPageStart }}-{{ variationPageEnd }} de {{ pathMaterials.length }}
               </span>
@@ -321,20 +321,20 @@ watch(variationsTotalPages, (total) => {
             <div v-if="variationsTotalPages > 1" class="flex items-center justify-end gap-2">
               <button
                 type="button"
-                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 :disabled="variationPage === 1"
                 @click="goVariationsPage(-1)"
               >
                 Anterior
               </button>
-              <span class="text-xs text-gray-400 dark:text-gray-500">Pagina {{ variationPage }} de {{ variationsTotalPages }}</span>
+              <span class="text-xs text-gray-400 dark:text-gray-500">Página {{ variationPage }} de {{ variationsTotalPages }}</span>
               <button
                 type="button"
-                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 :disabled="variationPage === variationsTotalPages"
                 @click="goVariationsPage(1)"
               >
-                Proxima
+                Próxima
               </button>
             </div>
           </div>

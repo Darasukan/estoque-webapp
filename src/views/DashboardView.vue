@@ -102,6 +102,10 @@ function variationText(row) {
   return [...values, ...extras].filter(Boolean).join(' / ') || '-'
 }
 
+function inventorySearchFromLabel(label) {
+  return String(label || '').split(' - ')[0]
+}
+
 function groupByMovements(keyFn) {
   const map = new Map()
   for (const movement of monthMovements.value.filter(m => m.type === 'saida')) {
@@ -136,6 +140,13 @@ const shortcutActions = [
     target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true },
     icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6',
     tone: 'text-green-600 dark:text-green-400',
+    bg: '#d1fae5',
+    border: '#34d399',
+    iconBg: '#a7f3d0',
+    darkBg: '#064e3b',
+    darkBorder: '#059669',
+    darkIconBg: '#065f46',
+    primary: true,
   },
   {
     id: 'saida',
@@ -144,6 +155,13 @@ const shortcutActions = [
     target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true },
     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6',
     tone: 'text-red-600 dark:text-red-400',
+    bg: '#fee2e2',
+    border: '#f87171',
+    iconBg: '#fecaca',
+    darkBg: '#7f1d1d',
+    darkBorder: '#dc2626',
+    darkIconBg: '#991b1b',
+    primary: true,
   },
   {
     id: 'inventario',
@@ -151,7 +169,13 @@ const shortcutActions = [
     description: 'Ver saldo, ajuste e histórico por variação.',
     target: { tab: 'inventario', section: 'estoque' },
     icon: 'M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6Zm3 2.25h10.5M6.75 12h10.5M6.75 15.75h6',
-    tone: 'text-primary-600 dark:text-primary-400',
+    tone: 'text-blue-700 dark:text-blue-300',
+    bg: '#dbeafe',
+    border: '#93c5fd',
+    iconBg: '#bfdbfe',
+    darkBg: '#1e3a8a',
+    darkBorder: '#3b82f6',
+    darkIconBg: '#1d4ed8',
   },
   {
     id: 'nova-os',
@@ -159,7 +183,14 @@ const shortcutActions = [
     description: 'Abrir uma ordem de serviço comum.',
     target: { tab: 'ordens', subTab: 'nova', requiresAuth: true },
     icon: 'M12 4.5v15m7.5-7.5h-15',
-    tone: 'text-primary-600 dark:text-primary-400',
+    tone: 'text-cyan-700 dark:text-cyan-300',
+    bg: '#cffafe',
+    border: '#67e8f9',
+    iconBg: '#a5f3fc',
+    darkBg: '#164e63',
+    darkBorder: '#06b6d4',
+    darkIconBg: '#155e75',
+    primary: true,
   },
   {
     id: 'fechamentos',
@@ -168,6 +199,12 @@ const shortcutActions = [
     target: { tab: 'inventario', section: 'fechamentos' },
     icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0Z',
     tone: 'text-amber-600 dark:text-amber-400',
+    bg: '#fef3c7',
+    border: '#fbbf24',
+    iconBg: '#fde68a',
+    darkBg: '#78350f',
+    darkBorder: '#d97706',
+    darkIconBg: '#92400e',
   },
   {
     id: 'motores',
@@ -176,6 +213,12 @@ const shortcutActions = [
     target: { tab: 'motores' },
     icon: 'M3.75 13.5h16.5m-16.5 0a2.25 2.25 0 01-2.25-2.25V9A2.25 2.25 0 013.75 6.75h16.5A2.25 2.25 0 0122.5 9v2.25a2.25 2.25 0 01-2.25 2.25m-16.5 0v1.875c0 .621.504 1.125 1.125 1.125h14.25c.621 0 1.125-.504 1.125-1.125V13.5',
     tone: 'text-gray-700 dark:text-gray-300',
+    bg: '#e2e8f0',
+    border: '#94a3b8',
+    iconBg: '#cbd5e1',
+    darkBg: '#334155',
+    darkBorder: '#64748b',
+    darkIconBg: '#475569',
   },
 ]
 
@@ -283,17 +326,25 @@ watch(topConsumedAllItems, () => {
           </div>
           <span class="ds-chip">Operação</span>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 p-4">
           <button
             v-for="action in shortcutActions"
             :key="action.id"
             type="button"
-            class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-left transition-colors hover:border-primary-300 dark:hover:border-primary-700 hover:bg-gray-50 dark:hover:bg-white/[0.03] cursor-pointer"
+            class="ds-action-card rounded-lg border p-3 pl-4 text-left transition-colors cursor-pointer"
+            :style="{
+              '--ds-action-bg': action.bg,
+              '--ds-action-border': action.border,
+              '--ds-action-icon-bg': action.iconBg,
+              '--ds-action-bg-dark': action.darkBg,
+              '--ds-action-border-dark': action.darkBorder,
+              '--ds-action-icon-bg-dark': action.darkIconBg,
+            }"
             :title="action.target.requiresAuth && !isLoggedIn ? 'Entre para usar este atalho' : action.description"
             @click="go(action.target)"
           >
             <div class="flex items-start gap-3">
-              <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950" :class="action.tone">
+              <span class="ds-action-icon mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border" :class="action.tone">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" :d="action.icon" />
                 </svg>
@@ -337,31 +388,31 @@ watch(topConsumedAllItems, () => {
     </section>
 
     <section class="ds-metric-grid">
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: 'zero' })">
+      <button class="ds-metric ds-metric-danger text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: 'zero' })">
         <p class="ds-metric-label">Sem estoque</p>
         <p class="ds-metric-value text-red-500">{{ stockStats.zero }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
+      <button class="ds-metric ds-metric-warning text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
         <p class="ds-metric-label">Críticos / alerta</p>
         <p class="ds-metric-value text-amber-500">{{ stockStats.critical + stockStats.alert }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
+      <button class="ds-metric ds-metric-warning text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'estoque', status: '' })">
         <p class="ds-metric-label">Destinos em alerta</p>
         <p class="ds-metric-value text-amber-500">{{ destinationAlerts.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'movimentacoes', subTab: 'historico' })">
+      <button class="ds-metric ds-metric-info text-left cursor-pointer" @click="go({ tab: 'movimentacoes', subTab: 'historico' })">
         <p class="ds-metric-label">Saídas no mês</p>
         <p class="ds-metric-value text-red-500">{{ movementStats.saidas }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'ordens', subTab: 'ordens' })">
+      <button class="ds-metric ds-metric-brand text-left cursor-pointer" @click="go({ tab: 'ordens', subTab: 'ordens' })">
         <p class="ds-metric-label">OS abertas</p>
         <p class="ds-metric-value">{{ openOrders.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'motores' })">
+      <button class="ds-metric ds-metric-success text-left cursor-pointer" @click="go({ tab: 'motores' })">
         <p class="ds-metric-label">Motores em manutenção</p>
         <p class="ds-metric-value">{{ motorsInMaintenance.length }}</p>
       </button>
-      <button class="ds-metric text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'fechamentos' })">
+      <button class="ds-metric ds-metric-brand text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'fechamentos' })">
         <p class="ds-metric-label">Último fechamento</p>
         <p class="ds-metric-value">{{ formatMonth(lastClosing) }}</p>
       </button>
@@ -385,7 +436,7 @@ watch(topConsumedAllItems, () => {
           v-for="row in lowStockRows"
           :key="row.variation.id"
           class="ds-list-row text-left p-4 cursor-pointer"
-          @click="go({ tab: 'inventario', section: 'estoque', status: row.status })"
+          @click="go({ tab: 'inventario', section: 'estoque', status: row.status, search: row.item.name || '' })"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -438,12 +489,18 @@ watch(topConsumedAllItems, () => {
           </div>
         </div>
         <div v-if="!topConsumedItems.length" class="p-4 text-sm ds-muted">Nenhuma saída registrada neste mês.</div>
-        <div v-for="item in topConsumedItems" :key="item.label" class="ds-list-row p-4">
+        <button
+          v-for="item in topConsumedItems"
+          :key="item.label"
+          type="button"
+          class="ds-list-row w-full p-4 text-left cursor-pointer"
+          @click="go({ tab: 'movimentacoes', subTab: 'historico', search: inventorySearchFromLabel(item.label) })"
+        >
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-gray-900 dark:text-gray-100 truncate">{{ item.label }}</p>
             <span class="ds-chip">{{ item.qty }}</span>
           </div>
-        </div>
+        </button>
       </section>
 
       <section class="ds-list-panel">
@@ -451,12 +508,18 @@ watch(topConsumedAllItems, () => {
           <h2 class="ds-section-heading">Consumo por destino no mês</h2>
         </div>
         <div v-if="!topDestinations.length" class="p-4 text-sm ds-muted">Nenhum destino com saída neste mês.</div>
-        <div v-for="dest in topDestinations" :key="dest.label" class="ds-list-row p-4">
+        <button
+          v-for="dest in topDestinations"
+          :key="dest.label"
+          type="button"
+          class="ds-list-row w-full p-4 text-left cursor-pointer"
+          @click="go({ tab: 'movimentacoes', subTab: 'historico', search: dest.label })"
+        >
           <div class="flex items-center justify-between gap-3">
             <p class="text-sm text-gray-900 dark:text-gray-100 truncate">{{ dest.label }}</p>
             <span class="ds-chip">{{ dest.qty }}</span>
           </div>
-        </div>
+        </button>
       </section>
 
       <section class="ds-list-panel">
@@ -468,7 +531,7 @@ watch(topConsumedAllItems, () => {
           v-for="order in openOrders.slice(0, 6)"
           :key="order.id"
           class="ds-list-row text-left p-4 cursor-pointer"
-          @click="emit('go', 'ordens')"
+          @click="go({ tab: 'ordens', subTab: 'ordens', orderId: order.id })"
         >
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">

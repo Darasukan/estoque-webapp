@@ -17,6 +17,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  initialHistorySearch: {
+    type: String,
+    default: '',
+  },
   prefillMovement: {
     type: Object,
     default: null,
@@ -571,6 +575,10 @@ const {
   histTotals,
 } = useMovementHistory(movements)
 
+watch(() => props.initialHistorySearch, search => {
+  histSearch.value = search || ''
+})
+
 const {
   summarySearch,
   expandedSummaryDestId,
@@ -1090,18 +1098,29 @@ defineExpose({
       <div v-else-if="step === 3" class="rounded-xl border border-gray-200 dark:border-gray-700">
 
         <!-- Header -->
-        <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
           <button
-            class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+            class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
+            title="Voltar para variações"
             @click="backToStep2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
             </svg>
           </button>
+          <span
+            class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            :class="activeSubTab === 'entrada'
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
+          >
+            {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saída' }}
+          </span>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
-            <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ variationLabel(selectedVariation, selectedItem) }}</p>
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+              {{ hierarchyLabel(selectedItem) }} · {{ variationLabel(selectedVariation, selectedItem) }}
+            </p>
           </div>
           <!-- Estoque atual badge -->
           <div class="flex-shrink-0 text-right">

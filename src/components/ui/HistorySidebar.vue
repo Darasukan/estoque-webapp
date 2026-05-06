@@ -62,7 +62,7 @@ function toggleSection(facet) {
     <div class="border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center p-3" :class="collapsed ? 'justify-center' : 'gap-2'">
         <button
-          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
           :title="collapsed ? 'Expandir menu' : 'Recolher menu'"
           @click="$emit('toggle')"
         >
@@ -75,7 +75,7 @@ function toggleSection(facet) {
     </div>
 
     <div v-if="collapsed" class="flex-1 flex flex-col items-center py-3 gap-3">
-      <div class="w-6 h-6 text-gray-400 dark:text-gray-500" title="Filtros do historico">
+      <div class="w-6 h-6 text-gray-400 dark:text-gray-500" title="Filtros do histórico">
         <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
         </svg>
@@ -86,7 +86,7 @@ function toggleSection(facet) {
     <template v-else>
       <button
         v-if="hasActiveFilters"
-        class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1"
+        class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1 cursor-pointer"
         @click="$emit('clear-filters')"
       >
         <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -105,11 +105,11 @@ function toggleSection(facet) {
             <input
               :value="search"
               type="text"
-              placeholder="Buscar material, responsavel, local, doc ou operador..."
+              placeholder="Buscar material, responsável, local, doc ou operador..."
               class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
               @input="$emit('update:search', $event.target.value)"
             />
-            <button v-if="search" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="$emit('update:search', '')">
+            <button v-if="search" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer" @click="$emit('update:search', '')">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -118,7 +118,7 @@ function toggleSection(facet) {
             <button
               v-for="filter in selectedFilters"
               :key="`${filter.key}:${filter.value}`"
-              class="max-w-full inline-flex items-center gap-1 rounded-full border border-primary-500/20 bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:text-primary-300"
+              class="max-w-full inline-flex items-center gap-1 rounded-full border border-primary-500/20 bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:text-primary-300 cursor-pointer"
               :title="`${filter.label}: ${filter.value}`"
               @click="$emit('toggle-filter', filter.key, filter.value)"
             >
@@ -143,7 +143,7 @@ function toggleSection(facet) {
               />
             </div>
             <div>
-              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Ate</label>
+              <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Até</label>
               <input
                 :value="dateTo"
                 type="date"
@@ -161,7 +161,7 @@ function toggleSection(facet) {
           </div>
           <div v-for="facet in mainFacets" :key="facet.key" class="border-t border-gray-100 dark:border-gray-700/50">
             <button
-              class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors"
+              class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors cursor-pointer"
               :class="!isExpanded(facet)
                 ? 'text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400'
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
@@ -206,7 +206,7 @@ function toggleSection(facet) {
           </div>
           <div v-for="facet in productFacets" :key="facet.key" class="border-t border-gray-100 dark:border-gray-700/50">
             <button
-              class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors"
+              class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors cursor-pointer"
               :class="!isExpanded(facet)
                 ? 'text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400'
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
@@ -246,7 +246,7 @@ function toggleSection(facet) {
 
         <section v-if="detailFacets.length" class="order-30 border-b border-gray-200 bg-gray-50/70 dark:border-gray-600/70 dark:bg-gray-900/35">
           <button
-            class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
             @click="expandedGroups.details = !expandedGroups.details"
           >
             <span class="flex items-center gap-1.5">
@@ -261,7 +261,7 @@ function toggleSection(facet) {
           <div v-if="expandedGroups.details">
             <div v-for="facet in detailFacets" :key="facet.key" class="border-t border-gray-100 dark:border-gray-700/50">
               <button
-                class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors"
+                class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors cursor-pointer"
                 :class="!isExpanded(facet)
                   ? 'text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
@@ -301,7 +301,7 @@ function toggleSection(facet) {
         </section>
 
         <p v-if="facets.length === 0" class="px-3 py-4 text-sm text-gray-400 dark:text-gray-500 italic text-center">
-          Nenhuma movimentacao registrada.
+          Nenhuma movimentação registrada.
         </p>
       </div>
     </template>

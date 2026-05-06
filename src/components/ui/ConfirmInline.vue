@@ -2,9 +2,9 @@
 import AppButton from './AppButton.vue'
 
 defineProps({
-  message: { type: String, default: 'Confirmar esta acao?' },
+  message: { type: String, default: 'Confirmar esta ação?' },
   confirmLabel: { type: String, default: 'Sim' },
-  cancelLabel: { type: String, default: 'Nao' },
+  cancelLabel: { type: String, default: 'Não' },
 })
 
 defineEmits(['confirm', 'cancel'])

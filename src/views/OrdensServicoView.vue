@@ -371,22 +371,40 @@ watch(() => props.createOnly, (createOnly) => {
   resetOsForm()
 }, { immediate: true })
 
-watch(() => props.initialTab, (tab) => {
-  if (!tab || !visibleSubTabs.value.some(t => t.id === tab)) return
-  activeSubTab.value = tab
+function prepareSubTab(tab, { forceNew = false } = {}) {
+  if (tab === 'resumo') loadReport()
   if (tab === 'nova') {
     if (!canManageOs.value) {
       activeSubTab.value = 'ordens'
       showNewForm.value = false
       return
     }
-    editingOrderId.value = null
-    motorEventOrderId.value = null
     showNewForm.value = true
-    resetOsForm()
-  } else if (tab !== 'ordens') {
+    if (forceNew || !editingOrderId.value || isMotorMode.value) {
+      editingOrderId.value = null
+      motorEventOrderId.value = null
+      resetOsForm()
+      applyScopedMotorToOsForm()
+    }
+  } else {
     showNewForm.value = false
   }
+}
+
+function switchSubTab(tab) {
+  if (!visibleSubTabs.value.some(t => t.id === tab)) return
+  if (tab === activeSubTab.value) {
+    if (tab === 'nova') prepareSubTab(tab, { forceNew: true })
+    return
+  }
+  activeSubTab.value = tab
+}
+
+watch(() => props.initialTab, (tab) => {
+  if (!tab || !visibleSubTabs.value.some(t => t.id === tab)) return
+  const sameTab = activeSubTab.value === tab
+  activeSubTab.value = tab
+  if (sameTab) prepareSubTab(tab, { forceNew: tab === 'nova' })
 }, { immediate: true })
 
 // ===== Item search for material =====
@@ -844,23 +862,7 @@ const visibleReport = computed(() =>
 )
 
 watch(activeSubTab, (tab) => {
-  if (tab === 'resumo') loadReport()
-  if (tab === 'nova') {
-    if (!canManageOs.value) {
-      activeSubTab.value = 'ordens'
-      showNewForm.value = false
-      return
-    }
-    showNewForm.value = true
-    if (!editingOrderId.value || isMotorMode.value) {
-      editingOrderId.value = null
-      motorEventOrderId.value = null
-      resetOsForm()
-      applyScopedMotorToOsForm()
-    }
-  } else {
-    showNewForm.value = false
-  }
+  prepareSubTab(tab)
 })
 
 // ===== Helpers =====
@@ -980,9 +982,15 @@ function openOrderFromHistory(order) {
 }
 
 function editFocusedOrder(orderId) {
-  if (!orderId || !canManageOs.value) return
+  if (!orderId) return
   const order = visibleOrdersBase.value.find(o => o.id === orderId)
-  if (order) startEditOS(order)
+  if (!order) return
+  if (canManageOs.value) {
+    startEditOS(order)
+    return
+  }
+  activeSubTab.value = 'ordens'
+  expandedOrderId.value = order.id
 }
 
 function cancelNewOsForm() {
@@ -1057,7 +1065,7 @@ function matBackToStep2() {
         :key="tab.id"
         class="ds-segmented-item"
         :class="activeSubTab === tab.id ? 'ds-segmented-item-active' : ''"
-        @click="activeSubTab = tab.id"
+        @click="switchSubTab(tab.id)"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
@@ -1083,7 +1091,10 @@ function matBackToStep2() {
       <!-- New OS form -->
       <div v-if="showNewForm && (activeSubTab === 'nova' || createOnly)" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formTitle }}</h3>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="ds-chip">{{ editingOrderId ? 'Editando' : 'Criando' }}</span>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{{ formTitle }}</h3>
+          </div>
           <span class="text-xs text-gray-400">Campos com * são obrigatórios</span>
         </div>
 
