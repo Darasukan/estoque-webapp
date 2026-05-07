@@ -84,6 +84,18 @@ function switchSubTab(tab) {
     return
   }
 
+  if (movementSubTabs.includes(activeSubTab.value) && movementSubTabs.includes(tab) && batchItems.value.length) {
+    const currentBatch = [...batchItems.value]
+    suppressFlowReset.value = true
+    activeSubTab.value = tab
+    resetFlow()
+    batchItems.value = currentBatch
+    nextTick(() => {
+      suppressFlowReset.value = false
+    })
+    return
+  }
+
   resetFlow()
   nextTick(() => {
     suppressFlowReset.value = false
@@ -113,6 +125,12 @@ const confirmPending = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
 const batchItems = ref([])
 const suppressFlowReset = ref(false)
+
+const batchKind = computed(() => {
+  const types = new Set(batchItems.value.map(i => i.type))
+  if (types.size === 1) return types.has('entrada') ? 'entrada' : 'saida'
+  return 'mixed'
+})
 
 function selectDocType(v) {
   docType.value = v
@@ -413,15 +431,15 @@ const parsedQty = computed(() => {
   return isFinite(n) && n > 0 ? n : null
 })
 
-function batchQtyForVariation(variationId) {
+function batchStockDeltaForVariation(variationId) {
   return batchItems.value
     .filter(i => i.variationId === variationId)
-    .reduce((sum, i) => sum + i.qty, 0)
+    .reduce((sum, i) => sum + (i.type === 'entrada' ? i.qty : -i.qty), 0)
 }
 
 const selectedAvailableStock = computed(() => {
   if (activeSubTab.value !== 'saida' || !selectedVariation.value) return selectedVariation.value?.stock || 0
-  return selectedVariation.value.stock - batchQtyForVariation(selectedVariation.value.id)
+  return selectedVariation.value.stock + batchStockDeltaForVariation(selectedVariation.value.id)
 })
 
 const saidaExceedsStock = computed(() =>
@@ -468,6 +486,7 @@ function addCurrentToBatch() {
 
   batchItems.value.push({
     uid: `batch_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: activeSubTab.value,
     variationId: liveVar.id,
     itemId: selectedItem.value.id,
     itemName: selectedItem.value.name,
@@ -489,13 +508,54 @@ function removeBatchItem(uid) {
   batchItems.value = batchItems.value.filter(i => i.uid !== uid)
 }
 
+function editBatchItem(line) {
+  const item = items.value.find(i => i.id === line.itemId)
+  const variation = variations.value.find(v => v.id === line.variationId)
+  if (!item || !variation) {
+    error('Item do lote nao foi encontrado para edicao.')
+    return
+  }
+
+  removeBatchItem(line.uid)
+  suppressFlowReset.value = true
+  activeSubTab.value = line.type || 'entrada'
+  selectedItem.value = item
+  selectedVariation.value = variation
+  step.value = 3
+  form.value = {
+    qty: String(line.qty || ''),
+    supplier: line.supplier || '',
+    requestedBy: line.requestedBy || '',
+    destination: line.destination || '',
+    docRef: '',
+    note: line.note || '',
+  }
+  const doc = String(line.docRef || '')
+  if (doc.startsWith('NF ')) {
+    docType.value = 'nf'
+    form.value.docRef = doc.slice(3)
+  } else if (doc.startsWith('PC ')) {
+    docType.value = 'pedido'
+    form.value.docRef = doc.slice(3)
+  } else {
+    docType.value = 'sem'
+  }
+  personSelectVal.value = line.requestedBy || ''
+  destSelectVal.value = line.destination || ''
+  setViewingItem(item.id)
+  nextTick(() => {
+    suppressFlowReset.value = false
+    focusRef(qtyInputEl)
+  })
+}
+
 function clearBatch() {
   batchItems.value = []
 }
 
 async function confirmBatch() {
   if (!batchItems.value.length) return
-  if (activeSubTab.value === 'saida' && batchItems.value.some(i => !String(i.requestedBy || '').trim() || !String(i.destination || '').trim())) {
+  if (batchItems.value.some(i => i.type === 'saida' && (!String(i.requestedBy || '').trim() || !String(i.destination || '').trim()))) {
     error('Preencha quem retirou e o local de destino em todos os itens do lote.')
     return
   }
@@ -503,21 +563,21 @@ async function confirmBatch() {
   const woId = selectedWorkOrderId.value
 
   try {
-    const created = await addMovementBatch(activeSubTab.value, batchItems.value, {})
+    const created = await addMovementBatch(batchKind.value, batchItems.value, {})
     for (const m of created) {
       const liveVar = variations.value.find(v => v.id === m.variationId)
       if (liveVar) liveVar.stock = m.stockAfter
     }
 
-    if (activeSubTab.value === 'saida' && woId) {
+    if (woId) {
       try {
-        for (const movement of created) await linkMovement(woId, movement.id)
+        for (const movement of created.filter(m => m.type === 'saida')) await linkMovement(woId, movement.id)
       } catch (e) {
         error('Lote criado, mas houve falha ao vincular algum item à OS: ' + e.message)
       }
     }
 
-    const typeLabel = activeSubTab.value === 'entrada' ? 'Entrada' : 'Saída'
+    const typeLabel = batchKind.value === 'entrada' ? 'Entrada' : batchKind.value === 'saida' ? 'Saída' : 'Movimentação'
     success(`${typeLabel} em lote registrada com sucesso.`)
     resetFlow()
   } catch (e) {
@@ -732,7 +792,7 @@ defineExpose({
         <div class="px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Lote de {{ activeSubTab === 'entrada' ? 'entrada' : 'saída' }}
+              Lote de {{ batchKind === 'mixed' ? 'movimentações' : batchKind === 'entrada' ? 'entrada' : 'saída' }}
             </h3>
             <p class="text-xs text-gray-500 dark:text-gray-400">{{ batchItems.length }} item{{ batchItems.length !== 1 ? 's' : '' }} aguardando confirmação</p>
           </div>
@@ -743,7 +803,7 @@ defineExpose({
             >Limpar</button>
             <button
               class="px-4 py-2 text-sm font-medium rounded-lg text-white"
-              :class="activeSubTab === 'entrada' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'"
+              :class="batchKind === 'entrada' ? 'bg-green-600 hover:bg-green-700' : batchKind === 'saida' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'"
               @click="confirmBatch"
             >Confirmar lote</button>
           </div>
@@ -751,11 +811,20 @@ defineExpose({
         <div class="divide-y divide-gray-100 dark:divide-gray-800">
           <div v-for="line in batchItems" :key="line.uid" class="px-4 py-3 flex items-center gap-3">
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ line.itemName }}</p>
+              <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                <span
+                  class="mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                  :class="line.type === 'entrada'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
+                >{{ line.type === 'entrada' ? 'Entrada' : 'Saída' }}</span>
+                {{ line.itemName }}
+              </p>
               <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
               <p v-if="batchLineDetails(line)" class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ batchLineDetails(line) }}</p>
             </div>
             <span class="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ line.qty }} {{ line.itemUnit }}</span>
+            <button class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300" @click="editBatchItem(line)">Editar</button>
             <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>
           </div>
         </div>

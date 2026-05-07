@@ -124,7 +124,7 @@ router.post('/batch', requireAuth, (req, res) => {
   const operatorId = req.user?.id || ''
   const operatorName = req.user?.name || ''
 
-  if (!['entrada', 'saida'].includes(type)) {
+  if (![undefined, null, '', 'mixed', 'entrada', 'saida'].includes(type)) {
     return res.status(400).json({ error: 'Tipo de movimentacao invalido.' })
   }
   if (!Array.isArray(items) || items.length === 0) {
@@ -135,6 +135,10 @@ router.post('/batch', requireAuth, (req, res) => {
   const prepared = []
 
   for (const item of items) {
+    const lineType = ['entrada', 'saida'].includes(item.type) ? item.type : type
+    if (!['entrada', 'saida'].includes(lineType)) {
+      return res.status(400).json({ error: 'Todos os itens do lote precisam de tipo entrada ou saida.' })
+    }
     const qty = parsePositiveQty(item.qty)
     if (!item.variationId || !item.itemId || !qty) {
       return res.status(400).json({ error: 'Itens do lote precisam de variationId, itemId e qty positiva.' })
@@ -149,11 +153,11 @@ router.post('/batch', requireAuth, (req, res) => {
     const stockBefore = liveStockByVariation.has(item.variationId)
       ? liveStockByVariation.get(item.variationId)
       : variation.stock
-    const stockAfter = type === 'entrada' ? stockBefore + qty : stockBefore - qty
+    const stockAfter = lineType === 'entrada' ? stockBefore + qty : stockBefore - qty
     if (stockAfter < 0) return res.status(400).json({ error: `Estoque insuficiente para ${item.itemName || 'item do lote'}.` })
 
     liveStockByVariation.set(item.variationId, stockAfter)
-    prepared.push({ item, qty, stockBefore, stockAfter })
+    prepared.push({ item, type: lineType, qty, stockBefore, stockAfter })
   }
 
   const date = fields.date || new Date().toISOString()
@@ -174,7 +178,7 @@ router.post('/batch', requireAuth, (req, res) => {
       const note = movementField(m, fields, 'note')
       db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, requested_by, destination, doc_ref, note, operator_id, operator_name)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        id, type, m.variationId, m.itemId,
+        id, line.type, m.variationId, m.itemId,
         m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
         JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         line.qty, line.stockBefore, line.stockAfter,
@@ -184,7 +188,7 @@ router.post('/batch', requireAuth, (req, res) => {
       )
       created.push({
         id,
-        type,
+        type: line.type,
         variationId: m.variationId,
         itemId: m.itemId,
         itemName: m.itemName || '',

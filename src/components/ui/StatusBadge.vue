@@ -31,12 +31,12 @@ const tone = computed(() => {
 })
 
 const toneClasses = computed(() => ({
-  brand: 'border-primary-500/25 bg-primary-500/10 text-primary-700 dark:text-primary-300',
-  success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  warning: 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  danger: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300',
-  neutral: 'border-gray-300 bg-gray-100 text-gray-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-300',
-}[tone.value] || 'border-gray-300 bg-gray-100 text-gray-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-300')
+  brand: 'bg-blue-600 text-white',
+  success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-700 dark:text-white',
+  warning: 'bg-amber-100 text-amber-900 dark:bg-amber-700 dark:text-white',
+  danger: 'bg-red-100 text-red-800 dark:bg-red-700 dark:text-white',
+  neutral: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-100',
+}[tone.value] || 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-100')
 )
 
 const sizeClasses = computed(() => ({
@@ -49,7 +49,7 @@ const sizeClasses = computed(() => ({
 
 <template>
   <span
-    class="inline-flex items-center whitespace-nowrap rounded-full border font-medium leading-none"
+    class="inline-flex items-center whitespace-nowrap rounded-full font-medium leading-none"
     :class="[toneClasses, sizeClasses]"
   >
     {{ resolvedLabel }}

@@ -23,13 +23,13 @@
 @layer base {
   :root {
     color-scheme: light;
-    --ds-bg: #dfe6ef;
-    --ds-bg-wash: #f8f9fc;
-    --ds-panel: #f8fafc;
+    --ds-bg: #eef3f8;
+    --ds-bg-wash: #f6f9fc;
+    --ds-panel: #ffffff;
     --ds-panel-tint: #eaf2ff;
-    --ds-surface: #edf2f8;
-    --ds-surface-strong: #d8e2ee;
-    --ds-surface-hover: #dbe5f0;
+    --ds-surface: #f3f7fb;
+    --ds-surface-strong: #e5edf6;
+    --ds-surface-hover: #e8f0f8;
     --ds-text: #171717;
     --ds-text-soft: #404040;
     --ds-text-muted: #737373;
@@ -52,13 +52,13 @@
 
   .dark {
     color-scheme: dark;
-    --ds-bg: #06080c;
-    --ds-bg-wash: #0c0f16;
-    --ds-panel: #121821;
-    --ds-panel-tint: #142238;
-    --ds-surface: #1b2430;
-    --ds-surface-strong: #263445;
-    --ds-surface-hover: #2d3d50;
+    --ds-bg: #101722;
+    --ds-bg-wash: #162233;
+    --ds-panel: #17202b;
+    --ds-panel-tint: #1b2d43;
+    --ds-surface: #202b38;
+    --ds-surface-strong: #2a3747;
+    --ds-surface-hover: #35465a;
     --ds-text: #f7f8f8;
     --ds-text-soft: #d0d6e0;
     --ds-text-muted: #8a8f98;
@@ -70,19 +70,19 @@
     --ds-active-bg: #1e3a8a;
     --ds-active-text: #eff6ff;
     --ds-info: #60a5fa;
-    --ds-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 44px rgba(0, 0, 0, 0.44);
+    --ds-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 44px rgba(4, 10, 18, 0.32);
 
     --color-gray-50: #f7f8f8;
     --color-gray-100: #e2e4e7;
     --color-gray-200: #d0d6e0;
     --color-gray-300: #a7adb7;
     --color-gray-400: #8a8f98;
-    --color-gray-500: #62666d;
-    --color-gray-600: #3e3e44;
-    --color-gray-700: #28282c;
-    --color-gray-800: #191a1b;
-    --color-gray-900: #0f1011;
-    --color-gray-950: #08090a;
+    --color-gray-500: #707985;
+    --color-gray-600: #465466;
+    --color-gray-700: #35465a;
+    --color-gray-800: #202b38;
+    --color-gray-900: #17202b;
+    --color-gray-950: #101722;
   }
 
   html {
@@ -264,25 +264,31 @@
     overflow: hidden;
     min-width: 0;
     padding: 0.75rem;
-    border: 1px solid var(--ds-border);
+    border: 0;
     border-radius: 10px;
     background: var(--ds-surface);
     box-shadow: none;
   }
 
   .ds-metric::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    background: color-mix(in srgb, var(--ds-brand) 72%, transparent);
+    display: none;
   }
 
-  .ds-metric-danger::before { background: color-mix(in srgb, var(--ds-danger) 78%, transparent); }
-  .ds-metric-warning::before { background: color-mix(in srgb, var(--ds-warning) 78%, transparent); }
-  .ds-metric-success::before { background: color-mix(in srgb, var(--ds-success) 78%, transparent); }
-  .ds-metric-info::before { background: color-mix(in srgb, var(--ds-info) 78%, transparent); }
-  .ds-metric-brand::before { background: color-mix(in srgb, var(--ds-brand) 78%, transparent); }
+  .ds-metric-danger,
+  .ds-metric-warning,
+  .ds-metric-success,
+  .ds-metric-info,
+  .ds-metric-brand {
+    background: var(--ds-surface);
+  }
+
+  .dark .ds-metric-danger,
+  .dark .ds-metric-warning,
+  .dark .ds-metric-success,
+  .dark .ds-metric-info,
+  .dark .ds-metric-brand {
+    background: var(--ds-surface);
+  }
 
   .ds-metric:hover {
     background: var(--ds-surface-hover);
@@ -294,7 +300,8 @@
     --ds-action-icon-bg: color-mix(in srgb, var(--ds-brand) 14%, var(--ds-surface));
     position: relative;
     overflow: hidden;
-    border-color: var(--ds-action-border);
+    border-width: 0;
+    border-color: transparent;
     background: var(--ds-action-bg);
   }
 
@@ -303,7 +310,7 @@
   }
 
   .dark .ds-action-card {
-    border-color: var(--ds-action-border-dark, var(--ds-action-border));
+    border-color: transparent;
     background: var(--ds-action-bg-dark, var(--ds-action-bg));
   }
 
@@ -312,12 +319,13 @@
   }
 
   .ds-action-icon {
-    border-color: var(--ds-action-border);
+    border-width: 0;
+    border-color: transparent;
     background: var(--ds-action-icon-bg);
   }
 
   .dark .ds-action-icon {
-    border-color: var(--ds-action-border-dark, var(--ds-action-border));
+    border-color: transparent;
     background: var(--ds-action-icon-bg-dark, var(--ds-action-icon-bg));
   }
 

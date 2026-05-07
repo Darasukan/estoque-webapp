@@ -5,6 +5,7 @@ import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
 import AppButton from './components/ui/AppButton.vue'
+import DashboardView from './views/DashboardView.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
 import { useMovements } from './composables/useMovements.js'
@@ -18,7 +19,6 @@ import { useWorkOrders } from './composables/useWorkOrders.js'
 import { useMotors } from './composables/useMotors.js'
 import { useClosings } from './composables/useClosings.js'
 
-const DashboardView = defineAsyncComponent(() => import('./views/DashboardView.vue'))
 const CatalogView = defineAsyncComponent(() => import('./views/CatalogView.vue'))
 const CadastrosView = defineAsyncComponent(() => import('./views/CadastrosView.vue'))
 const InventarioView = defineAsyncComponent(() => import('./views/InventarioView.vue'))
@@ -154,6 +154,10 @@ function navigateTab(target) {
   const tab = typeof target === 'string' ? target : target?.tab
   if (!tab) return
   if (target?.requiresAuth && !isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
+  if ((tab === 'fechamentos' || target?.section === 'fechamentos') && !isLoggedIn.value) {
     showLoginModal.value = true
     return
   }
@@ -329,17 +333,19 @@ function handleQuickMovementKeydown(event) {
 
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
-        <DashboardView v-if="activeTab === 'dashboard'" @go="navigateTab" />
+        <KeepAlive>
+          <DashboardView v-if="activeTab === 'dashboard'" @go="navigateTab" />
+        </KeepAlive>
 
         <!-- Catálogo tab -->
-        <CatalogView v-else-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
+        <CatalogView v-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
 
         <!-- Cadastros tab -->
-        <CadastrosView v-else-if="activeTab === 'cadastros'" />
+        <CadastrosView v-if="activeTab === 'cadastros'" />
 
         <!-- Inventário tab -->
         <InventarioView
-          v-else-if="activeTab === 'inventario'"
+          v-if="activeTab === 'inventario'"
           :initial-section="requestedInventorySection"
           :initial-status="requestedInventoryStatus"
           :initial-search="requestedInventorySearch"
@@ -348,7 +354,7 @@ function handleQuickMovementKeydown(event) {
 
         <!-- Movimentações tab -->
         <MovimentacoesView
-          v-else-if="activeTab === 'movimentacoes'"
+          v-if="activeTab === 'movimentacoes'"
           ref="movRef"
           :initial-sub-tab="requestedMovSubTab"
           :initial-history-search="requestedMovSearch"
@@ -359,14 +365,14 @@ function handleQuickMovementKeydown(event) {
 
         <!-- Ordens de Serviço tab -->
         <OrdensServicoView
-          v-else-if="activeTab === 'ordens'"
+          v-if="activeTab === 'ordens'"
           mode="general"
           :initial-tab="requestedOrdersTab"
           :focus-order-id="requestedOrderFocusId"
         />
 
         <!-- Motores tab -->
-        <MotoresView v-else-if="activeTab === 'motores'" />
+        <MotoresView v-if="activeTab === 'motores'" />
       </main>
     </div>
 
@@ -397,7 +403,7 @@ function handleQuickMovementKeydown(event) {
       </div>
       <button
         type="button"
-        class="inline-flex h-11 items-center gap-2 rounded-full border border-primary-500 bg-primary-600 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-500 cursor-pointer"
+        class="inline-flex h-11 items-center gap-2 rounded-full bg-primary-600 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-500 cursor-pointer"
         :aria-expanded="quickActionsOpen"
         title="Ações rápidas de movimentação"
         @click="quickActionsOpen = !quickActionsOpen"

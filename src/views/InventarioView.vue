@@ -24,6 +24,7 @@ const props = defineProps({
 })
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
+const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const emit = defineEmits(['quick-movement'])
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
@@ -52,7 +53,15 @@ const columnOptions = computed(() => [
 ])
 
 watch(() => props.initialSection, section => {
+  if (section === 'fechamentos' && !canAccessClosings.value) {
+    inventorySection.value = 'estoque'
+    return
+  }
   if (['estoque', 'fechamentos'].includes(section)) inventorySection.value = section
+})
+
+watch(canAccessClosings, allowed => {
+  if (!allowed && inventorySection.value === 'fechamentos') inventorySection.value = 'estoque'
 })
 
 function isColumnVisible(key) {
@@ -760,6 +769,7 @@ function exportCSV() {
 
     <div class="ds-segmented">
       <button
+        v-if="canAccessClosings"
         type="button"
         class="ds-segmented-item"
         :class="inventorySection === 'estoque' ? 'ds-segmented-item-active' : ''"
@@ -808,7 +818,7 @@ function exportCSV() {
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-500 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
             @click="columnMenuOpen = !columnMenuOpen"
           >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -854,7 +864,7 @@ function exportCSV() {
           <option v-for="y in csvYears" :key="y" :value="y">{{ y }}</option>
         </select>
         <button
-          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-500 hover:text-primary-700 dark:hover:text-primary-400 transition-colors"
+          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
           title="Exportar relatório de estoque em CSV"
           @click="exportCSV"
         >
@@ -1155,7 +1165,7 @@ function exportCSV() {
                 <!-- Histórico -->
                 <td v-if="isColumnVisible('history')" class="px-4 py-3 text-center">
                   <button
-                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                     @click="openVariationHistory(row)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1199,7 +1209,7 @@ function exportCSV() {
                   <div v-else class="relative flex items-center justify-center gap-1.5">
                     <button
                       v-if="isAdmin"
-                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 dark:hover:border-primary-600 hover:text-primary-700 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                       title="Corrigir saldo manualmente"
                       @click="startAdjust(row.variation.id, row.variation.stock)"
                     >

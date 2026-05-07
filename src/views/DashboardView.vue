@@ -196,7 +196,7 @@ const shortcutActions = [
     id: 'fechamentos',
     label: 'Fechamentos',
     description: 'Conferir ou gerar fechamento mensal.',
-    target: { tab: 'inventario', section: 'fechamentos' },
+    target: { tab: 'inventario', section: 'fechamentos', requiresAuth: true },
     icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0Z',
     tone: 'text-amber-600 dark:text-amber-400',
     bg: '#fef3c7',
@@ -274,7 +274,7 @@ const priorityActions = computed(() => {
       id: 'sem-fechamento',
       label: 'Nenhum fechamento registrado',
       description: 'Abrir rotina de fechamento mensal.',
-      target: { tab: 'inventario', section: 'fechamentos' },
+      target: { tab: 'inventario', section: 'fechamentos', requiresAuth: true },
       tone: 'text-amber-600 dark:text-amber-400',
     })
   }
@@ -312,9 +312,6 @@ watch(topConsumedAllItems, () => {
         <h1 class="ds-page-title">Dashboard</h1>
         <p class="ds-page-subtitle">Resumo operacional de estoque, movimentações, ordens e motores.</p>
       </div>
-      <button class="ds-segmented-item ds-segmented-item-active" @click="go({ tab: 'inventario', section: 'fechamentos' })">
-        Fechamentos
-      </button>
     </header>
 
     <section class="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-4">
@@ -412,7 +409,7 @@ watch(topConsumedAllItems, () => {
         <p class="ds-metric-label">Motores em manutenção</p>
         <p class="ds-metric-value">{{ motorsInMaintenance.length }}</p>
       </button>
-      <button class="ds-metric ds-metric-brand text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'fechamentos' })">
+      <button class="ds-metric ds-metric-brand text-left cursor-pointer" @click="go({ tab: 'inventario', section: 'fechamentos', requiresAuth: true })">
         <p class="ds-metric-label">Último fechamento</p>
         <p class="ds-metric-value">{{ formatMonth(lastClosing) }}</p>
       </button>

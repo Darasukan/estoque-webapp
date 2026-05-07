@@ -376,6 +376,21 @@ const selectedMaterialItemVariations = computed(() =>
   materialItemId.value ? availableVariationsForItem(materialItemId.value) : []
 )
 
+const currentScopeMaterialIds = computed(() => {
+  if (selectedMaterialItem.value) return selectedMaterialItemVariations.value.map(v => v.id)
+  if (!materialGroup.value) return []
+  return items.value
+    .filter(item => item.group === materialGroup.value)
+    .filter(item => !materialCategory.value || item.category === materialCategory.value)
+    .filter(item => !materialSubcategory.value || item.subcategory === materialSubcategory.value)
+    .flatMap(item => availableVariationsForItem(item.id).map(v => v.id))
+})
+
+const allCurrentScopePending = computed(() =>
+  currentScopeMaterialIds.value.length > 0 &&
+  currentScopeMaterialIds.value.every(id => pendingMaterialIds.value.includes(id))
+)
+
 const materialBreadcrumb = computed(() => [
   materialGroup.value,
   materialCategory.value,
@@ -463,6 +478,17 @@ function togglePendingMaterial(variationId) {
   const idx = pendingMaterialIds.value.indexOf(variationId)
   if (idx >= 0) pendingMaterialIds.value.splice(idx, 1)
   else pendingMaterialIds.value.push(variationId)
+}
+
+function toggleCurrentScopeMaterials() {
+  if (!canLinkMaterial.value || !currentScopeMaterialIds.value.length) return
+  if (allCurrentScopePending.value) {
+    pendingMaterialIds.value = pendingMaterialIds.value.filter(id => !currentScopeMaterialIds.value.includes(id))
+    return
+  }
+  const selected = new Set(pendingMaterialIds.value)
+  for (const id of currentScopeMaterialIds.value) selected.add(id)
+  pendingMaterialIds.value = [...selected]
 }
 
 async function savePendingMaterials() {
@@ -927,7 +953,17 @@ async function removeMaterialFromDestination(variation) {
         <div class="flex-1 overflow-y-auto p-5">
           <div class="flex items-center justify-between mb-3">
             <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">{{ materialModalTitle }}</p>
-            <p v-if="materialBreadcrumb.length" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialBreadcrumb.join(' > ') }}</p>
+            <div class="flex items-center gap-2 min-w-0">
+              <p v-if="materialBreadcrumb.length" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialBreadcrumb.join(' > ') }}</p>
+              <button
+                v-if="currentScopeMaterialIds.length"
+                type="button"
+                class="shrink-0 rounded-lg bg-primary-100 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
+                @click="toggleCurrentScopeMaterials"
+              >
+                {{ allCurrentScopePending ? 'Remover nível' : 'Selecionar nível' }}
+              </button>
+            </div>
           </div>
 
           <div v-if="!materialGroup && materialGroups.length" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
