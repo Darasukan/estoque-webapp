@@ -15,7 +15,7 @@ const { movements } = useMovements()
 const { workOrders } = useWorkOrders()
 const { motors } = useMotors()
 const { closings } = useClosings()
-const { getDestFullName } = useDestinations()
+const { destinations, getDestFullName } = useDestinations()
 const DASHBOARD_PAGE_SIZE = 6
 const lowStockPage = ref(1)
 const consumedPage = ref(1)
@@ -70,7 +70,13 @@ const lowStockRows = computed(() => pageSlice(lowStockAllRows.value, lowStockPag
 const destinationAlerts = computed(() => {
   const map = new Map()
   for (const row of rows.value.filter(r => r.status !== 'ok')) {
-    for (const destinationId of row.variation.destinations || []) {
+    const destinationIds = new Set(row.variation.destinations || [])
+    for (const destination of destinations.value) {
+      if ((destination.materialRules || []).some(rule => itemMatchesDestinationRule(row.item, rule))) {
+        destinationIds.add(destination.id)
+      }
+    }
+    for (const destinationId of destinationIds) {
       const label = getDestFullName(destinationId)
       if (!label) continue
       const current = map.get(destinationId) || {
@@ -95,6 +101,13 @@ const destinationAlerts = computed(() => {
     )
     .slice(0, 8)
 })
+
+function itemMatchesDestinationRule(item, rule) {
+  if (!item || !rule?.group || item.group !== rule.group) return false
+  if (rule.category && item.category !== rule.category) return false
+  if (rule.subcategory && item.subcategory !== rule.subcategory) return false
+  return true
+}
 
 function variationText(row) {
   const values = Object.entries(row.variation.values || {}).map(([k, v]) => `${k}: ${v}`)

@@ -75,6 +75,7 @@ export function useDestinations() {
       description: description.trim(),
       active: true,
       parentId: parentId || null,
+      materialRules: [],
     })
     destinations.value.push(created)
     destinations.value = sortByName(destinations.value)
@@ -92,7 +93,7 @@ export function useDestinations() {
         return { ok: false, error: 'Já existe um destino com esse nome neste nível.' }
       }
     }
-    const updated = await api.updateDestination(id, { ...d, ...changes })
+    const updated = await api.updateDestination(id, { ...d, materialRules: d.materialRules || [], ...changes })
     Object.assign(d, updated)
     destinations.value = sortByName(destinations.value)
     return { ok: true }

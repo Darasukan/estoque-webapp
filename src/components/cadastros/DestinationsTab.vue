@@ -240,12 +240,29 @@ function itemMatchesMaterialSearch(item, query) {
 }
 
 const linkedMaterials = computed(() => {
-  const destinationId = selectedMaterialDestination.value?.id
-  if (!destinationId) return []
+  const destination = selectedMaterialDestination.value
+  if (!destination) return []
   return variations.value
-    .filter(variation => (variation.destinations || []).includes(destinationId))
+    .filter(variation => variationBelongsToDestination(variation, destination))
     .sort((a, b) => materialLabel(a).localeCompare(materialLabel(b)))
 })
+
+function itemMatchesRule(item, rule) {
+  if (!item || !rule?.group || item.group !== rule.group) return false
+  if (rule.category && item.category !== rule.category) return false
+  if (rule.subcategory && item.subcategory !== rule.subcategory) return false
+  return true
+}
+
+function variationBelongsToDestination(variation, destination) {
+  if ((variation.destinations || []).includes(destination.id)) return true
+  const item = items.value.find(i => i.id === variation.itemId)
+  return (destination.materialRules || []).some(rule => itemMatchesRule(item, rule))
+}
+
+function isManualMaterialLinked(variation) {
+  return (variation.destinations || []).includes(selectedMaterialDestination.value?.id)
+}
 
 const linkedMaterialsTotalPages = computed(() =>
   Math.max(1, Math.ceil(linkedMaterials.value.length / linkedMaterialsPerPage))
@@ -273,6 +290,10 @@ watch(linkedMaterialsTotalPages, (total) => {
 })
 
 function materialCountForDestination(destinationId) {
+  const destination = [selectedParent.value, ...selectedChildren.value].filter(Boolean).find(d => d.id === destinationId)
+  if (destination) {
+    return variations.value.filter(variation => variationBelongsToDestination(variation, destination)).length
+  }
   return variations.value.filter(variation =>
     (variation.destinations || []).includes(destinationId)
   ).length
@@ -391,6 +412,33 @@ const allCurrentScopePending = computed(() =>
   currentScopeMaterialIds.value.every(id => pendingMaterialIds.value.includes(id))
 )
 
+const currentScopeRule = computed(() => {
+  if (!materialGroup.value || selectedMaterialItem.value) return null
+  return {
+    group: materialGroup.value,
+    category: materialCategory.value || '',
+    subcategory: materialSubcategory.value || '',
+  }
+})
+
+function ruleKey(rule) {
+  return `${rule?.group || ''}\u0000${rule?.category || ''}\u0000${rule?.subcategory || ''}`
+}
+
+function ruleLabel(rule) {
+  return [rule.group, rule.category, rule.subcategory].filter(Boolean).join(' > ')
+}
+
+const destinationMaterialRules = computed(() =>
+  selectedMaterialDestination.value?.materialRules || []
+)
+
+const currentScopeRuleSaved = computed(() => {
+  const rule = currentScopeRule.value
+  if (!rule) return false
+  return destinationMaterialRules.value.some(saved => ruleKey(saved) === ruleKey(rule))
+})
+
 const materialBreadcrumb = computed(() => [
   materialGroup.value,
   materialCategory.value,
@@ -482,6 +530,10 @@ function togglePendingMaterial(variationId) {
 
 function toggleCurrentScopeMaterials() {
   if (!canLinkMaterial.value || !currentScopeMaterialIds.value.length) return
+  if (currentScopeRule.value) {
+    toggleCurrentScopeRule()
+    return
+  }
   if (allCurrentScopePending.value) {
     pendingMaterialIds.value = pendingMaterialIds.value.filter(id => !currentScopeMaterialIds.value.includes(id))
     return
@@ -489,6 +541,29 @@ function toggleCurrentScopeMaterials() {
   const selected = new Set(pendingMaterialIds.value)
   for (const id of currentScopeMaterialIds.value) selected.add(id)
   pendingMaterialIds.value = [...selected]
+}
+
+async function toggleCurrentScopeRule() {
+  const destination = selectedMaterialDestination.value
+  const rule = currentScopeRule.value
+  if (!destination || !rule) return
+  const current = destination.materialRules || []
+  const key = ruleKey(rule)
+  const next = current.some(saved => ruleKey(saved) === key)
+    ? current.filter(saved => ruleKey(saved) !== key)
+    : [...current, rule]
+  const r = await editDestination(destination.id, { materialRules: next })
+  if (!r.ok) { error(r.error); return }
+  success(next.length < current.length ? 'Regra removida do destino.' : 'Regra salva para este destino.')
+}
+
+async function removeMaterialRule(rule) {
+  const destination = selectedMaterialDestination.value
+  if (!isLoggedIn.value || !destination) return
+  const next = (destination.materialRules || []).filter(saved => ruleKey(saved) !== ruleKey(rule))
+  const r = await editDestination(destination.id, { materialRules: next })
+  if (!r.ok) { error(r.error); return }
+  success('Regra removida do destino.')
 }
 
 async function savePendingMaterials() {
@@ -821,6 +896,31 @@ async function removeMaterialFromDestination(variation) {
               </button>
             </div>
 
+            <div
+              v-if="destinationMaterialRules.length"
+              class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 px-4 py-3"
+            >
+              <p class="mb-2 text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Regras automaticas</p>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="rule in destinationMaterialRules"
+                  :key="ruleKey(rule)"
+                  class="inline-flex items-center gap-2 rounded-lg bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                >
+                  {{ ruleLabel(rule) }}
+                  <button
+                    v-if="isLoggedIn"
+                    type="button"
+                    class="text-primary-400 hover:text-red-500 dark:text-primary-300 dark:hover:text-red-300"
+                    title="Remover regra"
+                    @click="removeMaterialRule(rule)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+
             <div v-if="linkedMaterials.length" class="divide-y divide-gray-100 dark:divide-gray-800">
               <div
                 v-for="variation in paginatedLinkedMaterials"
@@ -840,7 +940,7 @@ async function removeMaterialFromDestination(variation) {
                   <p class="text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{{ variation.minStock || 0 }}</p>
                 </div>
                 <button
-                  v-if="isLoggedIn"
+                  v-if="isLoggedIn && isManualMaterialLinked(variation)"
                   class="p-1.5 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   title="Remover vinculo"
                   @click="removeMaterialFromDestination(variation)"
@@ -961,7 +1061,7 @@ async function removeMaterialFromDestination(variation) {
                 class="shrink-0 rounded-lg bg-primary-100 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
                 @click="toggleCurrentScopeMaterials"
               >
-                {{ allCurrentScopePending ? 'Remover nível' : 'Selecionar nível' }}
+                {{ currentScopeRule ? currentScopeRuleSaved ? 'Remover regra' : 'Salvar regra' : allCurrentScopePending ? 'Remover nível' : 'Selecionar nível' }}
               </button>
             </div>
           </div>

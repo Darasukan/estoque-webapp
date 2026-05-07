@@ -89,7 +89,8 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
-    parent_id TEXT REFERENCES destinations(id) ON DELETE CASCADE
+    parent_id TEXT REFERENCES destinations(id) ON DELETE CASCADE,
+    material_rules TEXT NOT NULL DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS people (
@@ -219,6 +220,11 @@ const movCols = db.prepare("PRAGMA table_info(movements)").all().map(c => c.name
 if (!movCols.includes('operator_id')) {
   db.prepare("ALTER TABLE movements ADD COLUMN operator_id TEXT DEFAULT ''").run()
   db.prepare("ALTER TABLE movements ADD COLUMN operator_name TEXT DEFAULT ''").run()
+}
+
+const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)
+if (!destinationCols.includes('material_rules')) {
+  db.prepare("ALTER TABLE destinations ADD COLUMN material_rules TEXT NOT NULL DEFAULT '[]'").run()
 }
 
 // Migration: add detailed OS fields if missing
