@@ -341,7 +341,13 @@ function handleQuickMovementKeydown(event) {
         </KeepAlive>
 
         <!-- Catálogo tab -->
-        <CatalogView v-if="activeTab === 'catalogo'" ref="catalogRef" :search="catalogSearch" @update:search="v => catalogSearch = v" />
+        <CatalogView
+          v-if="activeTab === 'catalogo'"
+          ref="catalogRef"
+          :search="catalogSearch"
+          @update:search="v => catalogSearch = v"
+          @quick-movement="openInventoryQuickMovement"
+        />
 
         <!-- Cadastros tab -->
         <CadastrosView v-if="activeTab === 'cadastros'" />

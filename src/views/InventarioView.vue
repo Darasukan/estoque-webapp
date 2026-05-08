@@ -7,6 +7,7 @@ import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 import FechamentosView from './FechamentosView.vue'
+import VariationSheet from '../components/ui/VariationSheet.vue'
 
 const props = defineProps({
   initialSection: {
@@ -27,7 +28,7 @@ const isLoggedIn = inject('isLoggedIn')
 const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const emit = defineEmits(['quick-movement'])
 
-const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
+const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory, editVariation } = useItems()
 const { movements, addMovement } = useMovements()
 const { workOrders } = useWorkOrders()
 const { getDestFullName } = useDestinations()
@@ -428,6 +429,7 @@ const adjustingId = ref(null)
 const adjustInput = ref(null)
 const adjustValue = ref('')
 const movementMenuId = ref(null)
+const sheetRow = ref(null)
 
 function startAdjust(varId, currentStock) {
   adjustingId.value = varId
@@ -466,10 +468,17 @@ async function confirmAdjust(varId) {
   const row = allRows.value.find(r => r.variation.id === varId)
   if (!row) { error('Variação não encontrada.'); return }
 
+  const ok = await applyStockAdjustment(row, delta)
+  if (!ok) return
+  adjustingId.value = null
+  adjustValue.value = ''
+}
+
+async function applyStockAdjustment(row, delta) {
   const qty = Math.abs(delta)
   if (delta < 0 && row.variation.stock < qty) {
     error(`Estoque insuficiente. Disponível: ${row.variation.stock}`)
-    return
+    return false
   }
 
   const type = delta > 0 ? 'entrada' : 'saida'
@@ -482,10 +491,10 @@ async function confirmAdjust(varId) {
       note: 'Ajuste manual pelo inventário.',
     })
     success(type === 'entrada' ? 'Entrada de ajuste registrada.' : 'Saída de ajuste registrada.')
-    adjustingId.value = null
-    adjustValue.value = ''
+    return true
   } catch (e) {
     error(e.message)
+    return false
   }
 }
 
@@ -538,6 +547,39 @@ const historyTimeline = computed(() =>
 
 function openVariationHistory(row) {
   historyRow.value = row
+}
+
+function openVariationSheet(row) {
+  sheetRow.value = row
+}
+
+function closeVariationSheet() {
+  sheetRow.value = null
+}
+
+function quickSheetMovement(type) {
+  if (!sheetRow.value) return
+  quickMovement(sheetRow.value, type)
+}
+
+async function adjustSheetStock(delta) {
+  if (!sheetRow.value) return
+  await applyStockAdjustment(sheetRow.value, delta)
+}
+
+async function updateSheetExtras(extras) {
+  if (!sheetRow.value || !(isAdmin?.value ?? isAdmin)) return
+  const variation = sheetRow.value.variation
+  const result = await editVariation(variation.id, {
+    values: { ...(variation.values || {}) },
+    stock: variation.stock,
+    minStock: variation.minStock || 0,
+    extras,
+    location: variation.location || '',
+    destinations: [...(variation.destinations || [])],
+  })
+  if (!result.ok) { error(result.error); return }
+  success('Informações extras atualizadas.')
 }
 
 function closeVariationHistory() {
@@ -1094,7 +1136,8 @@ function exportCSV() {
               <tr
                 v-for="row in paginatedRows"
                 :key="row.variation.id"
-                class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors"
+                class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
+                @click="openVariationSheet(row)"
               >
                 <!-- Item -->
                 <td class="px-4 py-3">
@@ -1166,7 +1209,7 @@ function exportCSV() {
                 <td v-if="isColumnVisible('history')" class="px-4 py-3 text-center">
                   <button
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                    @click="openVariationHistory(row)"
+                    @click.stop="openVariationHistory(row)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -1185,12 +1228,13 @@ function exportCSV() {
                       step="1"
                       placeholder="+/-"
                       class="w-16 px-2 py-1 text-center text-sm border border-primary-400 dark:border-primary-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      @click.stop
                       @keydown="onAdjustKeydown($event, row.variation.id)"
                     />
                     <button
                       class="p-1 rounded text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors cursor-pointer"
                       title="Confirmar"
-                      @click="confirmAdjust(row.variation.id)"
+                      @click.stop="confirmAdjust(row.variation.id)"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
@@ -1199,7 +1243,7 @@ function exportCSV() {
                     <button
                       class="p-1 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                       title="Cancelar"
-                      @click="cancelAdjust"
+                      @click.stop="cancelAdjust"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -1211,7 +1255,7 @@ function exportCSV() {
                       v-if="isAdmin"
                       class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                       title="Corrigir saldo manualmente"
-                      @click="startAdjust(row.variation.id, row.variation.stock)"
+                      @click.stop="startAdjust(row.variation.id, row.variation.stock)"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
@@ -1223,7 +1267,7 @@ function exportCSV() {
                         class="inline-flex h-8 w-8 items-center justify-center rounded-[7px] bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
                         title="Movimentação"
                         :aria-expanded="movementMenuId === row.variation.id"
-                        @click="toggleMovementMenu(row.variation.id)"
+                        @click.stop="toggleMovementMenu(row.variation.id)"
                       >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9m0 0-3-3m3 3-3 3M16.5 16.5h-9m0 0 3 3m-3-3 3-3" />
@@ -1237,7 +1281,7 @@ function exportCSV() {
                       <button
                         type="button"
                         class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
-                        @click="quickMovement(row, 'entrada')"
+                        @click.stop="quickMovement(row, 'entrada')"
                       >
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
@@ -1247,7 +1291,7 @@ function exportCSV() {
                       <button
                         type="button"
                         class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer"
-                        @click="quickMovement(row, 'saida')"
+                        @click.stop="quickMovement(row, 'saida')"
                       >
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
@@ -1332,6 +1376,20 @@ function exportCSV() {
     </template>
 
     <FechamentosView v-else />
+
+    <VariationSheet
+      v-if="sheetRow"
+      :item="sheetRow.item"
+      :variation="sheetRow.variation"
+      :movements="movements"
+      :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
+      :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
+      :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
+      @close="closeVariationSheet"
+      @quick-movement="quickSheetMovement"
+      @adjust-stock="adjustSheetStock"
+      @update-extras="updateSheetExtras"
+    />
 
     <div
       v-if="historyRow"

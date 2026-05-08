@@ -1,17 +1,20 @@
 <script setup>
 import { ref, computed, watch, nextTick, inject } from 'vue'
 import { useItems } from '../composables/useItems.js'
+import { useMovements } from '../composables/useMovements.js'
 import { useToast } from '../composables/useToast.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useLocations } from '../composables/useLocations.js'
 import { generateSeedData } from '../data/seedData.js'
+import VariationSheet from '../components/ui/VariationSheet.vue'
 
 const isAdmin = inject('isAdmin')
+const isLoggedIn = inject('isLoggedIn')
 
 const props = defineProps({
   search: { type: String, default: '' }
 })
-const emit = defineEmits(['update:search'])
+const emit = defineEmits(['update:search', 'quick-movement'])
 
 const {
   items, variations,
@@ -25,6 +28,7 @@ const {
 } = useItems()
 
 const { success, error } = useToast()
+const { movements, addMovement } = useMovements()
 const { activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activeLocais, groupedLocais, getFullName } = useLocations()
 
@@ -194,6 +198,8 @@ const totalStock = computed(() => {
 const addingVariation = ref(false)
 const editingVariationId = ref(null)
 const varForm = ref({ values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] })
+const sheetVariationId = ref('')
+const sheetVariation = computed(() => itemVariations.value.find(v => v.id === sheetVariationId.value) || null)
 
 function _extrasObjToList(obj) {
   return Object.entries(obj || {}).map(([key, value]) => ({ key, value }))
@@ -394,6 +400,60 @@ async function loadSeedData() {
   success(`Dados de teste carregados! ${seedItems.length} itens + ${seedVars.length} variações + históricos.`)
 }
 
+function openVariationSheet(v) {
+  sheetVariationId.value = v.id
+}
+
+function closeVariationSheet() {
+  sheetVariationId.value = ''
+}
+
+function quickSheetMovement(type) {
+  if (!viewingItem.value || !sheetVariation.value || !(isLoggedIn?.value ?? isLoggedIn)) return
+  emit('quick-movement', {
+    type,
+    itemId: viewingItem.value.id,
+    variationId: sheetVariation.value.id,
+    nonce: Date.now(),
+  })
+}
+
+async function adjustSheetStock(delta) {
+  if (!viewingItem.value || !sheetVariation.value || !(isAdmin?.value ?? isAdmin)) return
+  const qty = Math.abs(delta)
+  if (delta < 0 && sheetVariation.value.stock < qty) {
+    error(`Estoque insuficiente. Disponível: ${sheetVariation.value.stock}`)
+    return
+  }
+  const type = delta > 0 ? 'entrada' : 'saida'
+  try {
+    await addMovement(type, sheetVariation.value, viewingItem.value, qty, {
+      supplier: '',
+      requestedBy: '',
+      destination: '',
+      docRef: 'AJUSTE',
+      note: 'Ajuste manual pela ficha da variação.',
+    })
+    success(type === 'entrada' ? 'Entrada de ajuste registrada.' : 'Saída de ajuste registrada.')
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+async function updateSheetExtras(extras) {
+  if (!sheetVariation.value || !(isAdmin?.value ?? isAdmin)) return
+  const result = await editVariation(sheetVariation.value.id, {
+    values: { ...(sheetVariation.value.values || {}) },
+    stock: sheetVariation.value.stock,
+    minStock: sheetVariation.value.minStock || 0,
+    extras,
+    location: sheetVariation.value.location || '',
+    destinations: [...(sheetVariation.value.destinations || [])],
+  })
+  if (!result.ok) { error(result.error); return }
+  success('Informações extras atualizadas.')
+}
+
 function clearAllData() {
   resetAll()
   showClearConfirm.value = false
@@ -589,7 +649,8 @@ defineExpose({ triggerSearchDrill })
               <tr
                 v-for="v in filteredItemVariations"
                 :key="v.id"
-                class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
+                @click="openVariationSheet(v)"
               >
                 <!-- Variation: attribute tags -->
                 <td class="px-4 py-2.5">
@@ -647,10 +708,10 @@ defineExpose({ triggerSearchDrill })
                 <!-- Ações -->
                 <td v-if="isAdmin" class="px-4 py-2.5">
                   <div class="flex items-center justify-center gap-1">
-                    <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditVariation(v)">
+                    <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click.stop="startEditVariation(v)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
-                    <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteVariation(v)">
+                    <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click.stop="onDeleteVariation(v)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                     </button>
                   </div>
@@ -927,6 +988,20 @@ defineExpose({ triggerSearchDrill })
       </div>
     </template>
   </div>
+
+  <VariationSheet
+    v-if="viewingItem && sheetVariation"
+    :item="viewingItem"
+    :variation="sheetVariation"
+    :movements="movements"
+    :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
+    :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
+    :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
+    @close="closeVariationSheet"
+    @quick-movement="quickSheetMovement"
+    @adjust-stock="adjustSheetStock"
+    @update-extras="updateSheetExtras"
+  />
 
   <!-- ===== Variation Add/Edit Modal ===== -->
   <Teleport to="body">
