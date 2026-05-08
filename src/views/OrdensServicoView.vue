@@ -8,6 +8,7 @@ import { useMovements } from '../composables/useMovements.js'
 import { useMotors, MOTOR_EVENT_TYPES, motorEventLabel } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
 import AppButton from '../components/ui/AppButton.vue'
+import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 
 const props = defineProps({
   mode: { type: String, default: 'general' },
@@ -224,9 +225,14 @@ function createEmptyOsForm(order = null) {
 const osForm = ref(createEmptyOsForm())
 const motorEventOrderId = ref(null)
 const motorEventForm = ref(emptyMotorEventForm())
+const destinationPickerSearch = ref('')
+const destinationPickerOpen = ref(false)
+const expandedDestinationGroups = ref(new Set())
 
 function resetOsForm() {
   osForm.value = createEmptyOsForm()
+  destinationPickerSearch.value = ''
+  destinationPickerOpen.value = false
   applyScopedMotorToOsForm()
 }
 
@@ -268,6 +274,85 @@ const orderedDestinations = computed(() => {
 const destinationOptions = computed(() =>
   orderedDestinations.value.map(d => ({ id: d.id, name: getDestFullName(d.id) }))
 )
+
+const filteredDestinationGroups = computed(() => {
+  const q = normalizeText(destinationPickerSearch.value)
+  return groupedDestinations.value
+    .map(group => {
+      const parentPath = getDestFullName(group.parent.id)
+      const parentMatches = !q || normalizeText(`${parentPath} ${group.parent.description || ''}`).includes(q)
+      const children = !q || parentMatches
+        ? group.children
+        : group.children.filter(child =>
+          normalizeText(`${getDestFullName(child.id)} ${child.description || ''}`).includes(q)
+        )
+      if (!parentMatches && !children.length) return null
+      return { parent: group.parent, children, parentMatches }
+    })
+    .filter(Boolean)
+})
+
+const filteredDestinationCount = computed(() =>
+  filteredDestinationGroups.value.reduce((sum, group) => sum + (group.parentMatches ? 1 : 0) + group.children.length, 0)
+)
+
+const filteredDestinationResults = computed(() =>
+  filteredDestinationGroups.value.flatMap(group => [
+    ...(group.parentMatches ? [group.parent] : []),
+    ...group.children,
+  ])
+)
+
+const selectedDestinationPath = computed(() =>
+  osForm.value.destinationId ? selectedDestinationLabel(osForm.value.destinationId) : ''
+)
+
+function selectedDestinationParentId() {
+  const selectedId = osForm.value.destinationId
+  if (!selectedId) return ''
+  for (const group of groupedDestinations.value) {
+    if (group.parent.id === selectedId) return group.parent.id
+    if (group.children.some(child => child.id === selectedId)) return group.parent.id
+  }
+  return ''
+}
+
+function isDestinationGroupOpen(group) {
+  return Boolean(destinationPickerSearch.value.trim()) ||
+    expandedDestinationGroups.value.has(group.parent.id) ||
+    selectedDestinationParentId() === group.parent.id
+}
+
+function toggleDestinationGroup(groupId) {
+  const next = new Set(expandedDestinationGroups.value)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  expandedDestinationGroups.value = next
+}
+
+function selectNormalOsDestination(destinationId) {
+  osForm.value.destinationId = destinationId
+  updateNormalOsEquipmentFromDestination()
+  destinationPickerSearch.value = selectedDestinationLabel(destinationId)
+  destinationPickerOpen.value = false
+}
+
+function handleDestinationPickerInput() {
+  destinationPickerOpen.value = true
+  if (osForm.value.destinationId && destinationPickerSearch.value !== selectedDestinationPath.value) {
+    osForm.value.destinationId = ''
+    osForm.value.equipment = ''
+  }
+}
+
+function handleDestinationPickerFocus() {
+  destinationPickerOpen.value = true
+}
+
+function selectSingleDestinationOnEnter() {
+  if (filteredDestinationResults.value.length !== 1) return
+  selectNormalOsDestination(filteredDestinationResults.value[0].id)
+}
 
 const motorOptions = computed(() =>
   motors.value
@@ -323,6 +408,17 @@ function selectedDestinationLabel(id) {
 function updateNormalOsEquipmentFromDestination() {
   if (isMotorMode.value) return
   osForm.value.equipment = selectedDestinationLabel(osForm.value.destinationId)
+}
+
+function handleNormalOsDestinationSelect({ fullName }) {
+  if (isMotorMode.value) return
+  osForm.value.equipment = fullName
+}
+
+function isRegisteredRequester(name) {
+  const q = normalizeText(name)
+  if (!q) return false
+  return activePeople.value.some(person => normalizeText(person.name) === q)
 }
 
 watch(() => props.prefillMotor, (motor) => {
@@ -534,6 +630,7 @@ function validateOsForm() {
   const numberText = String(osForm.value.number || '').trim()
   if (numberText && (!Number.isInteger(Number(numberText)) || Number(numberText) <= 0)) { showError('Número da ordem inválido'); return false }
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
+  if (!isRegisteredRequester(osForm.value.requestedBy)) { showError('Solicitante deve ser uma pessoa cadastrada ativa'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
@@ -680,6 +777,8 @@ function startEditOS(order) {
   editingOrderId.value = order.id
   showNewForm.value = !isMotorMode.value
   osForm.value = createEmptyOsForm(order)
+  destinationPickerSearch.value = selectedDestinationLabel(osForm.value.destinationId)
+  destinationPickerOpen.value = false
   activeSubTab.value = isMotorMode.value ? 'ordens' : 'nova'
   if (isMotorMode.value && order.motorId) {
     motorEventOrderId.value = order.id
@@ -1117,12 +1216,14 @@ function matBackToStep2() {
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
               <input v-model="osForm.requestedBy" list="os-people-options" type="text" placeholder="Nome do solicitante" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
-            <div v-if="!isMotorMode" class="md:col-span-2">
+            <div v-if="!isMotorMode" class="relative md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
-              <select v-model="osForm.destinationId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="updateNormalOsEquipmentFromDestination">
-                <option value="">Selecione um destino</option>
-                <option v-for="d in destinationOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
-              </select>
+              <DestinationTreePicker
+                v-model="osForm.destinationId"
+                placeholder="Buscar destino ou máquina..."
+                @select="handleNormalOsDestinationSelect"
+                @clear="osForm.equipment = ''"
+              />
             </div>
             <div v-if="isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
@@ -1151,10 +1252,9 @@ function matBackToStep2() {
                     <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
                       {{ osForm.maintenanceExternalLocation || 'Preencha a oficina externa abaixo' }}
                     </div>
-                    <select v-if="osForm.initialMotorEventType === 'movimentado'" v-model="osForm.initialMotorEventToDestinationId" class="ds-input md:col-span-2">
-                      <option value="">Novo local do motor *</option>
-                      <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                    </select>
+                    <div v-if="osForm.initialMotorEventType === 'movimentado'" class="md:col-span-2">
+                      <DestinationTreePicker v-model="osForm.initialMotorEventToDestinationId" placeholder="Novo local do motor *" />
+                    </div>
                   </template>
                 </div>
                 <textarea v-if="osForm.initialMotorEventType !== 'nenhum'" v-model="osForm.initialMotorEventNotes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
@@ -1345,12 +1445,14 @@ function matBackToStep2() {
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
                       <input v-model="osForm.requestedBy" list="os-people-options" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
-                    <div v-if="!isMotorMode" class="md:col-span-2">
+                    <div v-if="!isMotorMode" class="relative md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
-                      <select v-model="osForm.destinationId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="updateNormalOsEquipmentFromDestination">
-                        <option value="">Selecione um destino</option>
-                        <option v-for="d in destinationOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
-                      </select>
+                      <DestinationTreePicker
+                        v-model="osForm.destinationId"
+                        placeholder="Buscar destino ou máquina..."
+                        @select="handleNormalOsDestinationSelect"
+                        @clear="osForm.equipment = ''"
+                      />
                     </div>
                     <div v-if="isMotorMode" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
@@ -1379,10 +1481,9 @@ function matBackToStep2() {
                             <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
                               {{ osForm.maintenanceExternalLocation || 'Oficina externa' }}
                             </div>
-                            <select v-if="motorEventForm.eventType === 'movimentado'" v-model="motorEventForm.toDestinationId" class="ds-input md:col-span-2">
-                              <option value="">Novo local do motor *</option>
-                              <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                            </select>
+                            <div v-if="motorEventForm.eventType === 'movimentado'" class="md:col-span-2">
+                              <DestinationTreePicker v-model="motorEventForm.toDestinationId" placeholder="Novo local do motor *" />
+                            </div>
                           </template>
                         </div>
                         <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
@@ -1483,10 +1584,9 @@ function matBackToStep2() {
                       <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
                         {{ osForm.maintenanceExternalLocation || 'Oficina externa' }}
                       </div>
-                      <select v-if="motorEventForm.eventType === 'movimentado'" v-model="motorEventForm.toDestinationId" class="ds-input md:col-span-2">
-                        <option value="">Novo local do motor *</option>
-                        <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                      </select>
+                      <div v-if="motorEventForm.eventType === 'movimentado'" class="md:col-span-2">
+                        <DestinationTreePicker v-model="motorEventForm.toDestinationId" placeholder="Novo local do motor *" />
+                      </div>
                     </template>
                   </div>
                   <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
@@ -1631,10 +1731,9 @@ function matBackToStep2() {
                     <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
                       {{ order.maintenanceExternalLocation || order.maintenanceLocationName || 'Oficina externa' }}
                     </div>
-                    <select v-if="motorEventForm.eventType === 'movimentado'" v-model="motorEventForm.toDestinationId" class="ds-input md:col-span-2">
-                      <option value="">Novo local do motor *</option>
-                      <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-                    </select>
+                    <div v-if="motorEventForm.eventType === 'movimentado'" class="md:col-span-2">
+                      <DestinationTreePicker v-model="motorEventForm.toDestinationId" placeholder="Novo local do motor *" />
+                    </div>
                   </template>
                 </div>
                 <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>

@@ -134,6 +134,9 @@ function openInventoryQuickMovement(payload) {
 }
 
 function selectMainTab(tabId) {
+  if (tabId === 'dashboard') {
+    loadAllData()
+  }
   if (tabId === 'inventario') {
     requestedInventorySection.value = 'estoque'
     requestedInventoryStatus.value = 'all'

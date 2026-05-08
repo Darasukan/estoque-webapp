@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onActivated, onMounted, ref, watch } from 'vue'
 import { useItems, stockAlertStatus } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
@@ -11,7 +11,7 @@ const emit = defineEmits(['go'])
 const isLoggedIn = inject('isLoggedIn')
 
 const { items, variations } = useItems()
-const { movements } = useMovements()
+const { movements, loadData: loadMovements } = useMovements()
 const { workOrders } = useWorkOrders()
 const { motors } = useMotors()
 const { closings } = useClosings()
@@ -20,19 +20,53 @@ const DASHBOARD_PAGE_SIZE = 6
 const lowStockPage = ref(1)
 const consumedPage = ref(1)
 
+function refreshDashboardMovements() {
+  loadMovements().catch(err => console.error('Erro ao atualizar movimentacoes do dashboard:', err))
+}
+
+onMounted(refreshDashboardMovements)
+onActivated(refreshDashboardMovements)
+
 const rows = computed(() => variations.value.map(variation => {
   const item = items.value.find(i => i.id === variation.itemId) || {}
   return { item, variation, status: stockAlertStatus(variation, item) }
 }))
 
-const monthStart = computed(() => {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1)
+function movementMonthKey(dateValue) {
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+const currentMonthKey = computed(() => movementMonthKey(new Date()))
+
+const latestMovementMonthKey = computed(() => {
+  const keys = movements.value
+    .map(m => movementMonthKey(m.date))
+    .filter(Boolean)
+    .sort()
+  return keys.at(-1) || currentMonthKey.value
+})
+
+const dashboardMonthKey = computed(() => {
+  const current = currentMonthKey.value
+  return movements.value.some(m => movementMonthKey(m.date) === current)
+    ? current
+    : latestMovementMonthKey.value
 })
 
 const monthMovements = computed(() =>
-  movements.value.filter(m => new Date(m.date) >= monthStart.value)
+  movements.value.filter(m => movementMonthKey(m.date) === dashboardMonthKey.value)
 )
+
+const rankingMovements = computed(() => {
+  const monthRows = monthMovements.value.filter(m => m.type === 'saida')
+  if (monthRows.length) return monthRows
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const recentRows = movements.value.filter(m => m.type === 'saida' && new Date(m.date).getTime() >= cutoff)
+  if (recentRows.length) return recentRows
+  return movements.value.filter(m => m.type === 'saida')
+})
 
 const openOrders = computed(() =>
   workOrders.value.filter(o => !(o.maintenanceEndDate && o.maintenanceEndTime))
@@ -157,8 +191,8 @@ function inventorySearchFromLabel(label) {
 
 function groupByMovements(keyFn) {
   const map = new Map()
-  for (const movement of monthMovements.value.filter(m => m.type === 'saida')) {
-    const key = keyFn(m)
+  for (const movement of rankingMovements.value) {
+    const key = keyFn(movement)
     if (!key) continue
     const current = map.get(key) || { label: key, qty: 0, count: 0 }
     current.qty += Number(movement.qty || 0)
@@ -173,7 +207,8 @@ const topConsumedAllItems = computed(() =>
 )
 
 const consumedTotalPages = computed(() => Math.max(1, Math.ceil(topConsumedAllItems.value.length / DASHBOARD_PAGE_SIZE)))
-const topConsumedItems = computed(() => pageSlice(topConsumedAllItems.value, consumedPage.value))
+const consumedCurrentPage = computed(() => Math.min(consumedPage.value, consumedTotalPages.value))
+const topConsumedItems = computed(() => pageSlice(topConsumedAllItems.value, consumedCurrentPage.value))
 
 const topDestinations = computed(() =>
   groupByMovements(m => m.destination || 'Sem destino').slice(0, 6)
@@ -529,7 +564,7 @@ watch(topConsumedAllItems, () => {
             <span class="ds-chip">Ranking</span>
             <div v-if="consumedTotalPages > 1" class="flex items-center gap-1">
               <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="consumedPage <= 1" @click="consumedPage--">Anterior</button>
-              <span class="ds-chip">{{ consumedPage }}/{{ consumedTotalPages }}</span>
+              <span class="ds-chip">{{ consumedCurrentPage }}/{{ consumedTotalPages }}</span>
               <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="consumedPage >= consumedTotalPages" @click="consumedPage++">Próxima</button>
             </div>
           </div>

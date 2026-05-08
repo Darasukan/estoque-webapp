@@ -7,6 +7,7 @@ import { useToast } from '../composables/useToast.js'
 import OrdensServicoView from './OrdensServicoView.vue'
 import AppButton from '../components/ui/AppButton.vue'
 import ConfirmInline from '../components/ui/ConfirmInline.vue'
+import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 
@@ -571,10 +572,11 @@ function workOrderEndLabel(order) {
           <input v-model="motorForm.power" placeholder="Potência" class="ds-input" />
           <input v-model="motorForm.voltage" placeholder="Tensão" class="ds-input" />
           <input v-model="motorForm.rpm" placeholder="RPM" class="ds-input" />
-          <select v-if="!editingMotorId" v-model="motorForm.destinationId" class="ds-input">
-            <option value="">Sem local</option>
-            <option v-for="d in orderedDestinations" :key="d.id" :value="d.id">{{ getDestFullName(d.id) }}</option>
-          </select>
+          <DestinationTreePicker
+            v-if="!editingMotorId"
+            v-model="motorForm.destinationId"
+            placeholder="Buscar local do motor..."
+          />
           <div v-else class="ds-input bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
             {{ selectedMotor?.destinationName || 'Sem local' }}
           </div>
