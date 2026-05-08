@@ -1,0 +1,221 @@
+<script setup>
+import { computed, ref } from 'vue'
+import { useSuppliers } from '../../composables/useSuppliers.js'
+import { useToast } from '../../composables/useToast.js'
+
+const { suppliers, addSupplier, editSupplier, toggleSupplierActive, deleteSupplier } = useSuppliers()
+const { success, error } = useToast()
+
+const search = ref('')
+const adding = ref(false)
+const newName = ref('')
+const newDescription = ref('')
+const editingId = ref(null)
+const editName = ref('')
+const editDescription = ref('')
+
+const filteredSuppliers = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return suppliers.value
+  return suppliers.value.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    String(s.description || '').toLowerCase().includes(q)
+  )
+})
+
+function startAdd() {
+  adding.value = true
+  newName.value = ''
+  newDescription.value = ''
+}
+
+function cancelAdd() {
+  adding.value = false
+}
+
+async function confirmAdd() {
+  try {
+    const result = await addSupplier(newName.value, newDescription.value)
+    if (!result.ok) {
+      error(result.error)
+      return
+    }
+    success(result.existed ? 'Fornecedor ja estava cadastrado.' : 'Fornecedor adicionado.')
+    adding.value = false
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+function startEdit(supplier) {
+  editingId.value = supplier.id
+  editName.value = supplier.name
+  editDescription.value = supplier.description || ''
+}
+
+function cancelEdit() {
+  editingId.value = null
+}
+
+async function confirmEdit() {
+  try {
+    const result = await editSupplier(editingId.value, {
+      name: editName.value,
+      description: editDescription.value,
+    })
+    if (!result.ok) {
+      error(result.error)
+      return
+    }
+    success('Fornecedor atualizado.')
+    editingId.value = null
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+async function onToggle(supplier) {
+  try {
+    await toggleSupplierActive(supplier.id)
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+async function onDelete(supplier) {
+  if (!confirm(`Excluir "${supplier.name}"?`)) return
+  try {
+    await deleteSupplier(supplier.id)
+    success('Fornecedor removido.')
+  } catch (e) {
+    error(e.message)
+  }
+}
+</script>
+
+<template>
+  <div class="max-w-4xl">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Fornecedores</h2>
+        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          Cadastros usados nas entradas de estoque. Se digitar um novo fornecedor durante a entrada, ele nasce aqui.
+        </p>
+      </div>
+      <button
+        v-if="!adding"
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
+        @click="startAdd"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        Novo fornecedor
+      </button>
+    </div>
+
+    <div v-if="adding" class="mb-4 rounded-xl border border-primary-200 bg-primary-50/40 p-4 dark:border-primary-800 dark:bg-primary-900/10">
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-300">Novo fornecedor</p>
+      <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <input
+          v-model="newName"
+          type="text"
+          placeholder="Nome do fornecedor"
+          class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          autofocus
+          @keydown.enter="confirmAdd"
+          @keydown.escape="cancelAdd"
+        />
+        <input
+          v-model="newDescription"
+          type="text"
+          placeholder="Observacao opcional"
+          class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          @keydown.enter="confirmAdd"
+          @keydown.escape="cancelAdd"
+        />
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700" @click="confirmAdd">Salvar</button>
+        <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600" @click="cancelAdd">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <input
+        v-model="search"
+        type="search"
+        placeholder="Buscar fornecedor..."
+        class="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+      />
+    </div>
+
+    <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+      <table v-if="filteredSuppliers.length" class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
+            <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Observacao</th>
+            <th class="w-24 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+            <th class="w-28 px-4 py-2.5"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="supplier in filteredSuppliers"
+            :key="supplier.id"
+            class="border-b border-gray-100 transition-colors hover:bg-gray-50 dark:border-gray-700/50 dark:hover:bg-gray-700/30"
+            :class="{ 'opacity-60': !supplier.active }"
+          >
+            <template v-if="editingId === supplier.id">
+              <td class="px-4 py-2">
+                <input v-model="editName" class="w-full rounded border border-primary-400 bg-white px-2 py-1 text-sm text-gray-900 focus:outline-none dark:border-primary-500 dark:bg-gray-700 dark:text-gray-100" @keydown.enter="confirmEdit" @keydown.escape="cancelEdit" autofocus />
+              </td>
+              <td class="px-4 py-2">
+                <input v-model="editDescription" class="w-full rounded border border-primary-400 bg-white px-2 py-1 text-sm text-gray-900 focus:outline-none dark:border-primary-500 dark:bg-gray-700 dark:text-gray-100" @keydown.enter="confirmEdit" @keydown.escape="cancelEdit" />
+              </td>
+              <td colspan="2" class="px-4 py-2">
+                <div class="flex items-center gap-1">
+                  <button class="p-1 text-green-600 hover:text-green-700" title="Salvar" @click="confirmEdit">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  </button>
+                  <button class="p-1 text-gray-400 hover:text-gray-600" title="Cancelar" @click="cancelEdit">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              </td>
+            </template>
+            <template v-else>
+              <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ supplier.name }}</td>
+              <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{{ supplier.description || '-' }}</td>
+              <td class="px-4 py-3 text-center">
+                <button
+                  type="button"
+                  class="rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors"
+                  :class="supplier.active
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'"
+                  @click="onToggle(supplier)"
+                >{{ supplier.active ? 'Ativo' : 'Inativo' }}</button>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-center gap-1">
+                  <button type="button" class="p-1 text-gray-400 transition-colors hover:text-amber-500" title="Editar" @click="startEdit(supplier)">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                  </button>
+                  <button type="button" class="p-1 text-gray-400 transition-colors hover:text-red-500" title="Excluir" @click="onDelete(supplier)">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
+                  </button>
+                </div>
+              </td>
+            </template>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+        Nenhum fornecedor cadastrado.
+      </div>
+    </div>
+  </div>
+</template>

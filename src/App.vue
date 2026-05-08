@@ -12,6 +12,7 @@ import { useMovements } from './composables/useMovements.js'
 import { useLocations } from './composables/useLocations.js'
 import { useDestinations } from './composables/useDestinations.js'
 import { usePeople } from './composables/usePeople.js'
+import { useSuppliers } from './composables/useSuppliers.js'
 import { useRoles } from './composables/useRoles.js'
 import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
@@ -32,6 +33,7 @@ const { recentMovements, loadData: loadMovements } = useMovements()
 const { loadData: loadLocations } = useLocations()
 const { loadData: loadDestinations } = useDestinations()
 const { loadData: loadPeople } = usePeople()
+const { loadData: loadSuppliers } = useSuppliers()
 const { loadData: loadRoles } = useRoles()
 const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
@@ -85,6 +87,7 @@ async function loadAllData() {
     loadLocations(),
     loadDestinations(),
     loadPeople(),
+    loadSuppliers(),
     loadRoles(),
     loadWorkOrders(),
     loadMotors(),

@@ -9,6 +9,13 @@ function movementField(line, fields, key) {
   return line[key] !== undefined ? line[key] : (fields[key] || '')
 }
 
+function movementOptionalNumberField(line, fields, key) {
+  const raw = line[key] !== undefined ? line[key] : fields[key]
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
 function toMovement(row) {
   return {
     id: row.id,
@@ -27,6 +34,7 @@ function toMovement(row) {
     stockAfter: row.stock_after,
     date: row.date,
     supplier: row.supplier,
+    unitCost: row.unit_cost ?? null,
     requestedBy: row.requested_by,
     destination: row.destination,
     docRef: row.doc_ref,
@@ -39,6 +47,12 @@ function toMovement(row) {
 function parsePositiveQty(qty) {
   const n = Number(qty)
   return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function parseOptionalCost(value) {
+  if (value === undefined || value === null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 // GET /api/movements
@@ -73,20 +87,21 @@ router.post('/', requireAuth, (req, res) => {
   const stockBefore = variation.stock
   const stockAfter = m.type === 'entrada' ? stockBefore + qty : stockBefore - qty
   if (stockAfter < 0) return res.status(400).json({ error: 'Estoque insuficiente para essa saida.' })
+  const unitCost = m.type === 'entrada' ? parseOptionalCost(m.unitCost) : null
 
   const id = 'mov_' + crypto.randomBytes(6).toString('hex')
   const date = m.date || new Date().toISOString()
 
   const createMovement = db.transaction(() => {
     db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(stockAfter, m.variationId)
-    db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, requested_by, destination, doc_ref, note, operator_id, operator_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id, m.type, m.variationId, m.itemId,
       m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
       JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
       qty, stockBefore, stockAfter,
       date,
-      m.supplier || '', m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
+      m.supplier || '', unitCost, m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
       operatorId, operatorName
     )
   })
@@ -109,6 +124,7 @@ router.post('/', requireAuth, (req, res) => {
     stockAfter,
     date,
     supplier: m.supplier || '',
+    unitCost,
     requestedBy: m.requestedBy || '',
     destination: m.destination || '',
     docRef: m.docRef || '',
@@ -176,14 +192,15 @@ router.post('/batch', requireAuth, (req, res) => {
       const destination = movementField(m, fields, 'destination')
       const docRef = movementField(m, fields, 'docRef')
       const note = movementField(m, fields, 'note')
-      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, requested_by, destination, doc_ref, note, operator_id, operator_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      const unitCost = line.type === 'entrada' ? movementOptionalNumberField(m, fields, 'unitCost') : null
+      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         id, line.type, m.variationId, m.itemId,
         m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
         JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         line.qty, line.stockBefore, line.stockAfter,
         date,
-        supplier, requestedBy, destination, docRef, note,
+        supplier, unitCost, requestedBy, destination, docRef, note,
         operatorId, operatorName
       )
       created.push({
@@ -203,6 +220,7 @@ router.post('/batch', requireAuth, (req, res) => {
         stockAfter: line.stockAfter,
         date,
         supplier,
+        unitCost,
         requestedBy,
         destination,
         docRef,
@@ -238,16 +256,20 @@ router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
   }
 
   const stockAfter = m.stock_before + (m.type === 'entrada' ? newQty : -newQty)
+  const unitCost = m.type === 'entrada'
+    ? (changes.unitCost !== undefined ? parseOptionalCost(changes.unitCost) : m.unit_cost)
+    : null
 
   const updateMovement = db.transaction(() => {
     if (newStock !== null) {
       db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, m.variation_id)
     }
-    db.prepare(`UPDATE movements SET qty=?, stock_after=?, date=?, supplier=?, requested_by=?, destination=?, doc_ref=?, note=? WHERE id=?`).run(
+    db.prepare(`UPDATE movements SET qty=?, stock_after=?, date=?, supplier=?, unit_cost=?, requested_by=?, destination=?, doc_ref=?, note=? WHERE id=?`).run(
       newQty,
       stockAfter,
       changes.date !== undefined ? changes.date : m.date,
       changes.supplier !== undefined ? changes.supplier : m.supplier,
+      unitCost,
       changes.requestedBy !== undefined ? changes.requestedBy : m.requested_by,
       changes.destination !== undefined ? changes.destination : m.destination,
       changes.docRef !== undefined ? changes.docRef : m.doc_ref,

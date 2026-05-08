@@ -33,6 +33,7 @@ export function useMovements() {
       variationExtras: { ...(variation.extras || {}) },
       qty,
       supplier: fields.supplier || '',
+      unitCost: fields.unitCost ?? null,
       requestedBy: fields.requestedBy || '',
       destination: fields.destination || '',
       docRef: fields.docRef || '',

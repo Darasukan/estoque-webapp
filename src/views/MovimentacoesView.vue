@@ -4,6 +4,7 @@ import { useItems } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
+import { useSuppliers } from '../composables/useSuppliers.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useToast } from '../composables/useToast.js'
 import { useMovementHistory } from '../composables/useMovementHistory.js'
@@ -38,6 +39,7 @@ const {
 const { movements, addMovementBatch, editMovement, deleteMovement } = useMovements()
 const { destinations, activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
+const { activeSuppliers, ensureSupplier } = useSuppliers()
 const { workOrders, linkMovement } = useWorkOrders()
 const { success, error } = useToast()
 
@@ -115,6 +117,7 @@ const destSearchInputEl = ref(null)
 const form = ref({
   qty: '',
   supplier: '',
+  unitCost: '',
   requestedBy: '',
   destination: '',
   docRef: '',
@@ -152,7 +155,7 @@ function resetFlow() {
   itemSearch.value = ''
   selectedItem.value = null
   selectedVariation.value = null
-  form.value = { qty: '', supplier: '', requestedBy: '', destination: '', docRef: '', note: '' }
+  form.value = { qty: '', supplier: '', unitCost: '', requestedBy: '', destination: '', docRef: '', note: '' }
   personSelectVal.value = ''
   destSelectVal.value = ''
   movementDestinationId.value = ''
@@ -182,6 +185,7 @@ function adaptFormForSubTab(tab) {
     movementDestinationId.value = ''
   } else {
     form.value.supplier = ''
+    form.value.unitCost = ''
     form.value.docRef = ''
     docType.value = 'sem'
   }
@@ -458,6 +462,12 @@ const parsedQty = computed(() => {
   return isFinite(n) && n > 0 ? n : null
 })
 
+const parsedUnitCost = computed(() => {
+  if (form.value.unitCost === '' || form.value.unitCost === null || form.value.unitCost === undefined) return null
+  const n = Number(form.value.unitCost)
+  return Number.isFinite(n) && n >= 0 ? n : null
+})
+
 function batchStockDeltaForVariation(variationId) {
   return batchItems.value
     .filter(i => i.variationId === variationId)
@@ -479,6 +489,7 @@ const saidaExceedsStock = computed(() =>
 const canConfirm = computed(() => {
   if (!parsedQty.value) return false
   if (saidaExceedsStock.value) return false
+  if (activeSubTab.value === 'entrada' && form.value.unitCost !== '' && parsedUnitCost.value === null) return false
   if (activeSubTab.value === 'saida') {
     return form.value.requestedBy.trim().length > 0 && form.value.destination.trim().length > 0
   }
@@ -497,6 +508,7 @@ const filteredWorkOrders = computed(() => {
 function commonMovementFields() {
   return {
     supplier: form.value.supplier,
+    unitCost: activeSubTab.value === 'entrada' ? parsedUnitCost.value : null,
     requestedBy: form.value.requestedBy,
     destination: form.value.destination,
     docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
@@ -506,7 +518,16 @@ function commonMovementFields() {
   }
 }
 
-function addCurrentToBatch() {
+async function ensureSuppliersForLines(lines) {
+  const names = [...new Set(lines
+    .filter(line => line.type === 'entrada')
+    .map(line => String(line.supplier || '').trim())
+    .filter(Boolean)
+  )]
+  for (const name of names) await ensureSupplier(name)
+}
+
+async function addCurrentToBatch() {
   if (!canConfirm.value || !selectedVariation.value || !selectedItem.value) return
   const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
   if (!liveVar) { error('Variação não encontrada.'); return }
@@ -552,6 +573,7 @@ function editBatchItem(line) {
   form.value = {
     qty: String(line.qty || ''),
     supplier: line.supplier || '',
+    unitCost: line.unitCost ?? '',
     requestedBy: line.requestedBy || '',
     destination: line.destination || '',
     docRef: '',
@@ -591,6 +613,7 @@ async function confirmBatch() {
   const woId = selectedWorkOrderId.value
 
   try {
+    await ensureSuppliersForLines(batchItems.value)
     const created = await addMovementBatch(batchKind.value, batchItems.value, {})
     for (const m of created) {
       const liveVar = variations.value.find(v => v.id === m.variationId)
@@ -638,11 +661,17 @@ function batchVariationLabel(line) {
 }
 
 function batchLineDetails(line) {
-  const details = activeSubTab.value === 'entrada'
-    ? [line.supplier && `Fornecedor: ${line.supplier}`, line.docRef && `Doc: ${line.docRef}`]
+  const details = line.type === 'entrada'
+    ? [line.supplier && `Fornecedor: ${line.supplier}`, line.unitCost != null && `Custo: ${formatCurrency(line.unitCost)}`, line.docRef && `Doc: ${line.docRef}`]
     : [line.requestedBy && `Retirado por: ${line.requestedBy}`, line.destination && `Destino: ${line.destination}`, line.docRef && `Doc: ${line.docRef}`]
   if (line.note) details.push(`Obs: ${line.note}`)
   return details.filter(Boolean).join(' · ')
+}
+
+function formatCurrency(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '-'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function formatDate(iso) {
@@ -701,7 +730,7 @@ async function confirmDelete(id) {
 
 // Edit movement modal
 const editingMovement = ref(null)
-const editMovForm = ref({ date: '', qty: '', supplier: '', requestedBy: '', destination: '', docRef: '', note: '' })
+const editMovForm = ref({ date: '', qty: '', supplier: '', unitCost: '', requestedBy: '', destination: '', docRef: '', note: '' })
 const editMovementDestinationId = ref('')
 const editMovementDestinationOther = ref(false)
 
@@ -719,6 +748,7 @@ function startEditMovement(m) {
     date: toLocalDatetimeStr(m.date),
     qty: m.qty,
     supplier: m.supplier || '',
+    unitCost: m.unitCost ?? '',
     requestedBy: m.requestedBy || '',
     destination: m.destination || '',
     docRef: m.docRef || '',
@@ -753,6 +783,24 @@ async function saveEditMovement() {
   if (!editingMovement.value) return
   const liveVar = variations.value.find(v => v.id === editingMovement.value.variationId)
   const changes = { ...editMovForm.value }
+  if (editingMovement.value.type === 'entrada') {
+    const supplierName = String(changes.supplier || '').trim()
+    if (supplierName) {
+      try {
+        await ensureSupplier(supplierName)
+      } catch (e) {
+        error(e.message)
+        return
+      }
+    }
+    changes.unitCost = changes.unitCost === '' ? null : Number(changes.unitCost)
+    if (changes.unitCost !== null && (!Number.isFinite(changes.unitCost) || changes.unitCost < 0)) {
+      error('Custo unitario invalido.')
+      return
+    }
+  } else {
+    changes.unitCost = null
+  }
   // Convert local datetime string to ISO
   if (changes.date) changes.date = new Date(changes.date).toISOString()
   const result = await editMovement(editingMovement.value.id, changes, liveVar)
@@ -1292,8 +1340,27 @@ defineExpose({
               <input
                 v-model="form.supplier"
                 type="text"
+                list="movement-suppliers"
                 placeholder="Nome do fornecedor..."
                 class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+              <datalist id="movement-suppliers">
+                <option v-for="supplier in activeSuppliers" :key="supplier.id" :value="supplier.name" />
+              </datalist>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">Se nao existir, sera cadastrado ao confirmar.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Custo unitario</label>
+              <input
+                v-model="form.unitCost"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Opcional"
+                class="w-full px-3 py-2.5 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
+                :class="form.unitCost !== '' && parsedUnitCost === null
+                  ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
               />
             </div>
             <div>
@@ -1770,7 +1837,23 @@ defineExpose({
           <input
             v-model="editMovForm.supplier"
             type="text"
+            list="edit-movement-suppliers"
             placeholder="Fornecedor..."
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+          />
+          <datalist id="edit-movement-suppliers">
+            <option v-for="supplier in activeSuppliers" :key="supplier.id" :value="supplier.name" />
+          </datalist>
+        </div>
+
+        <div v-if="editingMovement.type === 'entrada'" class="mb-4">
+          <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Custo unitario</label>
+          <input
+            v-model="editMovForm.unitCost"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Opcional"
             class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
           />
         </div>

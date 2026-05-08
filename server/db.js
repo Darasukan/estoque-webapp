@@ -68,6 +68,7 @@ db.exec(`
     stock_after REAL NOT NULL DEFAULT 0,
     date TEXT NOT NULL,
     supplier TEXT DEFAULT '',
+    unit_cost REAL DEFAULT NULL,
     requested_by TEXT DEFAULT '',
     destination TEXT DEFAULT '',
     doc_ref TEXT DEFAULT '',
@@ -97,6 +98,13 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     role_text TEXT DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS suppliers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1
   );
 
@@ -220,6 +228,9 @@ const movCols = db.prepare("PRAGMA table_info(movements)").all().map(c => c.name
 if (!movCols.includes('operator_id')) {
   db.prepare("ALTER TABLE movements ADD COLUMN operator_id TEXT DEFAULT ''").run()
   db.prepare("ALTER TABLE movements ADD COLUMN operator_name TEXT DEFAULT ''").run()
+}
+if (!movCols.includes('unit_cost')) {
+  db.prepare("ALTER TABLE movements ADD COLUMN unit_cost REAL DEFAULT NULL").run()
 }
 
 const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)

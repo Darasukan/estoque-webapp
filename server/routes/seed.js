@@ -29,6 +29,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
     destinations = [],
     locations = [],
     people = [],
+    suppliers = [],
     roles = [],
     workOrders = [],
     workOrderItems = [],
@@ -43,11 +44,12 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
   const insertMovement = db.prepare(`INSERT OR REPLACE INTO movements (
     id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory,
     item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date,
-    supplier, requested_by, destination, doc_ref, note, operator_id, operator_name
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
   const insertDestination = db.prepare('INSERT OR REPLACE INTO destinations (id, name, description, active, parent_id) VALUES (?, ?, ?, ?, ?)')
   const insertLocation = db.prepare('INSERT OR REPLACE INTO locations (id, name, description, active, parent_id) VALUES (?, ?, ?, ?, ?)')
   const insertPerson = db.prepare('INSERT OR REPLACE INTO people (id, name, role_text, active) VALUES (?, ?, ?, ?)')
+  const insertSupplier = db.prepare('INSERT OR REPLACE INTO suppliers (id, name, description, active) VALUES (?, ?, ?, ?)')
   const insertRole = db.prepare('INSERT OR REPLACE INTO roles (id, name, description, active) VALUES (?, ?, ?, ?)')
   const insertMotor = db.prepare(`INSERT OR REPLACE INTO motors (
     id, tag, serial, name, manufacturer, power, voltage, rpm,
@@ -89,6 +91,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
       DELETE FROM locations;
       DELETE FROM destinations;
       DELETE FROM people;
+      DELETE FROM suppliers;
       DELETE FROM roles;
       UPDATE display_order SET data = '{}' WHERE id = 1;
     `)
@@ -98,6 +101,9 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
     }
     for (const p of people) {
       insertPerson.run(p.id, p.name, p.role || '', p.active !== false ? 1 : 0)
+    }
+    for (const s of suppliers) {
+      insertSupplier.run(s.id, s.name, s.description || '', s.active !== false ? 1 : 0)
     }
     for (const l of locations) {
       insertLocation.run(l.id, l.name, l.description || '', l.active !== false ? 1 : 0, l.parentId || null)
@@ -118,7 +124,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
         m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '',
         m.itemUnit || '', JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         m.qty || 0, m.stockBefore || 0, m.stockAfter || 0, m.date || nowIso(),
-        m.supplier || '', m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
+        m.supplier || '', m.unitCost ?? null, m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
         m.operatorId || '', m.operatorName || ''
       )
     }
@@ -178,6 +184,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
     destinations: destinations.length,
     locations: locations.length,
     people: people.length,
+    suppliers: suppliers.length,
     roles: roles.length,
     workOrders: workOrders.length,
     workOrderItems: workOrderItems.length,
@@ -202,6 +209,7 @@ router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
     DELETE FROM locations;
     DELETE FROM destinations;
     DELETE FROM people;
+    DELETE FROM suppliers;
     DELETE FROM roles;
     UPDATE display_order SET data = '{}' WHERE id = 1;
   `)

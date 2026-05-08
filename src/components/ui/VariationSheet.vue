@@ -55,6 +55,26 @@ const recentSupplier = computed(() =>
   sortedMovements.value.find(m => m.type === 'entrada' && String(m.supplier || '').trim())?.supplier || '-'
 )
 
+const entryCostMovements = computed(() =>
+  sortedMovements.value.filter(m =>
+    m.type === 'entrada' &&
+    m.unitCost !== null &&
+    m.unitCost !== undefined &&
+    m.unitCost !== '' &&
+    Number.isFinite(Number(m.unitCost))
+  )
+)
+
+const lastUnitCost = computed(() =>
+  entryCostMovements.value.length ? Number(entryCostMovements.value[0].unitCost) : null
+)
+
+const averageUnitCost = computed(() => {
+  if (!entryCostMovements.value.length) return null
+  const total = entryCostMovements.value.reduce((sum, m) => sum + Number(m.unitCost), 0)
+  return total / entryCostMovements.value.length
+})
+
 const lastWithdrawalBy = computed(() =>
   sortedMovements.value.find(m => m.type === 'saida' && String(m.requestedBy || '').trim())?.requestedBy || '-'
 )
@@ -90,6 +110,13 @@ function formatDate(value) {
   if (!value) return '-'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR')
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '-'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function movementResponsible(movement) {
@@ -169,7 +196,7 @@ function saveExtras() {
       </header>
 
       <div class="max-h-[calc(88vh-5rem)] overflow-auto">
-        <section class="grid grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-gray-700 lg:grid-cols-5">
+        <section class="grid grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-gray-700 lg:grid-cols-6">
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400">Estoque atual</p>
             <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{{ variation.stock }} {{ item.unit }}</p>
@@ -183,12 +210,16 @@ function saveExtras() {
             <span class="mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold" :class="statusConfig[status].pillClass">{{ statusConfig[status].label }}</span>
           </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Fornecedor recente</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Último fornecedor</p>
             <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ recentSupplier }}</p>
           </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Local</p>
-            <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ variation.location || item.location || '-' }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Último custo</p>
+            <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formatCurrency(lastUnitCost) }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Média custos</p>
+            <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formatCurrency(averageUnitCost) }}</p>
           </div>
         </section>
 
@@ -265,6 +296,10 @@ function saveExtras() {
             <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
               <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Resumo</h3>
               <dl class="mt-3 space-y-2 text-sm">
+                <div class="flex justify-between gap-3">
+                  <dt class="text-gray-500 dark:text-gray-400">Local</dt>
+                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ variation.location || item.location || '-' }}</dd>
+                </div>
                 <div class="flex justify-between gap-3">
                   <dt class="text-gray-500 dark:text-gray-400">Último a retirar</dt>
                   <dd class="font-medium text-gray-900 dark:text-gray-100">{{ lastWithdrawalBy }}</dd>
@@ -370,6 +405,9 @@ function saveExtras() {
                       {{ movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
                     </span>
                     <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ movement.qty }} {{ item.unit }}</p>
+                    <p v-if="movement.type === 'entrada' && movement.unitCost != null" class="mt-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Custo: {{ formatCurrency(movement.unitCost) }}
+                    </p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ movementResponsible(movement) }} / {{ movementPlace(movement) }}</p>
                     <p v-if="movement.note" class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{ movement.note }}</p>
                   </div>

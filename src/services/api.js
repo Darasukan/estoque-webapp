@@ -175,6 +175,23 @@ export async function deletePerson(id) {
   return request(`/people/${id}`, { method: 'DELETE' })
 }
 
+// ===== Suppliers =====
+export async function getSuppliers() {
+  return request('/suppliers')
+}
+
+export async function createSupplier(data) {
+  return request('/suppliers', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateSupplier(id, data) {
+  return request(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteSupplier(id) {
+  return request(`/suppliers/${id}`, { method: 'DELETE' })
+}
+
 // ===== Roles =====
 export async function getRoles() {
   return request('/roles')
