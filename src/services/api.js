@@ -209,6 +209,39 @@ export async function deleteRole(id) {
   return request(`/roles/${id}`, { method: 'DELETE' })
 }
 
+// ===== EPIs =====
+export async function getEpiRoleRules() {
+  return request('/epis/role-rules')
+}
+
+export async function createEpiRoleRule(data) {
+  return request('/epis/role-rules', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateEpiRoleRule(id, data) {
+  return request(`/epis/role-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteEpiRoleRule(id) {
+  return request(`/epis/role-rules/${id}`, { method: 'DELETE' })
+}
+
+export async function getEpiPeriodicities() {
+  return request('/epis/periodicities')
+}
+
+export async function createEpiPeriodicity(data) {
+  return request('/epis/periodicities', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateEpiPeriodicity(id, data) {
+  return request(`/epis/periodicities/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteEpiPeriodicity(id) {
+  return request(`/epis/periodicities/${id}`, { method: 'DELETE' })
+}
+
 // ===== Seed / Order =====
 export async function getDisplayOrder() {
   return request('/seed/order')

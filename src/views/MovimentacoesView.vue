@@ -119,6 +119,7 @@ const form = ref({
   supplier: '',
   unitCost: '',
   requestedBy: '',
+  requestedByPersonId: '',
   destination: '',
   docRef: '',
   note: '',
@@ -155,7 +156,7 @@ function resetFlow() {
   itemSearch.value = ''
   selectedItem.value = null
   selectedVariation.value = null
-  form.value = { qty: '', supplier: '', unitCost: '', requestedBy: '', destination: '', docRef: '', note: '' }
+  form.value = { qty: '', supplier: '', unitCost: '', requestedBy: '', requestedByPersonId: '', destination: '', docRef: '', note: '' }
   personSelectVal.value = ''
   destSelectVal.value = ''
   movementDestinationId.value = ''
@@ -179,6 +180,7 @@ function adaptFormForSubTab(tab) {
   docDropdownOpen.value = false
   if (tab === 'entrada') {
     form.value.requestedBy = ''
+    form.value.requestedByPersonId = ''
     form.value.destination = ''
     personSelectVal.value = ''
     destSelectVal.value = ''
@@ -448,8 +450,14 @@ function handleMovementDestinationOther() {
 }
 
 watch(personSelectVal, (v) => {
-  if (v !== '__outro__') form.value.requestedBy = v
-  else form.value.requestedBy = ''
+  if (v && v !== '__outro__') {
+    const person = activePeople.value.find(p => p.name === v)
+    form.value.requestedBy = v
+    form.value.requestedByPersonId = person?.id || ''
+  } else {
+    form.value.requestedBy = ''
+    form.value.requestedByPersonId = ''
+  }
 })
 watch(destSelectVal, (v) => {
   if (v !== '__outro__') form.value.destination = v
@@ -510,6 +518,7 @@ function commonMovementFields() {
     supplier: form.value.supplier,
     unitCost: activeSubTab.value === 'entrada' ? parsedUnitCost.value : null,
     requestedBy: form.value.requestedBy,
+    requestedByPersonId: activeSubTab.value === 'saida' ? form.value.requestedByPersonId : '',
     destination: form.value.destination,
     docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
       ? `${docType.value === 'nf' ? 'NF' : 'PC'} ${form.value.docRef.trim()}`
@@ -575,6 +584,7 @@ function editBatchItem(line) {
     supplier: line.supplier || '',
     unitCost: line.unitCost ?? '',
     requestedBy: line.requestedBy || '',
+    requestedByPersonId: line.requestedByPersonId || '',
     destination: line.destination || '',
     docRef: '',
     note: line.note || '',
@@ -730,7 +740,7 @@ async function confirmDelete(id) {
 
 // Edit movement modal
 const editingMovement = ref(null)
-const editMovForm = ref({ date: '', qty: '', supplier: '', unitCost: '', requestedBy: '', destination: '', docRef: '', note: '' })
+const editMovForm = ref({ date: '', qty: '', supplier: '', unitCost: '', requestedBy: '', requestedByPersonId: '', destination: '', docRef: '', note: '' })
 const editMovementDestinationId = ref('')
 const editMovementDestinationOther = ref(false)
 
@@ -750,6 +760,7 @@ function startEditMovement(m) {
     supplier: m.supplier || '',
     unitCost: m.unitCost ?? '',
     requestedBy: m.requestedBy || '',
+    requestedByPersonId: m.requestedByPersonId || '',
     destination: m.destination || '',
     docRef: m.docRef || '',
     note: m.note || '',
@@ -800,6 +811,8 @@ async function saveEditMovement() {
     }
   } else {
     changes.unitCost = null
+    const person = activePeople.value.find(p => p.name.toLowerCase() === String(changes.requestedBy || '').trim().toLowerCase())
+    changes.requestedByPersonId = person?.id || ''
   }
   // Convert local datetime string to ISO
   if (changes.date) changes.date = new Date(changes.date).toISOString()

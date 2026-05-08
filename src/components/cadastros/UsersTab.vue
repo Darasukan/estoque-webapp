@@ -21,9 +21,16 @@ function canEditUserPassword(u) {
   return isAdmin.value && user.value?.id === u.id
 }
 
-function startAddUser() { addingUser.value = true; newUserName.value = ''; newUserPin.value = ''; newUserRole.value = 'operador' }
+function startAddUser() {
+  if (!isAdmin.value) return
+  addingUser.value = true
+  newUserName.value = ''
+  newUserPin.value = ''
+  newUserRole.value = 'operador'
+}
 function cancelAddUser() { addingUser.value = false }
 async function confirmAddUser() {
+  if (!isAdmin.value) { error('Apenas admin pode criar operadores.'); return }
   if (!newUserName.value.trim() || !newUserPin.value.trim()) { error('Nome e senha são obrigatórios.'); return }
   const r = await addUser(newUserName.value.trim(), newUserPin.value, newUserRole.value)
   if (!r.ok) { error(r.error); return }
@@ -56,6 +63,7 @@ async function onToggleUserActive(u) {
   success(u.active ? 'Operador desativado.' : 'Operador ativado.')
 }
 async function onDeleteUser(u) {
+  if (!isAdmin.value) { error('Apenas admin pode excluir operadores.'); return }
   if (!confirm(`Excluir operador "${u.name}"?`)) return
   const r = await removeUser(u.id)
   if (!r.ok) { error(r.error); return }
@@ -72,7 +80,7 @@ async function onDeleteUser(u) {
           <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Usuários do sistema com nome e senha, definidos pelo administrador.</p>
         </div>
         <button
-          v-if="!addingUser"
+          v-if="isAdmin && !addingUser"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
           @click="startAddUser"
         >
@@ -82,7 +90,7 @@ async function onDeleteUser(u) {
       </div>
 
       <!-- Add form -->
-      <div v-if="addingUser" class="mb-4 rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-4 flex flex-col gap-3">
+      <div v-if="isAdmin && addingUser" class="mb-4 rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-4 flex flex-col gap-3">
         <p class="text-xs font-semibold text-primary-600 dark:text-primary-400">Novo operador</p>
         <input
           v-model="newUserName"
@@ -192,7 +200,7 @@ async function onDeleteUser(u) {
                     <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditUser(u)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
-                    <button v-if="u.id !== 'user_admin'" class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteUser(u)">
+                    <button v-if="isAdmin && u.id !== 'user_admin'" class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteUser(u)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                     </button>
                   </div>

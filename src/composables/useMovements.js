@@ -35,6 +35,7 @@ export function useMovements() {
       supplier: fields.supplier || '',
       unitCost: fields.unitCost ?? null,
       requestedBy: fields.requestedBy || '',
+      requestedByPersonId: fields.requestedByPersonId || '',
       destination: fields.destination || '',
       docRef: fields.docRef || '',
       note: fields.note || '',

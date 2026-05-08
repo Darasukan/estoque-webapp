@@ -36,6 +36,7 @@ function toMovement(row) {
     supplier: row.supplier,
     unitCost: row.unit_cost ?? null,
     requestedBy: row.requested_by,
+    requestedByPersonId: row.requested_by_person_id || '',
     destination: row.destination,
     docRef: row.doc_ref,
     note: row.note,
@@ -94,14 +95,14 @@ router.post('/', requireAuth, (req, res) => {
 
   const createMovement = db.transaction(() => {
     db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(stockAfter, m.variationId)
-    db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, requested_by_person_id, destination, doc_ref, note, operator_id, operator_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id, m.type, m.variationId, m.itemId,
       m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
       JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
       qty, stockBefore, stockAfter,
       date,
-      m.supplier || '', unitCost, m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
+      m.supplier || '', unitCost, m.requestedBy || '', m.requestedByPersonId || '', m.destination || '', m.docRef || '', m.note || '',
       operatorId, operatorName
     )
   })
@@ -126,6 +127,7 @@ router.post('/', requireAuth, (req, res) => {
     supplier: m.supplier || '',
     unitCost,
     requestedBy: m.requestedBy || '',
+    requestedByPersonId: m.requestedByPersonId || '',
     destination: m.destination || '',
     docRef: m.docRef || '',
     note: m.note || '',
@@ -189,18 +191,19 @@ router.post('/batch', requireAuth, (req, res) => {
       const id = 'mov_' + crypto.randomBytes(6).toString('hex')
       const supplier = movementField(m, fields, 'supplier')
       const requestedBy = movementField(m, fields, 'requestedBy')
+      const requestedByPersonId = movementField(m, fields, 'requestedByPersonId')
       const destination = movementField(m, fields, 'destination')
       const docRef = movementField(m, fields, 'docRef')
       const note = movementField(m, fields, 'note')
       const unitCost = line.type === 'entrada' ? movementOptionalNumberField(m, fields, 'unitCost') : null
-      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, requested_by_person_id, destination, doc_ref, note, operator_id, operator_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         id, line.type, m.variationId, m.itemId,
         m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
         JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         line.qty, line.stockBefore, line.stockAfter,
         date,
-        supplier, unitCost, requestedBy, destination, docRef, note,
+        supplier, unitCost, requestedBy, requestedByPersonId, destination, docRef, note,
         operatorId, operatorName
       )
       created.push({
@@ -222,6 +225,7 @@ router.post('/batch', requireAuth, (req, res) => {
         supplier,
         unitCost,
         requestedBy,
+        requestedByPersonId,
         destination,
         docRef,
         note,
@@ -264,13 +268,14 @@ router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
     if (newStock !== null) {
       db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, m.variation_id)
     }
-    db.prepare(`UPDATE movements SET qty=?, stock_after=?, date=?, supplier=?, unit_cost=?, requested_by=?, destination=?, doc_ref=?, note=? WHERE id=?`).run(
+    db.prepare(`UPDATE movements SET qty=?, stock_after=?, date=?, supplier=?, unit_cost=?, requested_by=?, requested_by_person_id=?, destination=?, doc_ref=?, note=? WHERE id=?`).run(
       newQty,
       stockAfter,
       changes.date !== undefined ? changes.date : m.date,
       changes.supplier !== undefined ? changes.supplier : m.supplier,
       unitCost,
       changes.requestedBy !== undefined ? changes.requestedBy : m.requested_by,
+      changes.requestedByPersonId !== undefined ? changes.requestedByPersonId : m.requested_by_person_id,
       changes.destination !== undefined ? changes.destination : m.destination,
       changes.docRef !== undefined ? changes.docRef : m.doc_ref,
       changes.note !== undefined ? changes.note : m.note,

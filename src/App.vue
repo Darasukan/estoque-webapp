@@ -14,6 +14,7 @@ import { useDestinations } from './composables/useDestinations.js'
 import { usePeople } from './composables/usePeople.js'
 import { useSuppliers } from './composables/useSuppliers.js'
 import { useRoles } from './composables/useRoles.js'
+import { useEpis } from './composables/useEpis.js'
 import { useUsers } from './composables/useUsers.js'
 import { useAuth } from './composables/useAuth.js'
 import { useWorkOrders } from './composables/useWorkOrders.js'
@@ -35,6 +36,7 @@ const { loadData: loadDestinations } = useDestinations()
 const { loadData: loadPeople } = usePeople()
 const { loadData: loadSuppliers } = useSuppliers()
 const { loadData: loadRoles } = useRoles()
+const { loadData: loadEpis } = useEpis()
 const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
 const { loadData: loadWorkOrders } = useWorkOrders()
@@ -71,11 +73,11 @@ const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar
 const allTabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'catalogo', label: 'Catálogo' },
-  { id: 'cadastros', label: 'Cadastros', authOnly: true },
   { id: 'inventario', label: 'Inventário' },
   { id: 'movimentacoes', label: 'Movimentações' },
   { id: 'ordens', label: 'Ordens de Serviço' },
-  { id: 'motores', label: 'Motores' }
+  { id: 'motores', label: 'Motores' },
+  { id: 'cadastros', label: 'Cadastros', authOnly: true }
 ]
 const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
 
@@ -89,6 +91,7 @@ async function loadAllData() {
     loadPeople(),
     loadSuppliers(),
     loadRoles(),
+    loadEpis(),
     loadWorkOrders(),
     loadMotors(),
     loadClosings(),
@@ -134,6 +137,14 @@ function openMovementTab(tab, prefill = null) {
 
 function openInventoryQuickMovement(payload) {
   openMovementTab(payload.type, payload)
+}
+
+function openCadastroQuickMovement(payload) {
+  if (!payload?.variationId || !payload?.itemId) {
+    openMovementTab(payload?.type || 'saida')
+    return
+  }
+  openMovementTab(payload.type || 'saida', payload)
 }
 
 function selectMainTab(tabId) {
@@ -353,7 +364,7 @@ function handleQuickMovementKeydown(event) {
         />
 
         <!-- Cadastros tab -->
-        <CadastrosView v-if="activeTab === 'cadastros'" />
+        <CadastrosView v-if="activeTab === 'cadastros'" @quick-movement="openCadastroQuickMovement" />
 
         <!-- Inventário tab -->
         <InventarioView

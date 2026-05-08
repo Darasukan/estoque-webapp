@@ -70,6 +70,7 @@ db.exec(`
     supplier TEXT DEFAULT '',
     unit_cost REAL DEFAULT NULL,
     requested_by TEXT DEFAULT '',
+    requested_by_person_id TEXT DEFAULT '',
     destination TEXT DEFAULT '',
     doc_ref TEXT DEFAULT '',
     note TEXT DEFAULT '',
@@ -113,6 +114,26 @@ db.exec(`
     name TEXT NOT NULL UNIQUE,
     description TEXT DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS epi_role_rules (
+    id TEXT PRIMARY KEY,
+    role_name TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('grupo','categoria','subcategoria','item','variacao')),
+    target_key TEXT NOT NULL,
+    target_label TEXT DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS epi_periodicities (
+    id TEXT PRIMARY KEY,
+    target_type TEXT NOT NULL CHECK(target_type IN ('grupo','categoria','subcategoria','item','variacao')),
+    target_key TEXT NOT NULL,
+    target_label TEXT DEFAULT '',
+    days INTEGER NOT NULL DEFAULT 30,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS work_orders (
@@ -231,6 +252,9 @@ if (!movCols.includes('operator_id')) {
 }
 if (!movCols.includes('unit_cost')) {
   db.prepare("ALTER TABLE movements ADD COLUMN unit_cost REAL DEFAULT NULL").run()
+}
+if (!movCols.includes('requested_by_person_id')) {
+  db.prepare("ALTER TABLE movements ADD COLUMN requested_by_person_id TEXT DEFAULT ''").run()
 }
 
 const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)

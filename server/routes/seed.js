@@ -44,8 +44,8 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
   const insertMovement = db.prepare(`INSERT OR REPLACE INTO movements (
     id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory,
     item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date,
-    supplier, unit_cost, requested_by, destination, doc_ref, note, operator_id, operator_name
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    supplier, unit_cost, requested_by, requested_by_person_id, destination, doc_ref, note, operator_id, operator_name
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
   const insertDestination = db.prepare('INSERT OR REPLACE INTO destinations (id, name, description, active, parent_id) VALUES (?, ?, ?, ?, ?)')
   const insertLocation = db.prepare('INSERT OR REPLACE INTO locations (id, name, description, active, parent_id) VALUES (?, ?, ?, ?, ?)')
   const insertPerson = db.prepare('INSERT OR REPLACE INTO people (id, name, role_text, active) VALUES (?, ?, ?, ?)')
@@ -85,6 +85,8 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
       DELETE FROM work_orders;
       DELETE FROM motors;
       DELETE FROM monthly_closings;
+      DELETE FROM epi_role_rules;
+      DELETE FROM epi_periodicities;
       DELETE FROM movements;
       DELETE FROM variations;
       DELETE FROM items;
@@ -124,7 +126,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
         m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '',
         m.itemUnit || '', JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
         m.qty || 0, m.stockBefore || 0, m.stockAfter || 0, m.date || nowIso(),
-        m.supplier || '', m.unitCost ?? null, m.requestedBy || '', m.destination || '', m.docRef || '', m.note || '',
+        m.supplier || '', m.unitCost ?? null, m.requestedBy || '', m.requestedByPersonId || '', m.destination || '', m.docRef || '', m.note || '',
         m.operatorId || '', m.operatorName || ''
       )
     }
@@ -203,6 +205,8 @@ router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
     DELETE FROM work_orders;
     DELETE FROM motors;
     DELETE FROM monthly_closings;
+    DELETE FROM epi_role_rules;
+    DELETE FROM epi_periodicities;
     DELETE FROM movements;
     DELETE FROM variations;
     DELETE FROM items;
