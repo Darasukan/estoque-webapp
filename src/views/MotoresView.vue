@@ -3,6 +3,7 @@ import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorStatusLabel, motorEventLabel } from '../composables/useMotors.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
+import { useItems } from '../composables/useItems.js'
 import { useToast } from '../composables/useToast.js'
 import OrdensServicoView from './OrdensServicoView.vue'
 import AppButton from '../components/ui/AppButton.vue'
@@ -17,12 +18,17 @@ const canManageMotorOrders = computed(() => Boolean(isLoggedIn?.value ?? isLogge
 const {
   motors,
   motorEvents,
+  motorMaterials,
   loadData,
   loadEvents,
+  loadMaterials,
+  addMotorMaterial,
+  removeMotorMaterial,
   addMotor,
   editMotor,
   removeMotor,
 } = useMotors()
+const { items, variations } = useItems()
 const { groupedDestinations, getDestFullName } = useDestinations()
 const { workOrders } = useWorkOrders()
 const { success, error } = useToast()
@@ -38,12 +44,16 @@ const selectedMotorId = ref('')
 const showForm = ref(false)
 const editingMotorId = ref(null)
 const osPanelOpen = ref(false)
+const materialsPanelOpen = ref(false)
 const osPrefillMotor = ref(null)
 const osActiveTab = ref('ordens')
 const osFocusOrderId = ref('')
 const confirmDeleteMotorId = ref(null)
 const locationTrailOpen = ref(false)
 const selectedEventCountType = ref('rebobinado')
+const motorMaterialSearch = ref('')
+const motorMaterialVariationId = ref('')
+const motorMaterialNote = ref('')
 
 const motorForm = ref(emptyMotorForm())
 
@@ -142,6 +152,39 @@ const selectedOpenWorkOrders = computed(() =>
   selectedWorkOrders.value.filter(wo => !wo.maintenanceEndDate || !wo.maintenanceEndTime)
 )
 
+const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
+
+function variationLabel(variation, item) {
+  const values = Object.entries(variation.values || {}).map(([key, value]) => `${key}: ${value}`)
+  const extras = Object.entries(variation.extras || {}).map(([key, value]) => `${key}: ${value}`)
+  return [item?.name, ...values, ...extras].filter(Boolean).join(' / ')
+}
+
+function materialOptionLabel(row) {
+  return `${row.item.group || '-'} > ${row.item.category || '-'} > ${row.item.subcategory || '-'} - ${variationLabel(row.variation, row.item)}`
+}
+
+const motorMaterialOptions = computed(() => {
+  const q = motorMaterialSearch.value.trim().toLowerCase()
+  return variations.value
+    .map(variation => ({ variation, item: itemById.value.get(variation.itemId) }))
+    .filter(row => row.item)
+    .filter(row => !q || materialOptionLabel(row).toLowerCase().includes(q))
+    .sort((a, b) => materialOptionLabel(a).localeCompare(materialOptionLabel(b), 'pt-BR', { sensitivity: 'base', numeric: true }))
+    .slice(0, 30)
+})
+
+const selectedMotorMaterials = computed(() => {
+  if (!selectedMotor.value) return []
+  return (motorMaterials.value[selectedMotor.value.id] || [])
+    .map(material => {
+      const variation = variations.value.find(v => v.id === material.variationId)
+      const item = variation ? itemById.value.get(variation.itemId) : null
+      return { material, variation, item }
+    })
+    .filter(row => row.variation && row.item)
+})
+
 const motorEventCountOptions = computed(() => MOTOR_EVENT_TYPES)
 
 const selectedMotorEventCounts = computed(() => {
@@ -210,7 +253,10 @@ const motorStats = computed(() => ({
 onMounted(() => loadData())
 
 watch(selectedMotor, (motor) => {
-  if (motor) loadEvents(motor.id).catch(() => {})
+  if (motor) {
+    loadEvents(motor.id).catch(() => {})
+    loadMaterials(motor.id).catch(() => {})
+  }
   locationTrailOpen.value = false
 }, { immediate: true })
 
@@ -223,6 +269,7 @@ function selectMotor(motor) {
   selectedMotorId.value = motor.id
   motorViewMode.value = 'motores'
   osPanelOpen.value = false
+  materialsPanelOpen.value = false
   osPrefillMotor.value = null
   osFocusOrderId.value = ''
   confirmDeleteMotorId.value = null
@@ -279,8 +326,43 @@ async function deleteSelectedMotor() {
     selectedMotorId.value = ''
     confirmDeleteMotorId.value = null
     osPanelOpen.value = false
+    materialsPanelOpen.value = false
     osPrefillMotor.value = null
     osFocusOrderId.value = ''
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+function showMotorMaterials() {
+  if (!selectedMotor.value) return
+  materialsPanelOpen.value = true
+  osPanelOpen.value = false
+  osPrefillMotor.value = null
+  osFocusOrderId.value = ''
+}
+
+async function addSelectedMotorMaterial() {
+  if (!selectedMotor.value || !motorMaterialVariationId.value) return
+  try {
+    await addMotorMaterial(selectedMotor.value.id, {
+      variationId: motorMaterialVariationId.value,
+      note: motorMaterialNote.value,
+    })
+    motorMaterialVariationId.value = ''
+    motorMaterialSearch.value = ''
+    motorMaterialNote.value = ''
+    success('Material vinculado ao motor.')
+  } catch (e) {
+    error(e.message)
+  }
+}
+
+async function deleteMotorMaterial(material) {
+  if (!selectedMotor.value) return
+  try {
+    await removeMotorMaterial(selectedMotor.value.id, material.id)
+    success('Material removido do motor.')
   } catch (e) {
     error(e.message)
   }
@@ -376,6 +458,93 @@ function workOrderEndLabel(order) {
       @prefill-consumed="osPrefillMotor = null"
       @created="showMotorOrders"
     />
+  </div>
+
+  <div v-else-if="selectedMotor && materialsPanelOpen" class="ds-page-stack">
+    <div class="ds-page-header">
+      <div>
+        <p class="ds-page-kicker">Materiais do Motor</p>
+        <h1 class="ds-page-title">{{ selectedMotor.tag }}</h1>
+        <p class="ds-page-subtitle">Peças previstas para este motor e estoque atual no almoxarifado.</p>
+      </div>
+      <div class="flex gap-2">
+        <AppButton variant="secondary" @click="materialsPanelOpen = false">Voltar ao motor</AppButton>
+      </div>
+    </div>
+
+    <section class="ds-panel overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-200 dark:border-white/[0.06] flex flex-wrap items-start justify-between gap-3 bg-gray-50/70 dark:bg-white/[0.02]">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Materiais vinculados</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ selectedMotorMaterials.length }} material{{ selectedMotorMaterials.length === 1 ? '' : 'is' }} cadastrado{{ selectedMotorMaterials.length === 1 ? '' : 's' }} para este motor.</p>
+        </div>
+        <span class="ds-chip">{{ selectedMotor.destinationName || 'Sem local' }}</span>
+      </div>
+
+      <div v-if="isLoggedIn" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 lg:grid-cols-[1fr_1fr_auto]">
+        <div>
+          <label class="ds-label">Buscar material</label>
+          <input
+            v-model="motorMaterialSearch"
+            class="ds-input"
+            placeholder="Buscar rolamento, tampa, bucha..."
+          />
+          <select v-model="motorMaterialVariationId" class="ds-input mt-2">
+            <option value="">Selecione uma variação</option>
+            <option v-for="row in motorMaterialOptions" :key="row.variation.id" :value="row.variation.id">
+              {{ materialOptionLabel(row) }}
+            </option>
+          </select>
+        </div>
+        <label>
+          <span class="ds-label">Observação</span>
+          <input v-model="motorMaterialNote" class="ds-input" placeholder="Ex: lado acoplado, tampa dianteira..." />
+        </label>
+        <div class="flex items-end">
+          <AppButton variant="primary" :disabled="!motorMaterialVariationId" @click="addSelectedMotorMaterial">
+            Vincular material
+          </AppButton>
+        </div>
+      </div>
+
+      <div v-if="selectedMotorMaterials.length" class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
+              <th class="px-4 py-3 text-left font-semibold">Material</th>
+              <th class="px-4 py-3 text-left font-semibold">Variação</th>
+              <th class="px-4 py-3 text-center font-semibold">Estoque</th>
+              <th class="px-4 py-3 text-center font-semibold">Mínimo</th>
+              <th class="px-4 py-3 text-left font-semibold">Observação</th>
+              <th v-if="isLoggedIn" class="px-4 py-3 text-right font-semibold">Ação</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+            <tr v-for="{ material, variation, item } in selectedMotorMaterials" :key="material.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+              <td class="px-4 py-3">
+                <p class="font-medium text-gray-900 dark:text-gray-100">{{ item.name }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ item.group }} > {{ item.category }} > {{ item.subcategory }}</p>
+              </td>
+              <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ variationLabel(variation, item) }}</td>
+              <td class="px-4 py-3 text-center">
+                <span class="font-semibold" :class="variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">{{ variation.stock }}</span>
+                <span class="ml-1 text-xs text-gray-400">{{ item.unit }}</span>
+              </td>
+              <td class="px-4 py-3 text-center text-gray-700 dark:text-gray-300">{{ variation.minStock || '-' }}</td>
+              <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{{ material.note || '-' }}</td>
+              <td v-if="isLoggedIn" class="px-4 py-3 text-right">
+                <AppButton variant="danger" size="xs" @click="deleteMotorMaterial(material)">Remover</AppButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <EmptyState
+        v-else
+        title="Nenhum material vinculado."
+        text="Vincule rolamentos, tampas, buchas ou outras peças cadastradas no catalogo."
+      />
+    </section>
   </div>
 
   <div v-else class="ds-page-stack">
@@ -606,6 +775,7 @@ function workOrderEndLabel(order) {
           </div>
           <div class="flex flex-wrap gap-2">
             <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
+            <AppButton variant="secondary" size="sm" @click="showMotorMaterials">Materiais do Motor</AppButton>
             <AppButton variant="secondary" size="sm" @click="showMotorOrders">OS do Motor</AppButton>
             <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Nova OS</AppButton>
             <AppButton

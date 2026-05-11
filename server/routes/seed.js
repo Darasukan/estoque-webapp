@@ -82,6 +82,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
       DELETE FROM work_order_events;
       DELETE FROM work_order_items;
       DELETE FROM motor_events;
+      DELETE FROM motor_materials;
       DELETE FROM work_orders;
       DELETE FROM motors;
       DELETE FROM monthly_closings;
@@ -202,6 +203,7 @@ router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
     DELETE FROM work_order_events;
     DELETE FROM work_order_items;
     DELETE FROM motor_events;
+    DELETE FROM motor_materials;
     DELETE FROM work_orders;
     DELETE FROM motors;
     DELETE FROM monthly_closings;

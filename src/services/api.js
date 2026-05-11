@@ -349,3 +349,15 @@ export async function updateMotorEvent(motorId, eventId, data) {
 export async function deleteMotorEvent(motorId, eventId) {
   return request(`/motors/${motorId}/events/${eventId}`, { method: 'DELETE' })
 }
+
+export async function getMotorMaterials(motorId) {
+  return request(`/motors/${motorId}/materials`)
+}
+
+export async function createMotorMaterial(motorId, data) {
+  return request(`/motors/${motorId}/materials`, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteMotorMaterial(motorId, materialId) {
+  return request(`/motors/${motorId}/materials/${materialId}`, { method: 'DELETE' })
+}

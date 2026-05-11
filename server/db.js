@@ -223,6 +223,16 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS motor_materials (
+    id TEXT PRIMARY KEY,
+    motor_id TEXT NOT NULL REFERENCES motors(id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    variation_id TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(motor_id, variation_id)
+  );
+
   CREATE TABLE IF NOT EXISTS monthly_closings (
     id TEXT PRIMARY KEY,
     year INTEGER NOT NULL,

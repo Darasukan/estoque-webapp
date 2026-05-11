@@ -93,6 +93,17 @@ function mapEvent(row) {
   }
 }
 
+function mapMotorMaterial(row) {
+  return {
+    id: row.id,
+    motorId: row.motor_id,
+    itemId: row.item_id,
+    variationId: row.variation_id,
+    note: row.note || '',
+    createdAt: row.created_at,
+  }
+}
+
 function buildMotorPayload(body, existing = null) {
   const tag = clean(body.tag ?? existing?.tag)
   if (!tag) return { error: 'Tag/patrimonio e obrigatorio.' }
@@ -238,6 +249,38 @@ router.get('/:id/events', (req, res) => {
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
   const rows = db.prepare('SELECT * FROM motor_events WHERE motor_id = ? ORDER BY event_date DESC, created_at DESC').all(req.params.id)
   res.json(rows.map(mapEvent))
+})
+
+router.get('/:id/materials', (req, res) => {
+  const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
+  if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
+  const rows = db.prepare('SELECT * FROM motor_materials WHERE motor_id = ? ORDER BY created_at DESC').all(req.params.id)
+  res.json(rows.map(mapMotorMaterial))
+})
+
+router.post('/:id/materials', requireAuth, (req, res) => {
+  const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
+  if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
+  const variationId = clean(req.body.variationId)
+  const variation = db.prepare('SELECT id, item_id FROM variations WHERE id = ?').get(variationId)
+  if (!variation) return res.status(400).json({ error: 'Variacao nao encontrada.' })
+
+  const id = genId('mmat')
+  db.prepare(`
+    INSERT INTO motor_materials (id, motor_id, item_id, variation_id, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(motor_id, variation_id) DO UPDATE SET note=excluded.note
+  `).run(id, req.params.id, variation.item_id, variation.id, clean(req.body.note), nowIso())
+
+  const row = db.prepare('SELECT * FROM motor_materials WHERE motor_id = ? AND variation_id = ?').get(req.params.id, variation.id)
+  res.json(mapMotorMaterial(row))
+})
+
+router.delete('/:id/materials/:materialId', requireAuth, (req, res) => {
+  const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
+  if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
+  db.prepare('DELETE FROM motor_materials WHERE id = ? AND motor_id = ?').run(req.params.materialId, req.params.id)
+  res.json({ ok: true })
 })
 
 router.post('/:id/events', requireAuth, (req, res) => {

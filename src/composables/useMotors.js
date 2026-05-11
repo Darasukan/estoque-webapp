@@ -3,6 +3,7 @@ import * as api from '../services/api.js'
 
 const motors = ref([])
 const motorEvents = ref({})
+const motorMaterials = ref({})
 
 export const MOTOR_STATUSES = [
   { id: 'ativo', label: 'Ativo' },
@@ -58,12 +59,36 @@ export function useMotors() {
     if (idx !== -1) motors.value.splice(idx, 1)
     const { [id]: removed, ...rest } = motorEvents.value
     motorEvents.value = rest
+    const { [id]: removedMaterials, ...materialRest } = motorMaterials.value
+    motorMaterials.value = materialRest
     return result
   }
 
   async function loadEvents(motorId) {
     motorEvents.value = { ...motorEvents.value, [motorId]: await api.getMotorEvents(motorId) }
     return motorEvents.value[motorId]
+  }
+
+  async function loadMaterials(motorId) {
+    motorMaterials.value = { ...motorMaterials.value, [motorId]: await api.getMotorMaterials(motorId) }
+    return motorMaterials.value[motorId]
+  }
+
+  async function addMotorMaterial(motorId, data) {
+    const saved = await api.createMotorMaterial(motorId, data)
+    const current = motorMaterials.value[motorId] || []
+    const next = current.some(material => material.id === saved.id || material.variationId === saved.variationId)
+      ? current.map(material => (material.id === saved.id || material.variationId === saved.variationId) ? saved : material)
+      : [saved, ...current]
+    motorMaterials.value = { ...motorMaterials.value, [motorId]: next }
+    return saved
+  }
+
+  async function removeMotorMaterial(motorId, materialId) {
+    const result = await api.deleteMotorMaterial(motorId, materialId)
+    const current = motorMaterials.value[motorId] || []
+    motorMaterials.value = { ...motorMaterials.value, [motorId]: current.filter(material => material.id !== materialId) }
+    return result
   }
 
   async function addMotorEvent(motorId, data) {
@@ -105,12 +130,16 @@ export function useMotors() {
   return {
     motors,
     motorEvents,
+    motorMaterials,
     activeMotors,
     loadData,
     addMotor,
     editMotor,
     removeMotor,
     loadEvents,
+    loadMaterials,
+    addMotorMaterial,
+    removeMotorMaterial,
     addMotorEvent,
     editMotorEvent,
     removeMotorEvent,
