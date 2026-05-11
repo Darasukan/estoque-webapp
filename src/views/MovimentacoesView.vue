@@ -214,6 +214,15 @@ function applyMovementPrefill(prefill) {
   selectedItem.value = item
   selectedVariation.value = variation
   step.value = 3
+  if (tab === 'saida' && (prefill.requestedBy || prefill.requestedByPersonId)) {
+    const person = activePeople.value.find(p =>
+      (prefill.requestedByPersonId && p.id === prefill.requestedByPersonId) ||
+      normalizeText(p.name) === normalizeText(prefill.requestedBy)
+    )
+    personSelectVal.value = person?.name || prefill.requestedBy || ''
+    form.value.requestedBy = person?.name || prefill.requestedBy || ''
+    form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
+  }
   setViewingItem(item.id)
   nextTick(() => {
     suppressFlowReset.value = false

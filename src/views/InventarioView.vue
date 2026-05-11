@@ -8,6 +8,7 @@ import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 import FechamentosView from './FechamentosView.vue'
 import VariationSheet from '../components/ui/VariationSheet.vue'
+import EpiControlTab from '../components/inventario/EpiControlTab.vue'
 
 const props = defineProps({
   initialSection: {
@@ -26,6 +27,7 @@ const props = defineProps({
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
 const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
+const canAccessEpiControl = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const emit = defineEmits(['quick-movement'])
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory, editVariation } = useItems()
@@ -33,7 +35,8 @@ const { movements, addMovement } = useMovements()
 const { workOrders } = useWorkOrders()
 const { getDestFullName } = useDestinations()
 const { success, error } = useToast()
-const inventorySection = ref(['estoque', 'fechamentos'].includes(props.initialSection) ? props.initialSection : 'estoque')
+const inventorySections = ['estoque', 'epis', 'fechamentos']
+const inventorySection = ref(inventorySections.includes(props.initialSection) ? props.initialSection : 'estoque')
 const columnMenuOpen = ref(false)
 const visibleColumns = ref({
   variation: true,
@@ -54,15 +57,23 @@ const columnOptions = computed(() => [
 ])
 
 watch(() => props.initialSection, section => {
+  if (section === 'epis' && !canAccessEpiControl.value) {
+    inventorySection.value = 'estoque'
+    return
+  }
   if (section === 'fechamentos' && !canAccessClosings.value) {
     inventorySection.value = 'estoque'
     return
   }
-  if (['estoque', 'fechamentos'].includes(section)) inventorySection.value = section
+  if (inventorySections.includes(section)) inventorySection.value = section
 })
 
 watch(canAccessClosings, allowed => {
   if (!allowed && inventorySection.value === 'fechamentos') inventorySection.value = 'estoque'
+})
+
+watch(canAccessEpiControl, allowed => {
+  if (!allowed && inventorySection.value === 'epis') inventorySection.value = 'estoque'
 })
 
 function isColumnVisible(key) {
@@ -811,7 +822,6 @@ function exportCSV() {
 
     <div class="ds-segmented">
       <button
-        v-if="canAccessClosings"
         type="button"
         class="ds-segmented-item"
         :class="inventorySection === 'estoque' ? 'ds-segmented-item-active' : ''"
@@ -820,6 +830,16 @@ function exportCSV() {
         Estoque
       </button>
       <button
+        v-if="canAccessEpiControl"
+        type="button"
+        class="ds-segmented-item"
+        :class="inventorySection === 'epis' ? 'ds-segmented-item-active' : ''"
+        @click="inventorySection = 'epis'"
+      >
+        Controle de EPIs
+      </button>
+      <button
+        v-if="canAccessClosings"
         type="button"
         class="ds-segmented-item"
         :class="inventorySection === 'fechamentos' ? 'ds-segmented-item-active' : ''"
@@ -1374,6 +1394,11 @@ function exportCSV() {
     </div>
 
     </template>
+
+    <EpiControlTab
+      v-else-if="inventorySection === 'epis'"
+      @quick-movement="payload => emit('quick-movement', payload)"
+    />
 
     <FechamentosView v-else />
 

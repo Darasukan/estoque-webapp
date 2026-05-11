@@ -136,6 +136,10 @@ function openMovementTab(tab, prefill = null) {
 }
 
 function openInventoryQuickMovement(payload) {
+  if (!payload?.variationId || !payload?.itemId) {
+    openMovementTab(payload?.type || 'saida')
+    return
+  }
   openMovementTab(payload.type, payload)
 }
 
@@ -174,7 +178,7 @@ function navigateTab(target) {
     showLoginModal.value = true
     return
   }
-  if ((tab === 'fechamentos' || target?.section === 'fechamentos') && !isLoggedIn.value) {
+  if ((tab === 'fechamentos' || target?.section === 'fechamentos' || target?.section === 'epis') && !isLoggedIn.value) {
     showLoginModal.value = true
     return
   }

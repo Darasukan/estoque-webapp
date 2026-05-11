@@ -1,10 +1,12 @@
 <script setup>
 import { computed, inject, ref, watch } from 'vue'
 import { useClosings } from '../composables/useClosings.js'
+import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 
 const isAdmin = inject('isAdmin')
 const { closings, closingDetails, createClosing, deleteClosing, loadClosing } = useClosings()
+const { getDestFullName } = useDestinations()
 const { success, error } = useToast()
 
 const now = new Date()
@@ -14,6 +16,7 @@ const notes = ref('')
 const selectedClosingId = ref('')
 const loading = ref(false)
 const deletingId = ref('')
+const exporting = ref(false)
 
 const MONTHS = [
   { value: 1, label: 'Janeiro' },
@@ -115,6 +118,98 @@ function variationText(row) {
     .map(([key, value]) => `${key}: ${value}`)
     .join(' / ') || '-'
 }
+
+function extrasText(row) {
+  return Object.entries(row.variationExtras || {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' / ') || '-'
+}
+
+function destinationsText(row) {
+  return Array.isArray(row.destinations) && row.destinations.length
+    ? row.destinations.map(destination => getDestFullName(destination)).join(' / ')
+    : '-'
+}
+
+function closingStatus(row) {
+  if (row.stockAtClose <= 0) return 'Sem estoque'
+  if (row.minStock > 0 && row.stockAtClose <= row.minStock) return 'Abaixo do minimo'
+  return 'OK'
+}
+
+function csvCell(value) {
+  if (value === null || value === undefined) return ''
+  const text = String(value).replace(/\r?\n/g, ' ').trim()
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function rowsToCsv(rows) {
+  const headers = [
+    'Ano',
+    'Mes',
+    'Grupo',
+    'Categoria',
+    'Subcategoria',
+    'Item',
+    'Variacao',
+    'Extras',
+    'Unidade',
+    'Saldo fechado',
+    'Entradas no mes',
+    'Saidas no mes',
+    'Estoque minimo',
+    'Status',
+    'Local',
+    'Destinos vinculados',
+    'Estoque atual',
+  ]
+  const lines = rows.map(row => [
+    selectedClosing.value?.year || '',
+    selectedClosing.value?.month || '',
+    row.group || '',
+    row.category || '',
+    row.subcategory || '',
+    row.itemName || '',
+    variationText(row),
+    extrasText(row),
+    row.unit || '',
+    row.stockAtClose || 0,
+    row.monthEntradas || 0,
+    row.monthSaidas || 0,
+    row.minStock || 0,
+    closingStatus(row),
+    row.location || '',
+    destinationsText(row),
+    row.currentStock || 0,
+  ])
+  return [headers, ...lines]
+    .map(line => line.map(csvCell).join(';'))
+    .join('\n')
+}
+
+async function handleExportDetails() {
+  if (!selectedClosing.value || exporting.value) return
+  exporting.value = true
+  try {
+    const detail = selectedDetail.value?.data?.rows
+      ? selectedDetail.value
+      : await loadClosing(selectedClosing.value.id)
+    const csv = rowsToCsv(detail?.data?.rows || [])
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `fechamento-${selectedClosing.value.year}-${String(selectedClosing.value.month).padStart(2, '0')}-detalhado.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    error(e.message)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -195,7 +290,20 @@ function variationText(row) {
               <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ formatMonth(selectedClosing) }}</h2>
               <p class="text-sm ds-muted">Salvo em {{ formatDate(selectedClosing.closedAt) }}</p>
             </div>
-            <span class="ds-chip">{{ selectedClosing.summary?.variations || 0 }} variações</span>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <span class="ds-chip">{{ selectedClosing.summary?.variations || 0 }} variações</span>
+              <button
+                class="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
+                title="Baixar detalhamento do fechamento em CSV"
+                :disabled="exporting"
+                @click="handleExportDetails"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                {{ exporting ? 'Exportando...' : 'Baixar CSV detalhado' }}
+              </button>
+            </div>
           </div>
           <p v-if="selectedClosing.notes" class="mt-3 text-sm ds-muted">{{ selectedClosing.notes }}</p>
         </div>
