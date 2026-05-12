@@ -71,6 +71,21 @@ function sortVariations(list) {
   )
 }
 
+function _sameStructureName(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+}
+
+function _itemHasVariations(itemId) {
+  return variations.value.some(v => v.itemId === itemId)
+}
+
+function _isHierarchyModelItem(item) {
+  if (!item || _itemHasVariations(item.id)) return false
+  if (item.category && !item.subcategory && _sameStructureName(item.name, item.category)) return true
+  if (item.subcategory && _sameStructureName(item.name, item.subcategory)) return true
+  return false
+}
+
 // ===== Faceted filter helpers (pure functions) =====
 function _splitFilters(filters) {
   const h = {}, a = {}
@@ -355,7 +370,7 @@ export function useItems() {
       const cat = group.categories.get(item.category)
 
       if (!item.subcategory) {
-        cat.items.push(item)
+        if (!_isHierarchyModelItem(item)) cat.items.push(item)
         continue
       }
 
@@ -363,7 +378,7 @@ export function useItems() {
       if (!cat.subcategories.has(item.subcategory)) {
         cat.subcategories.set(item.subcategory, { name: item.subcategory, items: [] })
       }
-      cat.subcategories.get(item.subcategory).items.push(item)
+      if (!_isHierarchyModelItem(item)) cat.subcategories.get(item.subcategory).items.push(item)
     }
 
     // Convert Maps to arrays
@@ -490,15 +505,15 @@ export function useItems() {
   }
 
   function countItemsInGroup(group) {
-    return items.value.filter(i => i.group === group).length
+    return items.value.filter(i => i.group === group && !_isHierarchyModelItem(i)).length
   }
 
   function countItemsInCategory(group, category) {
-    return items.value.filter(i => i.group === group && i.category === category).length
+    return items.value.filter(i => i.group === group && i.category === category && !_isHierarchyModelItem(i)).length
   }
 
   function countItemsInSubcategory(group, category, subcategory) {
-    return items.value.filter(i => i.group === group && i.category === category && i.subcategory === subcategory).length
+    return items.value.filter(i => i.group === group && i.category === category && i.subcategory === subcategory && !_isHierarchyModelItem(i)).length
   }
 
   // ===== Attribute management =====
@@ -651,11 +666,11 @@ export function useItems() {
     let r = groupItems.value
     if (activeCategory.value) r = r.filter(i => i.category === activeCategory.value)
     if (activeSubcategory.value) r = r.filter(i => i.subcategory === activeSubcategory.value)
-    return sortItems(r)
+    return sortItems(r.filter(i => !_isHierarchyModelItem(i)))
   })
 
   const filteredResults = computed(() => {
-    const all = groupItems.value
+    const all = groupItems.value.filter(i => !_isHierarchyModelItem(i))
     if (!all.length) return []
     const { hierarchy, attrs } = _splitFilters(activeFilters.value)
     let r = all

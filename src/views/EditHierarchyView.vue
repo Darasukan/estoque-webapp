@@ -10,7 +10,6 @@ const {
   getSubcategoriesForCategory,
   countItemsInGroup,
   countItemsInCategory,
-  countItemsInSubcategory,
   getItemsForSubcategory,
   getVariationsForItem,
   getItemExtraKeys,
@@ -72,6 +71,11 @@ const {
   onLocationChange,
   onEditLocationKeydown,
   isEditingAttr,
+  categoryDirectItems,
+  getCategoryModelAttrs,
+  getVisibleItemsForSubcategory,
+  countVisibleItemsInSubcategory,
+  categoryDirectKey,
   addingItemForSub,
   newItemName,
   newItemAttrs,
@@ -109,6 +113,10 @@ const {
   onAddGroupKeydown,
   addingCategory,
   newCategoryName,
+  newCategoryAttrs,
+  newCategoryAttrInput,
+  addNewCategoryAttr,
+  onNewCategoryAttrKeydown,
   startAddCategory,
   cancelAddCategory,
   saveAddCategory,
@@ -116,6 +124,10 @@ const {
   addingSubcategory,
   newSubcategoryName,
   newSubcategoryUnit,
+  newSubcategoryAttrs,
+  newSubcategoryAttrInput,
+  addNewSubcategoryAttr,
+  onNewSubcategoryAttrKeydown,
   startAddSubcategory,
   cancelAddSubcategory,
   saveAddSubcategory,
@@ -384,6 +396,25 @@ const {
                 @keydown="onAddCategoryKeydown"
                 autofocus
               />
+              <div class="flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:border-primary-400 dark:focus-within:border-primary-500 min-h-[2rem]">
+                <span
+                  v-for="(attr, i) in newCategoryAttrs"
+                  :key="attr"
+                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                >
+                  {{ attr }}
+                  <button class="text-primary-400 hover:text-red-500" @click.stop="newCategoryAttrs.splice(i, 1)">
+                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  </button>
+                </span>
+                <input
+                  v-model="newCategoryAttrInput"
+                  placeholder="+ modelo de variação"
+                  class="flex-1 min-w-[110px] text-xs bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none py-0.5"
+                  @keydown="onNewCategoryAttrKeydown"
+                />
+                <button v-if="newCategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewCategoryAttr">Adicionar</button>
+              </div>
               <div class="flex gap-2">
                 <button class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddCategory">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -415,6 +446,98 @@ const {
 
         <!-- ===== SUBCATEGORY TABLE ===== -->
         <div v-else-if="!selectedSubcategory" class="p-5">
+          <div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Itens diretos da categoria</p>
+                <div class="mt-1 flex flex-wrap gap-1">
+                  <span
+                    v-for="attr in getCategoryModelAttrs(selectedGroup, selectedCategory)"
+                    :key="attr"
+                    class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                  >{{ attr }}</span>
+                  <span v-if="!getCategoryModelAttrs(selectedGroup, selectedCategory).length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sem modelo de variação</span>
+                </div>
+              </div>
+              <button
+                v-if="addingItemForSub !== categoryDirectKey"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                @click="startAddItem(categoryDirectKey)"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                Novo item
+              </button>
+            </div>
+
+            <div v-if="categoryDirectItems.length" class="divide-y divide-gray-100 dark:divide-gray-700/50">
+              <div
+                v-for="item in categoryDirectItems"
+                :key="item.id"
+                class="px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+              >
+                <div>
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <span
+                      v-for="attr in (item.attributes || [])"
+                      :key="attr"
+                      class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                    >{{ attr }}</span>
+                    <span v-if="!(item.attributes || []).length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sem atributos</span>
+                  </div>
+                </div>
+                <button
+                  class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                  title="Mover item"
+                  @click.stop="startMoveItem(item)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                  Mover
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="addingItemForSub !== categoryDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
+              Nenhum item direto nesta categoria.
+            </div>
+
+            <div v-if="addingItemForSub === categoryDirectKey" class="px-4 py-3 bg-primary-50/60 dark:bg-primary-900/10">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Novo item direto</span>
+                <input
+                  v-model="newItemName"
+                  :placeholder="`Nome do item em ${selectedCategory}`"
+                  class="flex-1 min-w-[160px] px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
+                  @keydown="onNewItemKeydown"
+                  autofocus
+                />
+                <div class="flex-1 min-w-[180px] flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:border-primary-400 dark:focus-within:border-primary-500">
+                  <span
+                    v-for="(attr, i) in newItemAttrs"
+                    :key="attr"
+                    class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                  >
+                    {{ attr }}
+                    <button class="text-primary-400 hover:text-red-500" @click.stop="newItemAttrs.splice(i, 1)">
+                      <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                    </button>
+                  </span>
+                  <input
+                    v-model="newItemAttrInput"
+                    placeholder="+ atributo"
+                    class="flex-1 min-w-[80px] text-xs bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none py-0.5"
+                    @keydown="onNewItemAttrKeydown"
+                  />
+                </div>
+                <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddItem(categoryDirectKey)">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  Salvar
+                </button>
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddItem">Cancelar</button>
+              </div>
+            </div>
+          </div>
+
           <div v-if="filteredSubcategoryList.length" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table class="w-full text-sm">
               <thead>
@@ -473,7 +596,7 @@ const {
 
                   <!-- Item count -->
                   <td class="px-4 py-3 text-gray-500 dark:text-gray-400 tabular-nums">
-                    {{ countItemsInSubcategory(selectedGroup, selectedCategory, sub) }}
+                    {{ countVisibleItemsInSubcategory(selectedGroup, selectedCategory, sub) }}
                   </td>
 
                   <!-- Attributes summary (read-only pills) -->
@@ -598,6 +721,25 @@ const {
                       >
                         <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
                       </select>
+                      <div class="flex-1 min-w-[180px] flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:border-primary-400 dark:focus-within:border-primary-500">
+                        <span
+                          v-for="(attr, i) in newSubcategoryAttrs"
+                          :key="attr"
+                          class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                        >
+                          {{ attr }}
+                          <button class="text-primary-400 hover:text-red-500" @click.stop="newSubcategoryAttrs.splice(i, 1)">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                          </button>
+                        </span>
+                        <input
+                          v-model="newSubcategoryAttrInput"
+                          placeholder="+ modelo de variação"
+                          class="flex-1 min-w-[110px] text-xs bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none py-0.5"
+                          @keydown="onNewSubcategoryAttrKeydown"
+                        />
+                        <button v-if="newSubcategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewSubcategoryAttr">Adicionar</button>
+                      </div>
                       <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                         Salvar
@@ -636,6 +778,25 @@ const {
               >
                 <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
               </select>
+              <div class="min-w-[180px] flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:border-primary-400 dark:focus-within:border-primary-500">
+                <span
+                  v-for="(attr, i) in newSubcategoryAttrs"
+                  :key="attr"
+                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                >
+                  {{ attr }}
+                  <button class="text-primary-400 hover:text-red-500" @click.stop="newSubcategoryAttrs.splice(i, 1)">
+                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                  </button>
+                </span>
+                <input
+                  v-model="newSubcategoryAttrInput"
+                  placeholder="+ modelo de variação"
+                  class="flex-1 min-w-[110px] text-xs bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none py-0.5"
+                  @keydown="onNewSubcategoryAttrKeydown"
+                />
+                <button v-if="newSubcategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewSubcategoryAttr">Adicionar</button>
+              </div>
               <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                 Salvar
@@ -658,7 +819,7 @@ const {
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <!-- Item cards -->
             <div
-              v-for="item in getItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory)"
+              v-for="item in getVisibleItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory)"
               :key="item.id"
               class="group/card rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow flex flex-col"
             >
@@ -874,7 +1035,7 @@ const {
           </div>
 
           <!-- Empty state -->
-          <div v-if="!getItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory).length && addingItemForSub !== selectedSubcategory" class="mt-8 text-center text-gray-400 dark:text-gray-500 text-sm italic">
+          <div v-if="!getVisibleItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory).length && addingItemForSub !== selectedSubcategory" class="mt-8 text-center text-gray-400 dark:text-gray-500 text-sm italic">
             Nenhum item nesta subcategoria ainda.
           </div>
         </div>
