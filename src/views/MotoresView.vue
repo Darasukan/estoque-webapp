@@ -41,7 +41,7 @@ const motorSortKey = ref('tag')
 const motorSortDirection = ref('asc')
 const motorViewMode = ref('motores')
 const selectedMotorId = ref('')
-const showForm = ref(false)
+const showForm = ref(true)
 const editingMotorId = ref(null)
 const osPanelOpen = ref(false)
 const materialsPanelOpen = ref(false)
@@ -49,6 +49,7 @@ const osPrefillMotor = ref(null)
 const osActiveTab = ref('ordens')
 const osFocusOrderId = ref('')
 const confirmDeleteMotorId = ref(null)
+const confirmCreateMotor = ref(false)
 const locationTrailOpen = ref(false)
 const selectedEventCountType = ref('rebobinado')
 const motorMaterialSearch = ref('')
@@ -346,10 +347,12 @@ function startNewMotor() {
   editingMotorId.value = null
   motorForm.value = emptyMotorForm()
   showForm.value = true
+  confirmCreateMotor.value = false
 }
 
 function startEditMotor(motor) {
   editingMotorId.value = motor.id
+  confirmCreateMotor.value = false
   motorForm.value = {
     tag: motor.tag,
     serial: motor.serial,
@@ -369,17 +372,30 @@ function cancelMotorForm() {
   showForm.value = false
   editingMotorId.value = null
   motorForm.value = emptyMotorForm()
+  confirmCreateMotor.value = false
+}
+
+function requestCreateMotor() {
+  if (!motorForm.value.tag.trim()) { error('Tag/patrimonio e obrigatorio.'); return }
+  confirmCreateMotor.value = true
 }
 
 async function saveMotor() {
   if (!motorForm.value.tag.trim()) { error('Tag/patrimonio e obrigatorio.'); return }
+  const isEditing = Boolean(editingMotorId.value)
   try {
-    const saved = editingMotorId.value
+    const saved = isEditing
       ? await editMotor(editingMotorId.value, motorForm.value)
       : await addMotor(motorForm.value)
     selectedMotorId.value = saved.id
-    success(editingMotorId.value ? 'Motor atualizado.' : 'Motor cadastrado.')
-    cancelMotorForm()
+    success(isEditing ? 'Motor atualizado.' : 'Motor cadastrado.')
+    if (isEditing) {
+      cancelMotorForm()
+    } else {
+      motorForm.value = emptyMotorForm()
+      showForm.value = true
+      confirmCreateMotor.value = false
+    }
   } catch (e) {
     error(e.message)
   }
@@ -833,7 +849,7 @@ function workOrderEndLabel(order) {
     </aside>
 
     <section class="space-y-4">
-      <div v-if="showForm" class="ds-panel p-4 space-y-4">
+      <div v-if="isLoggedIn && showForm" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ editingMotorId ? 'Editar motor' : 'Novo motor' }}</h3>
           <AppButton variant="ghost" size="xs" @click="cancelMotorForm">Cancelar</AppButton>
@@ -860,7 +876,21 @@ function workOrderEndLabel(order) {
         </div>
         <textarea v-model="motorForm.notes" rows="2" placeholder="Observações" class="ds-input"></textarea>
         <div class="flex justify-end">
-          <AppButton variant="primary" @click="saveMotor">Salvar</AppButton>
+          <ConfirmInline
+            v-if="!editingMotorId && confirmCreateMotor"
+            message="Criar este motor?"
+            confirm-label="Sim"
+            cancel-label="Não"
+            @confirm="saveMotor"
+            @cancel="confirmCreateMotor = false"
+          />
+          <AppButton
+            v-else
+            variant="primary"
+            @click="editingMotorId ? saveMotor() : requestCreateMotor()"
+          >
+            {{ editingMotorId ? 'Salvar' : 'Criar motor' }}
+          </AppButton>
         </div>
       </div>
 

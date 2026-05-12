@@ -18,7 +18,13 @@ const editUserPin = ref('')
 const editUserRole = ref('operador')
 
 function canEditUserPassword(u) {
-  return isAdmin.value && user.value?.id === u.id
+  return user.value?.id === 'user_admin' || user.value?.id === u.id
+}
+
+function canDeleteUser(u) {
+  if (!isAdmin.value || u.id === 'user_admin' || user.value?.id === u.id) return false
+  if (u.role === 'admin' && user.value?.id !== 'user_admin') return false
+  return true
 }
 
 function startAddUser() {
@@ -157,7 +163,7 @@ async function onDeleteUser(u) {
                     </select>
                     <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Admin (fixo)</span>
                     <input v-if="canEditUserPassword(u)" v-model="editUserPin" type="password" placeholder="Nova senha (deixe vazio para manter)" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown.enter="confirmEditUser" @keydown.escape="cancelEditUser" />
-                    <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Senha alteravel apenas pelo proprio admin.</span>
+                    <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Senha alteravel pelo proprio usuario ou admin mestre.</span>
                   </div>
                 </td>
                 <td colspan="2" class="px-4 py-2">
@@ -200,7 +206,7 @@ async function onDeleteUser(u) {
                     <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditUser(u)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
-                    <button v-if="isAdmin && u.id !== 'user_admin'" class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteUser(u)">
+                    <button v-if="canDeleteUser(u)" class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click="onDeleteUser(u)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                     </button>
                   </div>

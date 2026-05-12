@@ -72,17 +72,24 @@ router.post('/users', requireAuth, requireRole('admin'), (req, res) => {
 })
 
 // PUT /api/auth/users/:id — { name?, role?, pin?, active? }
-router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/users/:id', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
 
   const { name, role, pin, active } = req.body
+  const isMasterAdmin = req.user?.id === 'user_admin'
+  const isSelf = req.user?.id === req.params.id
+  const isAdmin = req.user?.role === 'admin'
+  const hasProfileChanges = name !== undefined || role !== undefined || active !== undefined
 
   if (pin !== undefined && (!String(pin).trim())) {
     return res.status(400).json({ error: 'Senha obrigatória.' })
   }
-  if (pin !== undefined && (req.user?.id !== req.params.id || user.role !== 'admin')) {
-    return res.status(403).json({ error: 'A senha so pode ser alterada pelo proprio administrador.' })
+  if (pin !== undefined && !isSelf && !isMasterAdmin) {
+    return res.status(403).json({ error: 'Somente o admin mestre pode alterar senha de outro usuário.' })
+  }
+  if (hasProfileChanges && !isAdmin) {
+    return res.status(403).json({ error: 'Somente admin pode alterar dados de operador.' })
   }
 
   // Protect default admin: only allow pin changes
@@ -118,6 +125,8 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 
 // DELETE /api/auth/users/:id
 router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
+  const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id)
+  if (!targetUser) return res.status(404).json({ error: 'Usuário não encontrado' })
   // Don't allow deleting yourself
   if (req.user && req.user.id === req.params.id) {
     return res.status(400).json({ error: 'Não pode excluir a si mesmo' })
@@ -125,6 +134,9 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   // Don't allow deleting the default admin
   if (req.params.id === 'user_admin') {
     return res.status(403).json({ error: 'Não é possível excluir o admin padrão.' })
+  }
+  if (targetUser.role === 'admin' && req.user?.id !== 'user_admin') {
+    return res.status(403).json({ error: 'Somente o admin mestre pode excluir outro admin.' })
   }
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id)
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id)

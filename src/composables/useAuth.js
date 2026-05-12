@@ -32,5 +32,16 @@ export function useAuth() {
     }
   }
 
-  return { user, isAdmin, isLoggedIn, login, logout, checkSession }
+  async function changeOwnPassword(pin) {
+    if (!user.value?.id) return { ok: false, error: 'Usuario nao autenticado.' }
+    if (!pin || String(pin).trim().length < 4) return { ok: false, error: 'Senha deve ter ao menos 4 caracteres.' }
+    try {
+      await api.updateUser(user.value.id, { pin: String(pin).trim() })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  }
+
+  return { user, isAdmin, isLoggedIn, login, logout, checkSession, changeOwnPassword }
 }

@@ -20,6 +20,7 @@ import { useAuth } from './composables/useAuth.js'
 import { useWorkOrders } from './composables/useWorkOrders.js'
 import { useMotors } from './composables/useMotors.js'
 import { useClosings } from './composables/useClosings.js'
+import { useToast } from './composables/useToast.js'
 
 const CatalogView = defineAsyncComponent(() => import('./views/CatalogView.vue'))
 const CadastrosView = defineAsyncComponent(() => import('./views/CadastrosView.vue'))
@@ -38,10 +39,11 @@ const { loadData: loadSuppliers } = useSuppliers()
 const { loadData: loadRoles } = useRoles()
 const { loadData: loadEpis } = useEpis()
 const { loadData: loadUsers } = useUsers()
-const { isAdmin, isLoggedIn, user, logout, checkSession } = useAuth()
+const { isAdmin, isLoggedIn, user, logout, checkSession, changeOwnPassword } = useAuth()
 const { loadData: loadWorkOrders } = useWorkOrders()
 const { loadData: loadMotors } = useMotors()
 const { loadData: loadClosings } = useClosings()
+const { success, error } = useToast()
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const showLoginModal = ref(false)
@@ -61,6 +63,17 @@ const requestedMovSearch = ref('')
 const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
 const quickActionsOpen = ref(false)
+const quickActionToggleRef = ref(null)
+const quickEntryRef = ref(null)
+const quickExitRef = ref(null)
+const shortcutHelpOpen = ref(false)
+const shortcutPrefix = ref('')
+const accountMenuOpen = ref(false)
+const passwordModalOpen = ref(false)
+const ownPassword = ref('')
+const ownPasswordConfirm = ref('')
+const changingOwnPassword = ref(false)
+let shortcutPrefixTimer = null
 
 const showCatalogSidebar = computed(() =>
   activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
@@ -80,6 +93,23 @@ const allTabs = [
   { id: 'cadastros', label: 'Cadastros', authOnly: true }
 ]
 const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
+
+const navigationShortcuts = [
+  { chord: 'G D', key: 'd', label: 'Dashboard', target: { tab: 'dashboard' } },
+  { chord: 'G C', key: 'c', label: 'Catálogo', target: { tab: 'catalogo' } },
+  { chord: 'G I', key: 'i', label: 'Inventário', target: { tab: 'inventario' } },
+  { chord: 'G V', key: 'v', label: 'Movimentações', target: { tab: 'movimentacoes' } },
+  { chord: 'G O', key: 'o', label: 'Ordens de Serviço', target: { tab: 'ordens' } },
+  { chord: 'G M', key: 'm', label: 'Motores', target: { tab: 'motores' } },
+  { chord: 'G A', key: 'a', label: 'Cadastros', target: { tab: 'cadastros', requiresAuth: true } },
+]
+
+const actionShortcuts = [
+  { chord: '?', label: 'Abrir atalhos' },
+  { chord: 'M', label: 'Abrir movimentação rápida' },
+  { chord: 'M E', label: 'Entrada rápida' },
+  { chord: 'M S', label: 'Saída rápida' },
+]
 
 // Load all data from API
 async function loadAllData() {
@@ -106,12 +136,13 @@ onMounted(async () => {
   await checkSession()
   await loadAllData()
   window.addEventListener('app:data-invalidated', loadAllData)
-  window.addEventListener('keydown', handleQuickMovementKeydown)
+  window.addEventListener('keydown', handleGlobalShortcutKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('app:data-invalidated', loadAllData)
-  window.removeEventListener('keydown', handleQuickMovementKeydown)
+  window.removeEventListener('keydown', handleGlobalShortcutKeydown)
+  clearShortcutPrefix()
 })
 
 // Reload data after login
@@ -123,9 +154,42 @@ function onLoginClose() {
   showLoginModal.value = false
 }
 
+function openPasswordModal() {
+  accountMenuOpen.value = false
+  ownPassword.value = ''
+  ownPasswordConfirm.value = ''
+  passwordModalOpen.value = true
+}
+
+function closePasswordModal() {
+  passwordModalOpen.value = false
+  ownPassword.value = ''
+  ownPasswordConfirm.value = ''
+  changingOwnPassword.value = false
+}
+
+async function submitOwnPassword() {
+  if (changingOwnPassword.value) return
+  if (!ownPassword.value.trim()) { error('Informe a nova senha.'); return }
+  if (ownPassword.value !== ownPasswordConfirm.value) { error('As senhas nao conferem.'); return }
+  changingOwnPassword.value = true
+  const result = await changeOwnPassword(ownPassword.value)
+  changingOwnPassword.value = false
+  if (!result.ok) { error(result.error); return }
+  success('Senha alterada.')
+  closePasswordModal()
+}
+
+function logoutFromMenu() {
+  accountMenuOpen.value = false
+  logout()
+  activeTab.value = 'catalogo'
+}
+
 function openMovementTab(tab, prefill = null) {
   if (!isLoggedIn.value) return
   quickActionsOpen.value = false
+  shortcutHelpOpen.value = false
   requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
   requestedMovSearch.value = ''
@@ -133,6 +197,59 @@ function openMovementTab(tab, prefill = null) {
   nextTick(() => {
     requestedMovSubTab.value = tab
   })
+}
+
+function isEditableTarget(target) {
+  const tagName = String(target?.tagName || '').toLowerCase()
+  return Boolean(target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName))
+}
+
+function focusQuickEntry() {
+  nextTick(() => quickEntryRef.value?.focus())
+}
+
+function closeQuickActions() {
+  quickActionsOpen.value = false
+  nextTick(() => quickActionToggleRef.value?.focus())
+}
+
+function toggleQuickActions() {
+  if (!isLoggedIn.value) return
+  quickActionsOpen.value = !quickActionsOpen.value
+  shortcutHelpOpen.value = false
+  clearShortcutPrefix()
+  if (quickActionsOpen.value) focusQuickEntry()
+}
+
+function clearShortcutPrefix() {
+  shortcutPrefix.value = ''
+  if (shortcutPrefixTimer) {
+    window.clearTimeout(shortcutPrefixTimer)
+    shortcutPrefixTimer = null
+  }
+}
+
+function startShortcutPrefix(prefix) {
+  clearShortcutPrefix()
+  shortcutPrefix.value = prefix
+  shortcutPrefixTimer = window.setTimeout(clearShortcutPrefix, 1500)
+}
+
+function toggleShortcutHelp() {
+  shortcutHelpOpen.value = !shortcutHelpOpen.value
+  quickActionsOpen.value = false
+  clearShortcutPrefix()
+}
+
+function closeShortcutHelp() {
+  shortcutHelpOpen.value = false
+  clearShortcutPrefix()
+}
+
+function runNavigationShortcut(shortcut) {
+  closeShortcutHelp()
+  quickActionsOpen.value = false
+  navigateTab(shortcut.target)
 }
 
 function openInventoryQuickMovement(payload) {
@@ -231,13 +348,60 @@ function navigateTab(target) {
   activeTab.value = tab
 }
 
-function handleQuickMovementKeydown(event) {
-  if (!isLoggedIn.value || !event.altKey || event.ctrlKey || event.metaKey) return
-  const target = event.target
-  const tagName = String(target?.tagName || '').toLowerCase()
-  if (target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName)) return
+function handleGlobalShortcutKeydown(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey) return
+  if (isEditableTarget(event.target)) return
   const key = String(event.key || '').toLowerCase()
-  if (key === 'e') {
+  if (key === '?' || (key === '/' && event.shiftKey)) {
+    event.preventDefault()
+    toggleShortcutHelp()
+    return
+  }
+  if (key === 'escape') {
+    if (shortcutHelpOpen.value) {
+      event.preventDefault()
+      closeShortcutHelp()
+      return
+    }
+    if (quickActionsOpen.value) {
+      event.preventDefault()
+      closeQuickActions()
+      return
+    }
+    clearShortcutPrefix()
+    return
+  }
+  if (shortcutPrefix.value === 'g') {
+    const shortcut = navigationShortcuts.find(item => item.key === key)
+    if (shortcut) {
+      event.preventDefault()
+      runNavigationShortcut(shortcut)
+    } else if (key !== 'g') {
+      clearShortcutPrefix()
+    }
+    return
+  }
+  if (key === 'g') {
+    event.preventDefault()
+    quickActionsOpen.value = false
+    startShortcutPrefix('g')
+    return
+  }
+  if (!isLoggedIn.value) return
+  if (key === 'm' && !quickActionsOpen.value) {
+    event.preventDefault()
+    shortcutHelpOpen.value = false
+    quickActionsOpen.value = true
+    focusQuickEntry()
+    return
+  }
+  if (!quickActionsOpen.value) return
+  if (key === 'arrowdown' || key === 'arrowup') {
+    event.preventDefault()
+    const active = document.activeElement
+    const next = active === quickEntryRef.value ? quickExitRef.value : quickEntryRef.value
+    next?.focus()
+  } else if (key === 'e') {
     event.preventDefault()
     openMovementTab('entrada')
   } else if (key === 's') {
@@ -311,18 +475,39 @@ function handleQuickMovementKeydown(event) {
 
           <!-- Auth + Theme -->
           <div class="flex items-center gap-1">
-          <AppButton
-            v-if="isLoggedIn"
-            variant="ghost"
-            size="sm"
-            title="Sair"
-            @click="logout(); activeTab = 'catalogo'"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
-            </svg>
-            {{ user.name }}
-          </AppButton>
+          <div v-if="isLoggedIn" class="relative">
+            <AppButton
+              variant="ghost"
+              size="sm"
+              title="Conta"
+              :aria-expanded="accountMenuOpen"
+              @click="accountMenuOpen = !accountMenuOpen"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
+              </svg>
+              {{ user.name }}
+            </AppButton>
+            <div
+              v-if="accountMenuOpen"
+              class="absolute right-0 mt-2 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+            >
+              <button
+                type="button"
+                class="w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                @click="openPasswordModal"
+              >
+                Trocar senha
+              </button>
+              <button
+                type="button"
+                class="w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                @click="logoutFromMenu"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
           <AppButton
             v-else
             variant="ghost"
@@ -406,34 +591,139 @@ function handleQuickMovementKeydown(event) {
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />
 
+    <div
+      v-if="passwordModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Trocar senha"
+      @click.self="closePasswordModal"
+      @keydown.escape="closePasswordModal"
+    >
+      <div class="ds-panel w-full max-w-sm p-5" @click.stop>
+        <div class="mb-4">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Trocar senha</h2>
+          <p class="text-xs text-gray-500 dark:text-gray-400">Conta: {{ user?.name }}</p>
+        </div>
+        <form class="space-y-3" @submit.prevent="submitOwnPassword">
+          <input
+            v-model="ownPassword"
+            type="password"
+            autocomplete="new-password"
+            class="ds-input"
+            placeholder="Nova senha"
+            autofocus
+          />
+          <input
+            v-model="ownPasswordConfirm"
+            type="password"
+            autocomplete="new-password"
+            class="ds-input"
+            placeholder="Confirmar nova senha"
+          />
+          <div class="flex justify-end gap-2 pt-1">
+            <AppButton type="button" variant="secondary" @click="closePasswordModal">Cancelar</AppButton>
+            <AppButton type="submit" variant="primary" :loading="changingOwnPassword">Salvar senha</AppButton>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      v-if="shortcutHelpOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Atalhos de teclado"
+      @click.self="closeShortcutHelp"
+    >
+      <div class="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
+        <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/[0.08]">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Atalhos</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Use fora dos campos de digitação.</p>
+          </div>
+          <AppButton variant="ghost" size="xs" @click="closeShortcutHelp">Fechar</AppButton>
+        </div>
+
+        <div class="grid gap-4 p-4 md:grid-cols-2">
+          <section>
+            <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Navegação</h3>
+            <div class="space-y-1">
+              <button
+                v-for="shortcut in navigationShortcuts"
+                :key="shortcut.chord"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                @click="runNavigationShortcut(shortcut)"
+              >
+                <span>{{ shortcut.label }}</span>
+                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">{{ shortcut.chord }}</kbd>
+              </button>
+            </div>
+          </section>
+
+          <section>
+            <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Ações</h3>
+            <div class="space-y-1">
+              <div
+                v-for="shortcut in actionShortcuts"
+                :key="shortcut.chord"
+                class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
+              >
+                <span>{{ shortcut.label }}</span>
+                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">{{ shortcut.chord }}</kbd>
+              </div>
+              <div class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
+                <span>Fechar menus</span>
+                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">Esc</kbd>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="shortcutPrefix"
+      class="fixed bottom-5 left-5 z-50 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-lg dark:border-white/[0.08] dark:bg-gray-900 dark:text-gray-200"
+    >
+      {{ shortcutPrefix.toUpperCase() }}...
+    </div>
+
     <div v-if="isLoggedIn" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
       <div
         v-if="quickActionsOpen"
+        id="quick-movement-menu"
         class="w-48 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
       >
         <button
+          ref="quickEntryRef"
           type="button"
           class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
           @click="openMovementTab('entrada')"
         >
           <span>Entrada</span>
-          <span class="text-[11px] text-gray-400">Alt+E</span>
+          <span class="text-[11px] text-gray-400">M, E</span>
         </button>
         <button
+          ref="quickExitRef"
           type="button"
           class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
           @click="openMovementTab('saida')"
         >
           <span>Saída</span>
-          <span class="text-[11px] text-red-300 dark:text-red-400">Alt+S</span>
+          <span class="text-[11px] text-red-300 dark:text-red-400">M, S</span>
         </button>
       </div>
       <button
+        ref="quickActionToggleRef"
         type="button"
         class="inline-flex h-11 items-center gap-2 rounded-full bg-primary-600 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-500 cursor-pointer"
         :aria-expanded="quickActionsOpen"
-        title="Ações rápidas de movimentação"
-        @click="quickActionsOpen = !quickActionsOpen"
+        aria-controls="quick-movement-menu"
+        title="Ações rápidas de movimentação. Tecla M abre o menu."
+        @click="toggleQuickActions"
       >
         <svg class="h-4 w-4 transition-transform" :class="quickActionsOpen ? 'rotate-45' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m7-7H5" />
