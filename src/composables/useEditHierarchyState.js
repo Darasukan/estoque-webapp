@@ -423,15 +423,66 @@ function isEditingAttr(itemId, attrName) {
 }
 
 // ===== Inline add item =====
+const categoryDirectKey = '__category_direct__'
 const addingItemForSub = ref(null)
 const newItemName = ref('')
 const newItemAttrs = ref([])
 const newItemAttrInput = ref('')
 
+function normName(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isCategoryModelItem(item) {
+  return Boolean(item?.category && !item?.subcategory && normName(item.name) === normName(item.category) && !getVariationsForItem(item.id).length)
+}
+
+function isSubcategoryModelItem(item) {
+  return Boolean(item?.subcategory && normName(item.name) === normName(item.subcategory) && !getVariationsForItem(item.id).length)
+}
+
+const categoryDirectItems = computed(() =>
+  selectedGroup.value && selectedCategory.value
+    ? items.value.filter(i =>
+        i.group === selectedGroup.value &&
+        i.category === selectedCategory.value &&
+        !i.subcategory &&
+        !isCategoryModelItem(i)
+      )
+    : []
+)
+
+function getCategoryModelAttrs(group = selectedGroup.value, category = selectedCategory.value) {
+  const model = items.value.find(i => i.group === group && i.category === category && !i.subcategory && isCategoryModelItem(i))
+  return [...(model?.attributes || [])]
+}
+
+function getSubcategoryModelAttrs(group, category, subcategory) {
+  const model = getItemsForSubcategory(group, category, subcategory).find(isSubcategoryModelItem)
+  return [...(model?.attributes || [])]
+}
+
+function getVisibleItemsForSubcategory(group, category, subcategory) {
+  return getItemsForSubcategory(group, category, subcategory).filter(item => !isSubcategoryModelItem(item))
+}
+
+function countVisibleItemsInSubcategory(group, category, subcategory) {
+  return getVisibleItemsForSubcategory(group, category, subcategory).length
+}
+
+function inheritedItemAttrs(sub) {
+  const targetSub = sub === categoryDirectKey ? null : sub
+  if (targetSub) {
+    const subModelAttrs = getSubcategoryModelAttrs(selectedGroup.value, selectedCategory.value, targetSub)
+    if (subModelAttrs.length) return subModelAttrs
+  }
+  return getCategoryModelAttrs()
+}
+
 function startAddItem(sub) {
   addingItemForSub.value = sub
   newItemName.value = ''
-  newItemAttrs.value = []
+  newItemAttrs.value = inheritedItemAttrs(sub)
   newItemAttrInput.value = ''
   cancelEdit()
   cancelDelete()
@@ -457,22 +508,23 @@ function onNewItemAttrKeydown(e) {
 
 async function saveAddItem(sub) {
   if (!selectedGroup.value) return
+  const targetSub = sub === categoryDirectKey ? null : sub
   // Inherit unit from existing items in the category, minStock from the subcategory
   const catItems = items.value.filter(i => i.group === selectedGroup.value && i.category === selectedCategory.value)
-  const subItems = getItemsForSubcategory(selectedGroup.value, selectedCategory.value, sub)
+  const subItems = targetSub ? getItemsForSubcategory(selectedGroup.value, selectedCategory.value, targetSub) : categoryDirectItems.value
   const inheritedUnit = catItems[0]?.unit || 'UN'
   const inheritedMinStock = subItems[0]?.minStock ?? 0
   const result = await addItem({
     group: selectedGroup.value,
     category: selectedCategory.value || null,
-    subcategory: sub || null,
+    subcategory: targetSub || null,
     name: newItemName.value.trim() || null,
     unit: inheritedUnit,
     minStock: inheritedMinStock,
     attributes: [...newItemAttrs.value]
   })
   if (!result.ok) { error(result.error); return }
-  success(`Item adicionado em "${sub}".`)
+  success(targetSub ? `Item adicionado em "${targetSub}".` : `Item adicionado em "${selectedCategory.value}".`)
   cancelAddItem()
 }
 
@@ -610,23 +662,39 @@ function onAddGroupKeydown(e) {
 // ===== Create category =====
 const addingCategory = ref(false)
 const newCategoryName = ref('')
+const newCategoryAttrs = ref([])
+const newCategoryAttrInput = ref('')
 
 function startAddCategory() {
   addingCategory.value = true
   newCategoryName.value = ''
+  newCategoryAttrs.value = []
+  newCategoryAttrInput.value = ''
   cancelEdit()
   cancelDelete()
 }
 function cancelAddCategory() {
   addingCategory.value = false
   newCategoryName.value = ''
+  newCategoryAttrs.value = []
+  newCategoryAttrInput.value = ''
+}
+function addNewCategoryAttr() {
+  const val = newCategoryAttrInput.value.trim()
+  if (!val) return
+  if (!newCategoryAttrs.value.includes(val)) newCategoryAttrs.value.push(val)
+  newCategoryAttrInput.value = ''
+}
+function onNewCategoryAttrKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addNewCategoryAttr() }
+  else if (e.key === 'Backspace' && newCategoryAttrInput.value === '' && newCategoryAttrs.value.length > 0) newCategoryAttrs.value.pop()
 }
 async function saveAddCategory() {
   const name = newCategoryName.value.trim()
   if (!name) { cancelAddCategory(); return }
   const existing = getCategoriesForGroup(selectedGroup.value)
   if (existing.includes(name)) { error(`Categoria "${name}" já existe.`); return }
-  const result = await addItem({ group: selectedGroup.value, category: name })
+  const result = await addItem({ group: selectedGroup.value, category: name, attributes: [...newCategoryAttrs.value] })
   if (!result.ok) { error(result.error); return }
   success(`Categoria "${name}" criada.`)
   cancelAddCategory()
@@ -640,11 +708,15 @@ function onAddCategoryKeydown(e) {
 const addingSubcategory = ref(false)
 const newSubcategoryName = ref('')
 const newSubcategoryUnit = ref('UN')
+const newSubcategoryAttrs = ref([])
+const newSubcategoryAttrInput = ref('')
 
 function startAddSubcategory() {
   addingSubcategory.value = true
   newSubcategoryName.value = ''
   newSubcategoryUnit.value = 'UN'
+  newSubcategoryAttrs.value = getCategoryModelAttrs()
+  newSubcategoryAttrInput.value = ''
   cancelEdit()
   cancelDelete()
 }
@@ -652,13 +724,31 @@ function cancelAddSubcategory() {
   addingSubcategory.value = false
   newSubcategoryName.value = ''
   newSubcategoryUnit.value = 'UN'
+  newSubcategoryAttrs.value = []
+  newSubcategoryAttrInput.value = ''
+}
+function addNewSubcategoryAttr() {
+  const val = newSubcategoryAttrInput.value.trim()
+  if (!val) return
+  if (!newSubcategoryAttrs.value.includes(val)) newSubcategoryAttrs.value.push(val)
+  newSubcategoryAttrInput.value = ''
+}
+function onNewSubcategoryAttrKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addNewSubcategoryAttr() }
+  else if (e.key === 'Backspace' && newSubcategoryAttrInput.value === '' && newSubcategoryAttrs.value.length > 0) newSubcategoryAttrs.value.pop()
 }
 async function saveAddSubcategory() {
   const name = newSubcategoryName.value.trim()
   if (!name) { cancelAddSubcategory(); return }
   const existing = getSubcategoriesForCategory(selectedGroup.value, selectedCategory.value)
   if (existing.includes(name)) { error(`Subcategoria "${name}" já existe.`); return }
-  const result = await addItem({ group: selectedGroup.value, category: selectedCategory.value, subcategory: name, unit: newSubcategoryUnit.value })
+  const result = await addItem({
+    group: selectedGroup.value,
+    category: selectedCategory.value,
+    subcategory: name,
+    unit: newSubcategoryUnit.value,
+    attributes: [...newSubcategoryAttrs.value],
+  })
   if (!result.ok) { error(result.error); return }
   success(`Subcategoria "${name}" criada.`)
   cancelAddSubcategory()
@@ -776,6 +866,11 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     onLocationChange,
     onEditLocationKeydown,
     isEditingAttr,
+    categoryDirectItems,
+    getCategoryModelAttrs,
+    getVisibleItemsForSubcategory,
+    countVisibleItemsInSubcategory,
+    categoryDirectKey,
     addingItemForSub,
     newItemName,
     newItemAttrs,
@@ -813,6 +908,10 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     onAddGroupKeydown,
     addingCategory,
     newCategoryName,
+    newCategoryAttrs,
+    newCategoryAttrInput,
+    addNewCategoryAttr,
+    onNewCategoryAttrKeydown,
     startAddCategory,
     cancelAddCategory,
     saveAddCategory,
@@ -820,6 +919,10 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     addingSubcategory,
     newSubcategoryName,
     newSubcategoryUnit,
+    newSubcategoryAttrs,
+    newSubcategoryAttrInput,
+    addNewSubcategoryAttr,
+    onNewSubcategoryAttrKeydown,
     startAddSubcategory,
     cancelAddSubcategory,
     saveAddSubcategory,
