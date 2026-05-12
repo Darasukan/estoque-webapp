@@ -434,6 +434,39 @@ export function useItems() {
     await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
   }
 
+  // ===== Bulk move hierarchy =====
+  async function moveCategory(oldGroup, categoryName, newGroup) {
+    const affected = items.value.filter(i => i.group === oldGroup && i.category === categoryName)
+    for (const item of affected) item.group = newGroup
+    await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
+    items.value = sortItems(items.value)
+  }
+
+  async function moveSubcategory(oldGroup, oldCategory, subcategoryName, newGroup, newCategory) {
+    const affected = items.value.filter(i =>
+      i.group === oldGroup &&
+      i.category === oldCategory &&
+      i.subcategory === subcategoryName
+    )
+    for (const item of affected) {
+      item.group = newGroup
+      item.category = newCategory
+    }
+    await Promise.all(affected.map(i => api.updateItem(i.id, { ...i })))
+    items.value = sortItems(items.value)
+  }
+
+  async function moveItem(itemId, newGroup, newCategory = null, newSubcategory = null) {
+    const item = items.value.find(i => i.id === itemId)
+    if (!item) return { ok: false, error: 'Item nÃ£o encontrado.' }
+    item.group = newGroup
+    item.category = newCategory || null
+    item.subcategory = newSubcategory || null
+    await api.updateItem(item.id, { ...item })
+    items.value = sortItems(items.value)
+    return { ok: true, item }
+  }
+
   // ===== Bulk delete hierarchy =====
   async function deleteGroup(groupName) {
     const ids = items.value.filter(i => i.group === groupName).map(i => i.id)
@@ -745,6 +778,8 @@ export function useItems() {
     catalogTree, visibleTree,
     // Bulk rename
     renameGroup, renameCategory, renameSubcategory,
+    // Bulk move
+    moveCategory, moveSubcategory, moveItem,
     // Bulk delete hierarchy
     deleteGroup, deleteCategory, deleteSubcategory,
     countItemsInGroup, countItemsInCategory, countItemsInSubcategory,

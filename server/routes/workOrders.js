@@ -795,6 +795,7 @@ router.delete('/:id', requireAuth, (req, res) => {
       removedMovementIds.push(item.movement_id)
     }
 
+    db.prepare('DELETE FROM motor_events WHERE work_order_id = ?').run(req.params.id)
     db.prepare('DELETE FROM work_orders WHERE id = ?').run(req.params.id)
   })
 

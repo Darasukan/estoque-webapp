@@ -30,6 +30,17 @@ const {
   isDeleting,
   cancelDelete,
   confirmDelete,
+  moving,
+  moveTargetGroup,
+  moveTargetCategory,
+  moveTargetSubcategory,
+  moveTargetCategories,
+  moveTargetSubcategories,
+  startMoveCategory,
+  startMoveSubcategory,
+  startMoveItem,
+  cancelMove,
+  saveMove,
   editingAttr,
   editAttrValue,
   addingAttrItemId,
@@ -350,6 +361,9 @@ const {
                   <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Renomear" @click.stop="startEdit('category', cat, selectedGroup)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                   </button>
+                  <button class="p-1 rounded text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click.stop="startMoveCategory(selectedGroup, cat)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                  </button>
                   <button class="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click.stop="requestDelete('category', selectedGroup, cat)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                   </button>
@@ -500,6 +514,9 @@ const {
                         </button>
                         <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 rounded" title="Renomear" @click="startEdit('subcategory', sub, selectedGroup, selectedCategory)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                        </button>
+                        <button class="p-1 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 rounded" title="Mover" @click="startMoveSubcategory(selectedGroup, selectedCategory, sub)">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
                         </button>
                         <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded" title="Excluir" @click="requestDelete('subcategory', selectedGroup, selectedCategory, sub)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
@@ -729,6 +746,14 @@ const {
                     </template>
                   </div>
                 </div>
+                <button
+                  class="opacity-0 group-hover/card:opacity-100 inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                  title="Mover item"
+                  @click.stop="startMoveItem(item)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                  Mover
+                </button>
               </div>
 
               <!-- Attributes section -->
@@ -854,6 +879,81 @@ const {
           </div>
         </div>
       </template>
+    </div>
+  </div>
+
+  <div
+    v-if="moving"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+    @click.self="cancelMove"
+  >
+    <div class="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+        <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Mover na hierarquia</p>
+        <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <template v-if="moving.type === 'category'">Categoria {{ moving.category }}</template>
+          <template v-else-if="moving.type === 'subcategory'">Subcategoria {{ moving.subcategory }}</template>
+          <template v-else>Item {{ moving.item.name }}</template>
+        </h3>
+      </div>
+
+      <div class="space-y-4 px-5 py-4">
+        <label class="block">
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Grupo</span>
+          <select
+            v-model="moveTargetGroup"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value="">Selecione um grupo</option>
+            <option v-for="group in uniqueGroups" :key="group" :value="group">{{ group }}</option>
+          </select>
+        </label>
+
+        <label v-if="moving.type === 'subcategory' || moving.type === 'item'" class="block">
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Categoria</span>
+          <select
+            v-model="moveTargetCategory"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option v-if="moving.type === 'item'" value="">Sem categoria</option>
+            <option v-else value="">Selecione uma categoria</option>
+            <option v-for="category in moveTargetCategories" :key="category" :value="category">{{ category }}</option>
+          </select>
+        </label>
+
+        <label v-if="moving.type === 'item'" class="block">
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subcategoria</span>
+          <select
+            v-model="moveTargetSubcategory"
+            :disabled="!moveTargetCategory"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value="">Sem subcategoria</option>
+            <option v-for="subcategory in moveTargetSubcategories" :key="subcategory" :value="subcategory">{{ subcategory }}</option>
+          </select>
+        </label>
+
+        <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+          <template v-if="moving.type === 'category'">
+            Move todos os itens desta categoria para outro grupo.
+          </template>
+          <template v-else-if="moving.type === 'subcategory'">
+            Move todos os itens desta subcategoria para outra categoria.
+          </template>
+          <template v-else>
+            Move este item e mantem suas variacoes e estoque.
+          </template>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+        <button class="rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="cancelMove">
+          Cancelar
+        </button>
+        <button class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700" @click="saveMove">
+          Mover
+        </button>
+      </div>
     </div>
   </div>
 </template>

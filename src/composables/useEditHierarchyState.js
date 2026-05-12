@@ -9,6 +9,7 @@ const {
   items,
   uniqueGroups, getCategoriesForGroup, getSubcategoriesForCategory,
   renameGroup, renameCategory, renameSubcategory,
+  moveCategory, moveSubcategory, moveItem,
   deleteGroup, deleteCategory, deleteSubcategory,
   countItemsInGroup, countItemsInCategory, countItemsInSubcategory,
   getItemsForSubcategory, renameAttribute, addAttribute, removeAttribute,
@@ -69,9 +70,9 @@ watch(searchQ, async (q) => {
   }
 })
 
-watch(selectedGroup, () => { selectedCategory.value = null; selectedSubcategory.value = null; cancelEdit(); cancelDelete() })
-watch(selectedCategory, () => { selectedSubcategory.value = null; cancelAddSubcategory(); cancelEdit(); cancelDelete() })
-watch(selectedSubcategory, () => { expandedItemId.value = null; cancelAddVariation(); cancelEditVariation(); cancelEdit(); cancelDelete() })
+watch(selectedGroup, () => { selectedCategory.value = null; selectedSubcategory.value = null; cancelEdit(); cancelDelete(); cancelMove() })
+watch(selectedCategory, () => { selectedSubcategory.value = null; cancelAddSubcategory(); cancelEdit(); cancelDelete(); cancelMove() })
+watch(selectedSubcategory, () => { expandedItemId.value = null; cancelAddVariation(); cancelEditVariation(); cancelEdit(); cancelDelete(); cancelMove() })
 
 watch(uniqueGroups, (groups) => {
   if (selectedGroup.value && !groups.includes(selectedGroup.value)) selectedGroup.value = null
@@ -161,6 +162,135 @@ function confirmDelete() {
     success(`Subcategoria "${s}" excluída.`)
   }
   deletingKey.value = null
+}
+
+// ===== Move hierarchy =====
+const moving = ref(null)
+const moveTargetGroup = ref('')
+const moveTargetCategory = ref('')
+const moveTargetSubcategory = ref('')
+
+const moveTargetCategories = computed(() =>
+  moveTargetGroup.value ? getCategoriesForGroup(moveTargetGroup.value) : []
+)
+
+const moveTargetSubcategories = computed(() =>
+  moveTargetGroup.value && moveTargetCategory.value
+    ? getSubcategoriesForCategory(moveTargetGroup.value, moveTargetCategory.value)
+    : []
+)
+
+watch(moveTargetGroup, (group) => {
+  if (!moving.value) return
+  const categories = group ? getCategoriesForGroup(group) : []
+  if (moving.value.type === 'subcategory' && !categories.includes(moveTargetCategory.value)) {
+    moveTargetCategory.value = categories[0] || ''
+  } else if (moving.value.type === 'item' && moveTargetCategory.value && !categories.includes(moveTargetCategory.value)) {
+    moveTargetCategory.value = ''
+  }
+  moveTargetSubcategory.value = ''
+})
+
+watch(moveTargetCategory, (category) => {
+  if (!moving.value || moving.value.type !== 'item') return
+  const subcategories = moveTargetGroup.value && category
+    ? getSubcategoriesForCategory(moveTargetGroup.value, category)
+    : []
+  if (moveTargetSubcategory.value && !subcategories.includes(moveTargetSubcategory.value)) {
+    moveTargetSubcategory.value = ''
+  }
+})
+
+function startMoveCategory(group, category) {
+  moving.value = { type: 'category', group, category }
+  moveTargetGroup.value = group
+  moveTargetCategory.value = ''
+  moveTargetSubcategory.value = ''
+  cancelEdit()
+  cancelDelete()
+}
+
+function startMoveSubcategory(group, category, subcategory) {
+  moving.value = { type: 'subcategory', group, category, subcategory }
+  moveTargetGroup.value = group
+  moveTargetCategory.value = category
+  moveTargetSubcategory.value = ''
+  cancelEdit()
+  cancelDelete()
+}
+
+function startMoveItem(item) {
+  moving.value = { type: 'item', item }
+  moveTargetGroup.value = item.group || ''
+  moveTargetCategory.value = item.category || ''
+  moveTargetSubcategory.value = item.subcategory || ''
+  cancelEdit()
+  cancelDelete()
+}
+
+function cancelMove() {
+  moving.value = null
+  moveTargetGroup.value = ''
+  moveTargetCategory.value = ''
+  moveTargetSubcategory.value = ''
+}
+
+async function saveMove() {
+  const move = moving.value
+  if (!move) return
+  const targetGroup = moveTargetGroup.value
+  const targetCategory = moveTargetCategory.value
+  const targetSubcategory = moveTargetSubcategory.value
+  if (!targetGroup) {
+    error('Escolha um grupo de destino.')
+    return
+  }
+  try {
+    if (move.type === 'category') {
+      if (move.group === targetGroup) { cancelMove(); return }
+      await moveCategory(move.group, move.category, targetGroup)
+      selectedGroup.value = targetGroup
+      await nextTick()
+      selectedCategory.value = move.category
+      success(`Categoria "${move.category}" movida.`)
+    } else if (move.type === 'subcategory') {
+      if (!targetCategory) {
+        error('Escolha uma categoria de destino.')
+        return
+      }
+      if (move.group === targetGroup && move.category === targetCategory) { cancelMove(); return }
+      await moveSubcategory(move.group, move.category, move.subcategory, targetGroup, targetCategory)
+      selectedGroup.value = targetGroup
+      await nextTick()
+      selectedCategory.value = targetCategory
+      selectedSubcategory.value = move.subcategory
+      success(`Subcategoria "${move.subcategory}" movida.`)
+    } else if (move.type === 'item') {
+      if (targetSubcategory && !targetCategory) {
+        error('Escolha uma categoria antes da subcategoria.')
+        return
+      }
+      const result = await moveItem(
+        move.item.id,
+        targetGroup,
+        targetCategory || null,
+        targetSubcategory || null
+      )
+      if (!result?.ok) {
+        error(result?.error || 'NÃ£o foi possÃ­vel mover o item.')
+        return
+      }
+      selectedGroup.value = targetGroup
+      await nextTick()
+      selectedCategory.value = targetCategory || null
+      await nextTick()
+      selectedSubcategory.value = targetSubcategory || null
+      success(`Item "${move.item.name}" movido.`)
+    }
+    cancelMove()
+  } catch (err) {
+    error(err?.message || 'NÃ£o foi possÃ­vel mover.')
+  }
 }
 
 // ===== Attribute editing =====
@@ -604,6 +734,17 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     isDeleting,
     cancelDelete,
     confirmDelete,
+    moving,
+    moveTargetGroup,
+    moveTargetCategory,
+    moveTargetSubcategory,
+    moveTargetCategories,
+    moveTargetSubcategories,
+    startMoveCategory,
+    startMoveSubcategory,
+    startMoveItem,
+    cancelMove,
+    saveMove,
     editingAttr,
     editAttrValue,
     addingAttrItemId,

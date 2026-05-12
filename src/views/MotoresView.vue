@@ -54,6 +54,7 @@ const selectedEventCountType = ref('rebobinado')
 const motorMaterialSearch = ref('')
 const motorMaterialVariationId = ref('')
 const motorMaterialNote = ref('')
+const motorMaterialPickerOpen = ref(false)
 
 const motorForm = ref(emptyMotorForm())
 
@@ -61,6 +62,13 @@ const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true
 
 function compareText(a, b) {
   return collator.compare(String(a || ''), String(b || ''))
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
 }
 
 function compareMotorSort(a, b) {
@@ -160,19 +168,78 @@ function variationLabel(variation, item) {
   return [item?.name, ...values, ...extras].filter(Boolean).join(' / ')
 }
 
-function materialOptionLabel(row) {
-  return `${row.item.group || '-'} > ${row.item.category || '-'} > ${row.item.subcategory || '-'} - ${variationLabel(row.variation, row.item)}`
+function materialOptionPath(row) {
+  return [row.item.group, row.item.category, row.item.subcategory].filter(Boolean).join(' > ')
 }
 
+function materialOptionDetails(row) {
+  return [
+    ...Object.entries(row.variation.values || {}).map(([key, value]) => `${key}: ${value}`),
+    ...Object.entries(row.variation.extras || {}).map(([key, value]) => `${key}: ${value}`),
+  ].filter(Boolean).join(' · ')
+}
+
+function materialOptionLabel(row) {
+  return `${materialOptionPath(row)} - ${variationLabel(row.variation, row.item)}`
+}
+
+const selectedMotorMaterialIds = computed(() => {
+  if (!selectedMotor.value) return new Set()
+  return new Set((motorMaterials.value[selectedMotor.value.id] || []).map(material => material.variationId))
+})
+
 const motorMaterialOptions = computed(() => {
-  const q = motorMaterialSearch.value.trim().toLowerCase()
+  const terms = normalizeText(motorMaterialSearch.value).split(/\s+/).filter(Boolean)
   return variations.value
     .map(variation => ({ variation, item: itemById.value.get(variation.itemId) }))
     .filter(row => row.item)
-    .filter(row => !q || materialOptionLabel(row).toLowerCase().includes(q))
+    .filter(row => !selectedMotorMaterialIds.value.has(row.variation.id))
+    .filter(row => {
+      if (!terms.length) return true
+      const haystack = normalizeText([
+        materialOptionPath(row),
+        row.item.name,
+        materialOptionDetails(row),
+        row.item.unit,
+        row.variation.location,
+      ].join(' '))
+      return terms.every(term => haystack.includes(term))
+    })
     .sort((a, b) => materialOptionLabel(a).localeCompare(materialOptionLabel(b), 'pt-BR', { sensitivity: 'base', numeric: true }))
-    .slice(0, 30)
+    .slice(0, 40)
 })
+
+const selectedMotorMaterialOption = computed(() => {
+  if (!motorMaterialVariationId.value) return null
+  const variation = variations.value.find(v => v.id === motorMaterialVariationId.value)
+  const item = variation ? itemById.value.get(variation.itemId) : null
+  return variation && item ? { variation, item } : null
+})
+
+function selectMotorMaterial(row) {
+  motorMaterialVariationId.value = row.variation.id
+  motorMaterialSearch.value = materialOptionLabel(row)
+  motorMaterialPickerOpen.value = false
+}
+
+function onMotorMaterialSearchInput() {
+  motorMaterialVariationId.value = ''
+  motorMaterialPickerOpen.value = true
+}
+
+function onMotorMaterialSearchKeydown(event) {
+  if (event.key !== 'Enter') return
+  if (motorMaterialOptions.value.length === 1) {
+    event.preventDefault()
+    selectMotorMaterial(motorMaterialOptions.value[0])
+  }
+}
+
+function closeMotorMaterialPickerSoon() {
+  window.setTimeout(() => {
+    motorMaterialPickerOpen.value = false
+  }, 120)
+}
 
 const selectedMotorMaterials = computed(() => {
   if (!selectedMotor.value) return []
@@ -352,6 +419,7 @@ async function addSelectedMotorMaterial() {
     motorMaterialVariationId.value = ''
     motorMaterialSearch.value = ''
     motorMaterialNote.value = ''
+    motorMaterialPickerOpen.value = false
     success('Material vinculado ao motor.')
   } catch (e) {
     error(e.message)
@@ -472,7 +540,7 @@ function workOrderEndLabel(order) {
       </div>
     </div>
 
-    <section class="ds-panel overflow-hidden">
+    <section class="ds-panel overflow-visible">
       <div class="px-5 py-4 border-b border-gray-200 dark:border-white/[0.06] flex flex-wrap items-start justify-between gap-3 bg-gray-50/70 dark:bg-white/[0.02]">
         <div>
           <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Materiais vinculados</h2>
@@ -482,19 +550,56 @@ function workOrderEndLabel(order) {
       </div>
 
       <div v-if="isLoggedIn" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 lg:grid-cols-[1fr_1fr_auto]">
-        <div>
+        <div class="relative">
           <label class="ds-label">Buscar material</label>
           <input
             v-model="motorMaterialSearch"
             class="ds-input"
-            placeholder="Buscar rolamento, tampa, bucha..."
+            placeholder="Buscar por nome, caminho, atributo ou local..."
+            autocomplete="off"
+            @input="onMotorMaterialSearchInput"
+            @focus="motorMaterialPickerOpen = true"
+            @blur="closeMotorMaterialPickerSoon"
+            @keydown="onMotorMaterialSearchKeydown"
           />
-          <select v-model="motorMaterialVariationId" class="ds-input mt-2">
+          <select v-model="motorMaterialVariationId" class="hidden">
             <option value="">Selecione uma variação</option>
             <option v-for="row in motorMaterialOptions" :key="row.variation.id" :value="row.variation.id">
               {{ materialOptionLabel(row) }}
             </option>
           </select>
+          <div
+            v-if="motorMaterialPickerOpen"
+            class="absolute left-0 right-0 top-[4.6rem] z-30 max-h-80 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+          >
+            <button
+              v-for="row in motorMaterialOptions"
+              :key="row.variation.id"
+              type="button"
+              class="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left transition last:border-b-0 hover:bg-primary-50 dark:border-gray-800 dark:hover:bg-primary-900/20"
+              @mousedown.prevent="selectMotorMaterial(row)"
+            >
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ row.item.name }}</span>
+                <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ materialOptionPath(row) }}</span>
+                <span class="mt-1 block truncate text-xs text-primary-700 dark:text-primary-300">{{ materialOptionDetails(row) || 'Sem variacao detalhada' }}</span>
+              </span>
+              <span class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
+                <span class="block font-semibold" :class="row.variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">{{ row.variation.stock }} {{ row.item.unit }}</span>
+                <span>min. {{ row.variation.minStock || '-' }}</span>
+              </span>
+            </button>
+            <div v-if="!motorMaterialOptions.length" class="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              Nenhum material encontrado ou todas as variacoes encontradas ja estao vinculadas.
+            </div>
+          </div>
+          <div
+            v-if="selectedMotorMaterialOption"
+            class="mt-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
+          >
+            Selecionado: <strong>{{ selectedMotorMaterialOption.item.name }}</strong>
+            <span class="text-primary-500 dark:text-primary-300">- {{ materialOptionDetails(selectedMotorMaterialOption) || materialOptionPath(selectedMotorMaterialOption) }}</span>
+          </div>
         </div>
         <label>
           <span class="ds-label">Observação</span>

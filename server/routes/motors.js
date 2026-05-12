@@ -234,13 +234,44 @@ router.delete('/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Motor nao encontrado.' })
 
-  const eventCount = db.prepare('SELECT COUNT(*) as count FROM motor_events WHERE motor_id = ?').get(req.params.id).count
-  if (eventCount > 0) return res.status(409).json({ error: 'Motor possui historico. Inative o motor para preservar rastreabilidade.' })
+  const linkedEventCount = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM motor_events me
+    WHERE me.motor_id = ?
+      AND EXISTS (
+        SELECT 1
+        FROM work_orders wo
+        WHERE wo.id = me.work_order_id
+      )
+  `).get(req.params.id).count
+  if (linkedEventCount > 0) return res.status(409).json({ error: 'Motor possui historico vinculado a OS. Inative o motor para preservar rastreabilidade.' })
 
-  const orderCount = db.prepare('SELECT COUNT(*) as count FROM work_orders WHERE motor_id = ?').get(req.params.id).count
-  if (orderCount > 0) return res.status(409).json({ error: 'Motor possui OS vinculada. Inative o motor para preservar rastreabilidade.' })
+  const ordersWithMaterials = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM work_orders wo
+    WHERE wo.motor_id = ?
+      AND EXISTS (
+        SELECT 1
+        FROM work_order_items woi
+        WHERE woi.work_order_id = wo.id
+      )
+  `).get(req.params.id).count
+  if (ordersWithMaterials > 0) {
+    return res.status(409).json({ error: 'Motor possui OS com materiais/movimentacoes. Inative o motor para preservar rastreabilidade.' })
+  }
 
-  db.prepare('DELETE FROM motors WHERE id = ?').run(req.params.id)
+  const tx = db.transaction(() => {
+    const emptyOrders = db.prepare('SELECT id FROM work_orders WHERE motor_id = ?').all(req.params.id)
+    for (const order of emptyOrders) {
+      db.prepare('DELETE FROM work_order_events WHERE work_order_id = ?').run(order.id)
+    }
+    db.prepare('DELETE FROM motor_events WHERE motor_id = ?').run(req.params.id)
+    db.prepare('DELETE FROM work_orders WHERE motor_id = ?').run(req.params.id)
+    db.prepare('DELETE FROM motor_materials WHERE motor_id = ?').run(req.params.id)
+    db.prepare('DELETE FROM motors WHERE id = ?').run(req.params.id)
+  })
+  tx()
+
   res.json({ ok: true })
 })
 
