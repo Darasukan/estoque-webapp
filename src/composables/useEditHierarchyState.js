@@ -423,14 +423,22 @@ function isEditingAttr(itemId, attrName) {
 }
 
 // ===== Inline add item =====
+const groupDirectKey = '__group_direct__'
 const categoryDirectKey = '__category_direct__'
 const addingItemForSub = ref(null)
 const newItemName = ref('')
+const newItemUnit = ref('UN')
+const newItemMinStock = ref(0)
+const newItemLocation = ref('')
 const newItemAttrs = ref([])
 const newItemAttrInput = ref('')
 
 function normName(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function isGroupModelItem(item) {
+  return Boolean(item?.group && !item?.category && !item?.subcategory && normName(item.name) === normName(item.group) && !getVariationsForItem(item.id).length)
 }
 
 function isCategoryModelItem(item) {
@@ -440,6 +448,17 @@ function isCategoryModelItem(item) {
 function isSubcategoryModelItem(item) {
   return Boolean(item?.subcategory && normName(item.name) === normName(item.subcategory) && !getVariationsForItem(item.id).length)
 }
+
+const groupDirectItems = computed(() =>
+  selectedGroup.value
+    ? items.value.filter(i =>
+        i.group === selectedGroup.value &&
+        !i.category &&
+        !i.subcategory &&
+        !isGroupModelItem(i)
+      )
+    : []
+)
 
 const categoryDirectItems = computed(() =>
   selectedGroup.value && selectedCategory.value
@@ -452,9 +471,15 @@ const categoryDirectItems = computed(() =>
     : []
 )
 
+function getGroupModelAttrs(group = selectedGroup.value) {
+  const model = items.value.find(i => i.group === group && !i.category && !i.subcategory && isGroupModelItem(i))
+  return [...(model?.attributes || [])]
+}
+
 function getCategoryModelAttrs(group = selectedGroup.value, category = selectedCategory.value) {
   const model = items.value.find(i => i.group === group && i.category === category && !i.subcategory && isCategoryModelItem(i))
-  return [...(model?.attributes || [])]
+  const attrs = model?.attributes || []
+  return attrs.length ? [...attrs] : getGroupModelAttrs(group)
 }
 
 function getSubcategoryModelAttrs(group, category, subcategory) {
@@ -471,6 +496,7 @@ function countVisibleItemsInSubcategory(group, category, subcategory) {
 }
 
 function inheritedItemAttrs(sub) {
+  if (sub === groupDirectKey) return getGroupModelAttrs()
   const targetSub = sub === categoryDirectKey ? null : sub
   if (targetSub) {
     const subModelAttrs = getSubcategoryModelAttrs(selectedGroup.value, selectedCategory.value, targetSub)
@@ -479,9 +505,31 @@ function inheritedItemAttrs(sub) {
   return getCategoryModelAttrs()
 }
 
+function getItemDefaultsForAdd(sub) {
+  const isGroupDirect = sub === groupDirectKey
+  const targetCategory = isGroupDirect ? null : (selectedCategory.value || null)
+  const targetSub = sub === categoryDirectKey || isGroupDirect ? null : sub
+  const scopedItems = items.value.filter(i =>
+    i.group === selectedGroup.value &&
+    (targetCategory ? i.category === targetCategory : !i.category)
+  )
+  const subItems = targetSub
+    ? getItemsForSubcategory(selectedGroup.value, targetCategory, targetSub)
+    : (isGroupDirect ? groupDirectItems.value : categoryDirectItems.value)
+  return {
+    unit: scopedItems[0]?.unit || 'UN',
+    minStock: subItems[0]?.minStock ?? 0,
+    location: subItems[0]?.location || scopedItems[0]?.location || '',
+  }
+}
+
 function startAddItem(sub) {
+  const defaults = getItemDefaultsForAdd(sub)
   addingItemForSub.value = sub
   newItemName.value = ''
+  newItemUnit.value = defaults.unit
+  newItemMinStock.value = defaults.minStock
+  newItemLocation.value = defaults.location
   newItemAttrs.value = inheritedItemAttrs(sub)
   newItemAttrInput.value = ''
   cancelEdit()
@@ -490,6 +538,12 @@ function startAddItem(sub) {
 
 function cancelAddItem() {
   addingItemForSub.value = null
+  newItemName.value = ''
+  newItemUnit.value = 'UN'
+  newItemMinStock.value = 0
+  newItemLocation.value = ''
+  newItemAttrs.value = []
+  newItemAttrInput.value = ''
 }
 
 function addNewItemAttr() {
@@ -508,23 +562,22 @@ function onNewItemAttrKeydown(e) {
 
 async function saveAddItem(sub) {
   if (!selectedGroup.value) return
-  const targetSub = sub === categoryDirectKey ? null : sub
-  // Inherit unit from existing items in the category, minStock from the subcategory
-  const catItems = items.value.filter(i => i.group === selectedGroup.value && i.category === selectedCategory.value)
-  const subItems = targetSub ? getItemsForSubcategory(selectedGroup.value, selectedCategory.value, targetSub) : categoryDirectItems.value
-  const inheritedUnit = catItems[0]?.unit || 'UN'
-  const inheritedMinStock = subItems[0]?.minStock ?? 0
+  const isGroupDirect = sub === groupDirectKey
+  const targetCategory = isGroupDirect ? null : (selectedCategory.value || null)
+  const targetSub = sub === categoryDirectKey || isGroupDirect ? null : sub
   const result = await addItem({
     group: selectedGroup.value,
-    category: selectedCategory.value || null,
+    category: targetCategory,
     subcategory: targetSub || null,
     name: newItemName.value.trim() || null,
-    unit: inheritedUnit,
-    minStock: inheritedMinStock,
-    attributes: [...newItemAttrs.value]
+    unit: newItemUnit.value || 'UN',
+    minStock: newItemMinStock.value,
+    attributes: [...newItemAttrs.value],
+    location: newItemLocation.value || ''
   })
   if (!result.ok) { error(result.error); return }
-  success(targetSub ? `Item adicionado em "${targetSub}".` : `Item adicionado em "${selectedCategory.value}".`)
+  const label = targetSub || targetCategory || selectedGroup.value
+  success(`Item adicionado em "${label}".`)
   cancelAddItem()
 }
 
@@ -633,22 +686,38 @@ const filteredSubcategoryList = computed(() => {
 // ===== Create group =====
 const addingGroup = ref(false)
 const newGroupName = ref('')
+const newGroupAttrs = ref([])
+const newGroupAttrInput = ref('')
 
 function startAddGroup() {
   addingGroup.value = true
   newGroupName.value = ''
+  newGroupAttrs.value = []
+  newGroupAttrInput.value = ''
   cancelEdit()
   cancelDelete()
 }
 function cancelAddGroup() {
   addingGroup.value = false
   newGroupName.value = ''
+  newGroupAttrs.value = []
+  newGroupAttrInput.value = ''
+}
+function addNewGroupAttr() {
+  const val = newGroupAttrInput.value.trim()
+  if (!val) return
+  if (!newGroupAttrs.value.includes(val)) newGroupAttrs.value.push(val)
+  newGroupAttrInput.value = ''
+}
+function onNewGroupAttrKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addNewGroupAttr() }
+  else if (e.key === 'Backspace' && newGroupAttrInput.value === '' && newGroupAttrs.value.length > 0) newGroupAttrs.value.pop()
 }
 async function saveAddGroup() {
   const name = newGroupName.value.trim()
   if (!name) { cancelAddGroup(); return }
   if (uniqueGroups.value.includes(name)) { error(`Grupo "${name}" já existe.`); return }
-  const result = await addItem({ group: name })
+  const result = await addItem({ group: name, attributes: [...newGroupAttrs.value] })
   if (!result.ok) { error(result.error); return }
   selectedGroup.value = name
   success(`Grupo "${name}" criado.`)
@@ -668,7 +737,7 @@ const newCategoryAttrInput = ref('')
 function startAddCategory() {
   addingCategory.value = true
   newCategoryName.value = ''
-  newCategoryAttrs.value = []
+  newCategoryAttrs.value = getGroupModelAttrs()
   newCategoryAttrInput.value = ''
   cancelEdit()
   cancelDelete()
@@ -866,13 +935,19 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     onLocationChange,
     onEditLocationKeydown,
     isEditingAttr,
+    groupDirectItems,
     categoryDirectItems,
+    getGroupModelAttrs,
     getCategoryModelAttrs,
     getVisibleItemsForSubcategory,
     countVisibleItemsInSubcategory,
+    groupDirectKey,
     categoryDirectKey,
     addingItemForSub,
     newItemName,
+    newItemUnit,
+    newItemMinStock,
+    newItemLocation,
     newItemAttrs,
     newItemAttrInput,
     startAddItem,
@@ -902,6 +977,10 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     filteredSubcategoryList,
     addingGroup,
     newGroupName,
+    newGroupAttrs,
+    newGroupAttrInput,
+    addNewGroupAttr,
+    onNewGroupAttrKeydown,
     startAddGroup,
     cancelAddGroup,
     saveAddGroup,

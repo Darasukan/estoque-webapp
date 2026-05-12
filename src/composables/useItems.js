@@ -81,6 +81,7 @@ function _itemHasVariations(itemId) {
 
 function _isHierarchyModelItem(item) {
   if (!item || _itemHasVariations(item.id)) return false
+  if (!item.category && !item.subcategory && _sameStructureName(item.name, item.group)) return true
   if (item.category && !item.subcategory && _sameStructureName(item.name, item.category)) return true
   if (item.subcategory && _sameStructureName(item.name, item.subcategory)) return true
   return false
@@ -359,7 +360,7 @@ export function useItems() {
       const group = tree.get(item.group)
 
       if (!item.category) {
-        group.items.push(item)
+        if (!_isHierarchyModelItem(item)) group.items.push(item)
         continue
       }
 
