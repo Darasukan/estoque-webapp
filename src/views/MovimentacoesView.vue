@@ -383,6 +383,15 @@ function backToStep1() {
   nextTick(() => focusRef(searchInputEl))
 }
 
+function backToHierarchyLevel(level) {
+  if (!selectedItem.value) return
+  setActiveGroup(selectedItem.value.group || null)
+  setActiveCategory(level === 'group' ? null : (selectedItem.value.category || null))
+  setActiveSubcategory(level === 'subcategory' ? (selectedItem.value.subcategory || null) : null)
+  itemSearch.value = ''
+  backToStep1()
+}
+
 // ===== Variation picker (step 2) =====
 const itemVariations = computed(() =>
   selectedItem.value ? getVariationsForItem(selectedItem.value.id) : []
@@ -1191,9 +1200,33 @@ defineExpose({
 
         <!-- Breadcrumb: hierarchy + item name -->
         <div class="flex items-center gap-1.5 text-sm mb-5 flex-wrap">
-          <span class="text-gray-400 dark:text-gray-500">{{ hierarchyLabel(selectedItem) }}</span>
+          <button
+            type="button"
+            class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+            @click="backToHierarchyLevel('group')"
+          >{{ selectedItem?.group }}</button>
+          <template v-if="selectedItem?.category">
+            <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+            <button
+              type="button"
+              class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+              @click="backToHierarchyLevel('category')"
+            >{{ selectedItem.category }}</button>
+          </template>
+          <template v-if="selectedItem?.subcategory">
+            <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+            <button
+              type="button"
+              class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+              @click="backToHierarchyLevel('subcategory')"
+            >{{ selectedItem.subcategory }}</button>
+          </template>
           <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-          <span class="text-gray-800 dark:text-gray-100 font-semibold">{{ selectedItem?.name }}</span>
+          <button
+            type="button"
+            class="text-gray-800 dark:text-gray-100 font-semibold hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+            @click="backToStep1"
+          >{{ selectedItem?.name }}</button>
         </div>
 
         <!-- Item header (like catalog) -->
