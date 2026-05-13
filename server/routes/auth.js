@@ -2,9 +2,21 @@ import { Router } from 'express'
 import bcryptjs from 'bcryptjs'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth, requireRole } from '../middleware/auth.js'
+import { getAuthToken, requireAuth, requireRole } from '../middleware/auth.js'
 
 const router = Router()
+const AUTH_COOKIE = 'auth_token'
+const COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 30
+
+function cookieOptions(req) {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: req.secure,
+    maxAge: COOKIE_MAX_AGE,
+    path: '/',
+  }
+}
 
 // POST /api/auth/login — { name, pin }
 router.post('/login', (req, res) => {
@@ -22,19 +34,21 @@ router.post('/login', (req, res) => {
   const token = crypto.randomBytes(32).toString('hex')
   db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, user.id)
 
+  res.cookie(AUTH_COOKIE, token, cookieOptions(req))
   res.json({ token, user: { id: user.id, name: user.name, role: user.role } })
 })
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
-  const token = req.headers['x-auth-token']
+  const token = getAuthToken(req)
   if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token)
+  res.clearCookie(AUTH_COOKIE, { path: '/' })
   res.json({ ok: true })
 })
 
 // GET /api/auth/me
 router.get('/me', (req, res) => {
-  const token = req.headers['x-auth-token']
+  const token = getAuthToken(req)
   if (!token) return res.status(401).json({ error: 'Não autenticado' })
 
   const session = db.prepare(`

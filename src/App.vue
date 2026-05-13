@@ -46,22 +46,42 @@ const { loadData: loadClosings } = useClosings()
 const { success, error } = useToast()
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
+const UI_STATE_KEY = 'estoque_ui_state_v1'
+
+function loadUiState() {
+  try {
+    return JSON.parse(localStorage.getItem(UI_STATE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function saveUiState(patch) {
+  const current = loadUiState()
+  localStorage.setItem(UI_STATE_KEY, JSON.stringify({ ...current, ...patch }))
+}
+
+const savedUiState = loadUiState()
+const savedActiveTab = ['dashboard', 'catalogo', 'inventario', 'movimentacoes', 'ordens', 'motores', 'cadastros'].includes(savedUiState.activeTab)
+  ? savedUiState.activeTab
+  : 'dashboard'
 const showLoginModal = ref(false)
-const sidebarCollapsed = ref(false)
-const catalogSearch = ref('')
+const sidebarCollapsed = ref(Boolean(savedUiState.sidebarCollapsed))
+const catalogSearch = ref(savedUiState.catalogSearch || '')
 const catalogRef = ref(null)
-const activeTab = ref('dashboard')
-const requestedInventorySection = ref('estoque')
-const requestedInventoryStatus = ref('all')
-const requestedInventorySearch = ref('')
-const requestedOrdersTab = ref('ordens')
+const activeTab = ref(savedActiveTab)
+const requestedInventorySection = ref(savedUiState.inventorySection || 'estoque')
+const requestedInventoryStatus = ref(savedUiState.inventoryStatus || 'all')
+const requestedInventorySearch = ref(savedUiState.inventorySearch || '')
+const requestedOrdersTab = ref(savedUiState.ordersTab || 'ordens')
 const requestedOrderFocusId = ref('')
 const movBrowsing = ref(true)
-const movSubTab = ref('entrada')
-const requestedMovSubTab = ref('entrada')
+const movSubTab = ref(savedUiState.movSubTab || 'entrada')
+const requestedMovSubTab = ref(savedUiState.movSubTab || 'entrada')
 const requestedMovSearch = ref('')
 const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
+const requestedCadastrosTab = ref(savedUiState.cadastrosTab || 'hierarquia')
 const quickActionsOpen = ref(false)
 const quickActionToggleRef = ref(null)
 const quickEntryRef = ref(null)
@@ -134,7 +154,9 @@ async function loadAllData() {
 
 onMounted(async () => {
   await checkSession()
+  if (activeTab.value === 'cadastros' && !isLoggedIn.value) activeTab.value = 'catalogo'
   await loadAllData()
+  if (savedUiState.catalogGroup) activeGroup.value = savedUiState.catalogGroup
   window.addEventListener('app:data-invalidated', loadAllData)
   window.addEventListener('keydown', handleGlobalShortcutKeydown)
 })
@@ -148,7 +170,19 @@ onUnmounted(() => {
 // Reload data after login
 watch(user, (newUser, oldUser) => {
   if (newUser && !oldUser) loadAllData()
+  if (!newUser && activeTab.value === 'cadastros') activeTab.value = 'catalogo'
 })
+
+watch(activeTab, value => saveUiState({ activeTab: value }))
+watch(sidebarCollapsed, value => saveUiState({ sidebarCollapsed: value }))
+watch(catalogSearch, value => saveUiState({ catalogSearch: value }))
+watch(activeGroup, value => saveUiState({ catalogGroup: value || '' }))
+watch(requestedInventorySection, value => { if (value) saveUiState({ inventorySection: value }) })
+watch(requestedInventoryStatus, value => { if (value && value !== '__pending__') saveUiState({ inventoryStatus: value }) })
+watch(requestedInventorySearch, value => saveUiState({ inventorySearch: value || '' }))
+watch(movSubTab, value => { if (value) saveUiState({ movSubTab: value }) })
+watch(requestedOrdersTab, value => { if (value) saveUiState({ ordersTab: value }) })
+watch(requestedCadastrosTab, value => { if (value) saveUiState({ cadastrosTab: value }) })
 
 function onLoginClose() {
   showLoginModal.value = false
@@ -269,21 +303,12 @@ function openCadastroQuickMovement(payload) {
 }
 
 function selectMainTab(tabId) {
+  if (tabId === 'cadastros' && !isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
   if (tabId === 'dashboard') {
     loadAllData()
-  }
-  if (tabId === 'inventario') {
-    requestedInventorySection.value = 'estoque'
-    requestedInventoryStatus.value = 'all'
-    requestedInventorySearch.value = ''
-  }
-  if (tabId === 'movimentacoes') {
-    requestedMovSearch.value = ''
-    requestedMovementPrefill.value = null
-  }
-  if (tabId === 'ordens') {
-    requestedOrdersTab.value = 'ordens'
-    requestedOrderFocusId.value = ''
   }
   activeTab.value = tabId
 }
@@ -553,7 +578,12 @@ function handleGlobalShortcutKeydown(event) {
         />
 
         <!-- Cadastros tab -->
-        <CadastrosView v-if="activeTab === 'cadastros'" @quick-movement="openCadastroQuickMovement" />
+        <CadastrosView
+          v-if="activeTab === 'cadastros'"
+          :initial-tab="requestedCadastrosTab"
+          @update:tab="v => requestedCadastrosTab = v"
+          @quick-movement="openCadastroQuickMovement"
+        />
 
         <!-- Inventário tab -->
         <InventarioView
@@ -561,6 +591,9 @@ function handleGlobalShortcutKeydown(event) {
           :initial-section="requestedInventorySection"
           :initial-status="requestedInventoryStatus"
           :initial-search="requestedInventorySearch"
+          @update:section="v => requestedInventorySection = v"
+          @update:status="v => requestedInventoryStatus = v"
+          @update:search="v => requestedInventorySearch = v"
           @quick-movement="openInventoryQuickMovement"
         />
 
@@ -572,7 +605,7 @@ function handleGlobalShortcutKeydown(event) {
           :initial-history-search="requestedMovSearch"
           :prefill-movement="requestedMovementPrefill"
           @update:browsing="v => movBrowsing = v"
-          @update:sub-tab="v => movSubTab = v"
+          @update:sub-tab="v => { movSubTab = v; requestedMovSubTab = v }"
         />
 
         <!-- Ordens de Serviço tab -->
@@ -581,6 +614,7 @@ function handleGlobalShortcutKeydown(event) {
           mode="general"
           :initial-tab="requestedOrdersTab"
           :focus-order-id="requestedOrderFocusId"
+          @update:tab="v => requestedOrdersTab = v"
         />
 
         <!-- Motores tab -->

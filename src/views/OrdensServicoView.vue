@@ -19,7 +19,7 @@ const props = defineProps({
   initialTab: { type: String, default: 'ordens' },
   focusOrderId: { type: String, default: '' },
 })
-const emit = defineEmits(['prefill-consumed', 'created'])
+const emit = defineEmits(['prefill-consumed', 'created', 'update:tab'])
 const isLoggedIn = inject('isLoggedIn')
 const canManageOs = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const {
@@ -962,6 +962,7 @@ const visibleReport = computed(() =>
 
 watch(activeSubTab, (tab) => {
   prepareSubTab(tab)
+  emit('update:tab', tab)
 })
 
 // ===== Helpers =====

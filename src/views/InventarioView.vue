@@ -28,7 +28,7 @@ const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
 const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const canAccessEpiControl = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
-const emit = defineEmits(['quick-movement'])
+const emit = defineEmits(['quick-movement', 'update:section', 'update:status', 'update:search'])
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory, editVariation } = useItems()
 const { movements, addMovement } = useMovements()
@@ -70,10 +70,14 @@ watch(() => props.initialSection, section => {
 
 watch(canAccessClosings, allowed => {
   if (!allowed && inventorySection.value === 'fechamentos') inventorySection.value = 'estoque'
-})
+}, { immediate: true })
 
 watch(canAccessEpiControl, allowed => {
   if (!allowed && inventorySection.value === 'epis') inventorySection.value = 'estoque'
+}, { immediate: true })
+
+watch(inventorySection, section => {
+  emit('update:section', section)
 })
 
 function isColumnVisible(key) {
@@ -171,8 +175,16 @@ watch(() => props.initialStatus, status => {
   if (inventoryStatusFilters.includes(status)) filterStatus.value = status
 })
 
+watch(filterStatus, status => {
+  emit('update:status', status)
+})
+
 watch(() => props.initialSearch, search => {
   searchQuery.value = search || ''
+})
+
+watch(searchQuery, search => {
+  emit('update:search', search || '')
 })
 
 // ===== Facet filters =====
