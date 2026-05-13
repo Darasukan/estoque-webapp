@@ -31,6 +31,7 @@ const { success, error } = useToast()
 const { movements, addMovement } = useMovements()
 const { activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activeLocais, groupedLocais, getFullName } = useLocations()
+const showSeedTools = import.meta.env.VITE_ENABLE_SEED_TOOLS === 'true'
 
 // ===== Search =====
 const searchQuery = computed({
@@ -389,11 +390,12 @@ function groupStockTotal(g) {
   return variations.value.filter(v => ids.has(v.itemId)).reduce((s, v) => s + v.stock, 0)
 }
 
-// ===== Seed / Clear =====
+// ===== Seed / Clear (dev-only UI, controlled by VITE_ENABLE_SEED_TOOLS) =====
 const showSeedConfirm = ref(false)
 const showClearConfirm = ref(false)
 
 async function loadSeedData() {
+  if (!showSeedTools) return
   const { items: seedItems, variations: seedVars, ...seedExtras } = generateSeedData()
   await seedDatabase(seedItems, seedVars, seedExtras)
   showSeedConfirm.value = false
@@ -455,6 +457,7 @@ async function updateSheetExtras(extras) {
 }
 
 function clearAllData() {
+  if (!showSeedTools) return
   resetAll()
   showClearConfirm.value = false
   success('Todos os dados foram apagados.')
@@ -912,9 +915,9 @@ defineExpose({ triggerSearchDrill })
     <template v-else>
       <div class="flex items-center justify-between mb-4 gap-4">
         <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">Catálogo</h2>
-        <div class="flex items-center gap-2 ml-auto">
+        <div v-if="showSeedTools && isAdmin" class="flex items-center gap-2 ml-auto">
           <!-- Seed -->
-          <div v-if="isAdmin" class="relative flex-shrink-0">
+          <div class="relative flex-shrink-0">
             <button
               v-if="!showSeedConfirm"
               class="px-3 py-2 text-xs font-medium rounded-lg border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors flex items-center gap-1.5"
@@ -933,7 +936,7 @@ defineExpose({ triggerSearchDrill })
           </div>
 
           <!-- Clear -->
-          <div v-if="isAdmin" class="relative flex-shrink-0">
+          <div class="relative flex-shrink-0">
             <button
               v-if="!showClearConfirm"
               class="px-3 py-2 text-xs font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors flex items-center gap-1.5"

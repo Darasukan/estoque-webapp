@@ -2,24 +2,26 @@ import { spawn, spawnSync } from 'child_process'
 
 const target = String(process.argv[2] || 'prod').toLowerCase()
 const envByTarget = {
-  dev: '.env.dev',
-  desenvolvimento: '.env.dev',
-  master: '.env.prod',
-  prod: '.env.prod',
-  producao: '.env.prod',
-  production: '.env.prod',
+  dev: { file: '.env.dev', mode: 'dev' },
+  desenvolvimento: { file: '.env.dev', mode: 'dev' },
+  master: { file: '.env.prod', mode: 'prod' },
+  prod: { file: '.env.prod', mode: 'prod' },
+  producao: { file: '.env.prod', mode: 'prod' },
+  production: { file: '.env.prod', mode: 'prod' },
 }
 
-const envFile = envByTarget[target]
+const envConfig = envByTarget[target]
 
-if (!envFile) {
+if (!envConfig) {
   console.error('Ambiente invalido. Use: npm start dev | npm start master | npm start prod')
   process.exit(1)
 }
 
+const envFile = envConfig.file
+
 console.log(`Build + server usando ${envFile}`)
 
-const build = spawnSync('npm', ['run', 'build'], {
+const build = spawnSync('npm', ['run', 'build', '--', '--mode', envConfig.mode], {
   stdio: 'inherit',
   shell: true,
 })
