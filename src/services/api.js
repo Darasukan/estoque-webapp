@@ -1,9 +1,5 @@
 const BASE = '/api'
 
-function getToken() {
-  return sessionStorage.getItem('auth_token') || ''
-}
-
 function setAuthData(user) {
   localStorage.setItem('auth_user', JSON.stringify(user))
   localStorage.removeItem('auth_token')
@@ -21,7 +17,6 @@ function clearAuthData() {
 async function request(path, options = {}) {
   const url = BASE + path
   const headers = {
-    'x-auth-token': getToken(),
     ...options.headers
   }
 
