@@ -56,6 +56,8 @@ const motorMaterialSearch = ref('')
 const motorMaterialVariationId = ref('')
 const motorMaterialNote = ref('')
 const motorMaterialPickerOpen = ref(false)
+const motorSaving = ref(false)
+const motorFormAttempted = ref(false)
 
 const motorForm = ref(emptyMotorForm())
 
@@ -159,6 +161,14 @@ const selectedWorkOrders = computed(() =>
 
 const selectedOpenWorkOrders = computed(() =>
   selectedWorkOrders.value.filter(wo => !wo.maintenanceEndDate || !wo.maintenanceEndTime)
+)
+
+const motorFormBlockReason = computed(() =>
+  motorForm.value.tag.trim() ? '' : 'Informe a tag/patrimonio do motor.'
+)
+
+const visibleMotorFormBlockReason = computed(() =>
+  motorFormAttempted.value ? motorFormBlockReason.value : ''
 )
 
 const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
@@ -348,11 +358,13 @@ function startNewMotor() {
   motorForm.value = emptyMotorForm()
   showForm.value = true
   confirmCreateMotor.value = false
+  motorFormAttempted.value = false
 }
 
 function startEditMotor(motor) {
   editingMotorId.value = motor.id
   confirmCreateMotor.value = false
+  motorFormAttempted.value = false
   motorForm.value = {
     tag: motor.tag,
     serial: motor.serial,
@@ -373,16 +385,21 @@ function cancelMotorForm() {
   editingMotorId.value = null
   motorForm.value = emptyMotorForm()
   confirmCreateMotor.value = false
+  motorFormAttempted.value = false
 }
 
 function requestCreateMotor() {
-  if (!motorForm.value.tag.trim()) { error('Tag/patrimonio e obrigatorio.'); return }
+  motorFormAttempted.value = true
+  if (motorFormBlockReason.value) { error(motorFormBlockReason.value); return }
   confirmCreateMotor.value = true
 }
 
 async function saveMotor() {
-  if (!motorForm.value.tag.trim()) { error('Tag/patrimonio e obrigatorio.'); return }
+  if (motorSaving.value) return
+  motorFormAttempted.value = true
+  if (motorFormBlockReason.value) { error(motorFormBlockReason.value); return }
   const isEditing = Boolean(editingMotorId.value)
+  motorSaving.value = true
   try {
     const saved = isEditing
       ? await editMotor(editingMotorId.value, motorForm.value)
@@ -398,6 +415,8 @@ async function saveMotor() {
     }
   } catch (e) {
     error(e.message)
+  } finally {
+    motorSaving.value = false
   }
 }
 
@@ -852,10 +871,16 @@ function workOrderEndLabel(order) {
       <div v-if="isLoggedIn && showForm" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ editingMotorId ? 'Editar motor' : 'Novo motor' }}</h3>
-          <AppButton variant="ghost" size="xs" @click="cancelMotorForm">Cancelar</AppButton>
+          <AppButton variant="ghost" size="xs" :disabled="motorSaving" @click="cancelMotorForm">Cancelar</AppButton>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input v-model="motorForm.tag" placeholder="Tag/patrimônio *" class="ds-input" />
+          <input
+            v-model="motorForm.tag"
+            placeholder="Tag/patrimônio *"
+            class="ds-input"
+            :class="visibleMotorFormBlockReason ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500 dark:border-amber-700' : ''"
+            @input="confirmCreateMotor = false"
+          />
           <input v-model="motorForm.serial" placeholder="Série" class="ds-input" />
           <input v-model="motorForm.name" placeholder="Descrição/nome" class="ds-input" />
           <input v-model="motorForm.manufacturer" placeholder="Fabricante" class="ds-input" />
@@ -875,6 +900,7 @@ function workOrderEndLabel(order) {
           </select>
         </div>
         <textarea v-model="motorForm.notes" rows="2" placeholder="Observações" class="ds-input"></textarea>
+        <p v-if="visibleMotorFormBlockReason" class="text-xs text-amber-600 dark:text-amber-400">{{ visibleMotorFormBlockReason }}</p>
         <div class="flex justify-end">
           <ConfirmInline
             v-if="!editingMotorId && confirmCreateMotor"
@@ -887,6 +913,8 @@ function workOrderEndLabel(order) {
           <AppButton
             v-else
             variant="primary"
+            :disabled="motorSaving"
+            :loading="motorSaving"
             @click="editingMotorId ? saveMotor() : requestCreateMotor()"
           >
             {{ editingMotorId ? 'Salvar' : 'Criar motor' }}

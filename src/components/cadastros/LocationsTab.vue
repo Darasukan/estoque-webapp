@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useLocations } from '../../composables/useLocations.js'
 import { useToast } from '../../composables/useToast.js'
 
@@ -27,15 +27,25 @@ const addingLocal = ref(false)
 const editingLocalId = ref(null)
 const editLocalName = ref('')
 const editLocalDesc = ref('')
+const localSaving = ref(false)
+
+const canAddLocal = computed(() => newLocalName.value.trim().length > 0 && !localSaving.value)
+const canEditLocal = computed(() => editLocalName.value.trim().length > 0 && !localSaving.value)
 
 function startAddLocal(parentId = null) { addingLocal.value = true; newLocalName.value = ''; newLocalDesc.value = ''; newLocalParentId.value = parentId }
 function cancelAddLocal() { addingLocal.value = false; newLocalParentId.value = null }
 async function confirmAddLocal() {
-  const r = await addLocal(newLocalName.value, newLocalDesc.value, newLocalParentId.value)
-  if (!r.ok) { error(r.error); return }
-  success(newLocalParentId.value ? 'Sub-local adicionado.' : 'Local adicionado.')
-  addingLocal.value = false
-  newLocalParentId.value = null
+  if (!canAddLocal.value) return
+  localSaving.value = true
+  try {
+    const r = await addLocal(newLocalName.value, newLocalDesc.value, newLocalParentId.value)
+    if (!r.ok) { error(r.error); return }
+    success(newLocalParentId.value ? 'Sub-local adicionado.' : 'Local adicionado.')
+    addingLocal.value = false
+    newLocalParentId.value = null
+  } finally {
+    localSaving.value = false
+  }
 }
 function startEditLocal(l) {
   editingLocalId.value = l.id
@@ -44,19 +54,30 @@ function startEditLocal(l) {
 }
 function cancelEditLocal() { editingLocalId.value = null }
 async function confirmEditLocal() {
-  const r = await editLocal(editingLocalId.value, { name: editLocalName.value, description: editLocalDesc.value })
-  if (!r.ok) { error(r.error); return }
-  success('Local atualizado.')
-  editingLocalId.value = null
+  if (!canEditLocal.value) return
+  localSaving.value = true
+  try {
+    const r = await editLocal(editingLocalId.value, { name: editLocalName.value, description: editLocalDesc.value })
+    if (!r.ok) { error(r.error); return }
+    success('Local atualizado.')
+    editingLocalId.value = null
+  } finally {
+    localSaving.value = false
+  }
 }
-function onDeleteLocal(l) {
+async function onDeleteLocal(l) {
   const children = getChildren(l.id)
   const msg = children.length
     ? `Excluir local "${l.name}" e seus ${children.length} sub-local(is)?`
     : `Excluir local "${l.name}"?`
   if (!confirm(msg)) return
-  deleteLocal(l.id)
-  success('Local removido.')
+  try {
+    const result = await deleteLocal(l.id)
+    if (result?.ok === false) { error(result.error); return }
+    success('Local removido.')
+  } catch (e) {
+    error(e.message)
+  }
 }
 </script>
 <template>
@@ -109,12 +130,17 @@ function onDeleteLocal(l) {
             <option v-for="p in topLevelLocais" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </div>
+        <p v-if="!newLocalName.trim()" class="text-xs text-amber-600 dark:text-amber-400">Informe o nome do local.</p>
         <div class="flex gap-2">
-          <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="confirmAddLocal">
+          <button
+            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!canAddLocal"
+            @click="confirmAddLocal"
+          >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-            Salvar
+            {{ localSaving ? 'Salvando...' : 'Salvar' }}
           </button>
-          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddLocal">Cancelar</button>
+          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :disabled="localSaving" @click="cancelAddLocal">Cancelar</button>
         </div>
       </div>
 
@@ -130,10 +156,10 @@ function onDeleteLocal(l) {
               <template v-if="editingLocalId === parent.id">
                 <input v-model="editLocalName" class="flex-1 px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditLocal" @keydown.escape="cancelEditLocal" autofocus />
                 <input v-model="editLocalDesc" placeholder="Descrição..." class="flex-1 px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditLocal" @keydown.escape="cancelEditLocal" />
-                <button class="p-1 text-green-500 hover:text-green-600" title="Salvar" @click="confirmEditLocal">
+                <button class="p-1 text-green-500 hover:text-green-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Salvar" :disabled="!canEditLocal" @click="confirmEditLocal">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                 </button>
-                <button class="p-1 text-gray-400 hover:text-gray-600" title="Cancelar" @click="cancelEditLocal">
+                <button class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Cancelar" :disabled="localSaving" @click="cancelEditLocal">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                 </button>
               </template>
@@ -187,10 +213,10 @@ function onDeleteLocal(l) {
               <template v-if="editingLocalId === child.id">
                 <input v-model="editLocalName" class="flex-1 px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditLocal" @keydown.escape="cancelEditLocal" autofocus />
                 <input v-model="editLocalDesc" placeholder="Descrição..." class="flex-1 px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditLocal" @keydown.escape="cancelEditLocal" />
-                <button class="p-1 text-green-500 hover:text-green-600" title="Salvar" @click="confirmEditLocal">
+                <button class="p-1 text-green-500 hover:text-green-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Salvar" :disabled="!canEditLocal" @click="confirmEditLocal">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                 </button>
-                <button class="p-1 text-gray-400 hover:text-gray-600" title="Cancelar" @click="cancelEditLocal">
+                <button class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Cancelar" :disabled="localSaving" @click="cancelEditLocal">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                 </button>
               </template>

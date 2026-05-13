@@ -5,6 +5,10 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
+function clean(value) {
+  return String(value ?? '').trim()
+}
+
 function toSupplier(row) {
   return {
     id: row.id,
@@ -22,8 +26,8 @@ router.get('/', (req, res) => {
 
 // POST /api/suppliers
 router.post('/', requireAuth, (req, res) => {
-  const name = String(req.body.name || '').trim()
-  const description = String(req.body.description || '').trim()
+  const name = clean(req.body.name)
+  const description = clean(req.body.description)
   const active = req.body.active !== false
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
 
@@ -43,9 +47,9 @@ router.put('/:id', requireAuth, (req, res) => {
   const current = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id)
   if (!current) return res.status(404).json({ error: 'Fornecedor nao encontrado' })
 
-  const name = String(req.body.name ?? current.name).trim()
-  const description = String(req.body.description ?? current.description ?? '').trim()
-  const active = req.body.active !== false
+  const name = clean(req.body.name ?? current.name)
+  const description = clean(req.body.description ?? current.description)
+  const active = req.body.active !== undefined ? req.body.active !== false : !!current.active
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
 
   const dup = db.prepare('SELECT id FROM suppliers WHERE lower(name) = lower(?) AND id != ?').get(name, req.params.id)

@@ -127,6 +127,8 @@ const form = ref({
 
 const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
+const movementFormAttempted = ref(false)
+const batchConfirmAttempted = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
 const batchItems = ref([])
 const batchPreviewOpen = ref(false)
@@ -164,6 +166,8 @@ function resetFlow() {
   movementDestinationId.value = ''
   docType.value = 'sem'
   confirmPending.value = false
+  movementFormAttempted.value = false
+  batchConfirmAttempted.value = false
   selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   supplierDropdownOpen.value = false
@@ -272,6 +276,7 @@ function resetCurrentItem() {
   destSearch.value = ''
   docDropdownOpen.value = false
   confirmPending.value = false
+  movementFormAttempted.value = false
   nextTick(() => focusRef(searchInputEl))
 }
 
@@ -413,12 +418,14 @@ const itemVariations = computed(() =>
 
 function selectVariation(v) {
   selectedVariation.value = v
+  movementFormAttempted.value = false
   step.value = 3
   nextTick(() => focusRef(qtyInputEl))
 }
 
 function backToStep2() {
   selectedVariation.value = null
+  movementFormAttempted.value = false
   step.value = 2
 }
 
@@ -463,7 +470,7 @@ const filteredSuppliers = computed(() => {
   if (!q) return activeSuppliers.value
   return activeSuppliers.value.filter(s =>
     s.name.toLowerCase().includes(q) ||
-    String(s.contact || '').toLowerCase().includes(q)
+    String(s.description || '').toLowerCase().includes(q)
   )
 })
 
@@ -609,6 +616,21 @@ const canConfirm = computed(() => {
   return true
 })
 
+const formBlockReason = computed(() => {
+  if (!selectedVariation.value) return ''
+  if (!parsedQty.value) return 'Informe uma quantidade maior que zero.'
+  if (saidaExceedsStock.value) return `Estoque disponivel: ${selectedAvailableStock.value} ${selectedItem.value?.unit || ''}.`
+  if (activeSubTab.value === 'entrada' && form.value.unitCost !== '' && parsedUnitCost.value === null) return 'Informe um custo valido ou deixe vazio.'
+  if (activeSubTab.value === 'saida' && !form.value.requestedBy.trim()) return 'Selecione quem retirou.'
+  if (activeSubTab.value === 'saida' && !requestedPersonIsValid.value) return 'Quem retirou precisa ser uma pessoa cadastrada.'
+  if (activeSubTab.value === 'saida' && !form.value.destination.trim()) return 'Selecione ou informe o destino.'
+  return ''
+})
+
+const visibleFormBlockReason = computed(() =>
+  movementFormAttempted.value ? formBlockReason.value : ''
+)
+
 // Work orders filtered by the destination selected in the saída form
 const filteredWorkOrders = computed(() => {
   const dest = form.value.destination.trim()
@@ -625,6 +647,8 @@ function commonMovementFields() {
     requestedBy: form.value.requestedBy,
     requestedByPersonId: activeSubTab.value === 'saida' ? form.value.requestedByPersonId : '',
     destination: form.value.destination,
+    destinationId: activeSubTab.value === 'saida' ? movementDestinationId.value : '',
+    destinationOther: activeSubTab.value === 'saida' && destSelectVal.value === '__outro__',
     docRef: activeSubTab.value === 'entrada' && docType.value && docType.value !== 'sem' && form.value.docRef.trim()
       ? `${docType.value === 'nf' ? 'NF' : 'PC'} ${form.value.docRef.trim()}`
       : '',
@@ -662,8 +686,18 @@ async function addCurrentToBatch() {
     ...commonMovementFields(),
   })
 
+  batchConfirmAttempted.value = false
   success('Item adicionado ao lote.')
   resetCurrentItem()
+}
+
+function tryAddCurrentToBatch() {
+  movementFormAttempted.value = true
+  if (!canConfirm.value) {
+    if (formBlockReason.value) error(formBlockReason.value)
+    return
+  }
+  addCurrentToBatch()
 }
 
 function removeBatchItem(uid) {
@@ -718,10 +752,16 @@ function editBatchItem(line) {
 function clearBatch() {
   batchItems.value = []
   batchPreviewOpen.value = false
+  batchConfirmAttempted.value = false
 }
 
 async function confirmBatch() {
-  if (!batchItems.value.length) return
+  if (confirmPending.value) return
+  if (!batchItems.value.length) {
+    batchConfirmAttempted.value = true
+    error('Adicione ao menos um item ao lote antes de confirmar.')
+    return
+  }
   if (batchItems.value.some(i => i.type === 'saida' && (!String(i.requestedBy || '').trim() || !String(i.destination || '').trim()))) {
     error('Preencha quem retirou e o local de destino em todos os itens do lote.')
     return
@@ -730,6 +770,7 @@ async function confirmBatch() {
   const woId = selectedWorkOrderId.value
 
   try {
+    confirmPending.value = true
     await ensureSuppliersForLines(batchItems.value)
     const created = await addMovementBatch(batchKind.value, batchItems.value, {})
     for (const m of created) {
@@ -750,6 +791,8 @@ async function confirmBatch() {
     resetFlow()
   } catch (e) {
     error(e.message)
+  } finally {
+    confirmPending.value = false
   }
 }
 
@@ -850,6 +893,9 @@ const editingMovement = ref(null)
 const editMovForm = ref({ date: '', qty: '', supplier: '', unitCost: '', requestedBy: '', requestedByPersonId: '', destination: '', docRef: '', note: '' })
 const editMovementDestinationId = ref('')
 const editMovementDestinationOther = ref(false)
+const editMovementSaving = ref(false)
+const editSupplierDropdownOpen = ref(false)
+const editPersonDropdownOpen = ref(false)
 
 function toLocalDatetimeStr(iso) {
   const d = new Date(iso)
@@ -858,16 +904,22 @@ function toLocalDatetimeStr(iso) {
 }
 
 function startEditMovement(m) {
+  const person = activePeople.value.find(p =>
+    p.id === m.requestedByPersonId ||
+    p.name.toLowerCase() === String(m.requestedBy || '').trim().toLowerCase()
+  )
   editingMovement.value = m
   editMovementDestinationId.value = movementDestinationIdForName(m.destination)
   editMovementDestinationOther.value = Boolean(m.destination && !editMovementDestinationId.value)
+  editSupplierDropdownOpen.value = false
+  editPersonDropdownOpen.value = false
   editMovForm.value = {
     date: toLocalDatetimeStr(m.date),
     qty: m.qty,
     supplier: m.supplier || '',
     unitCost: m.unitCost ?? '',
-    requestedBy: m.requestedBy || '',
-    requestedByPersonId: m.requestedByPersonId || '',
+    requestedBy: person?.name || m.requestedBy || '',
+    requestedByPersonId: person?.id || m.requestedByPersonId || '',
     destination: m.destination || '',
     docRef: m.docRef || '',
     note: m.note || '',
@@ -878,6 +930,8 @@ function cancelEditMovement() {
   editingMovement.value = null
   editMovementDestinationId.value = ''
   editMovementDestinationOther.value = false
+  editSupplierDropdownOpen.value = false
+  editPersonDropdownOpen.value = false
 }
 
 function handleEditMovementDestinationSelect({ fullName }) {
@@ -897,8 +951,89 @@ function handleEditMovementDestinationOther() {
   editMovForm.value.destination = ''
 }
 
+const filteredEditSuppliers = computed(() => {
+  const q = String(editMovForm.value.supplier || '').trim().toLowerCase()
+  if (!q) return activeSuppliers.value
+  return activeSuppliers.value.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    String(s.description || '').toLowerCase().includes(q)
+  )
+})
+
+const editSupplierNameExists = computed(() => {
+  const q = String(editMovForm.value.supplier || '').trim().toLowerCase()
+  return Boolean(q && activeSuppliers.value.some(s => s.name.toLowerCase() === q))
+})
+
+function selectEditSupplier(supplier) {
+  editMovForm.value.supplier = supplier.name
+  editSupplierDropdownOpen.value = false
+}
+
+function handleEditSupplierEnter() {
+  if (filteredEditSuppliers.value.length === 1) selectEditSupplier(filteredEditSuppliers.value[0])
+}
+
+const filteredEditPeople = computed(() => {
+  const q = String(editMovForm.value.requestedBy || '').trim().toLowerCase()
+  if (!q) return activePeople.value
+  return activePeople.value.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    String(p.role || '').toLowerCase().includes(q)
+  )
+})
+
+const editRequestedPersonIsValid = computed(() => {
+  if (!editingMovement.value || editingMovement.value.type !== 'saida') return true
+  return activePeople.value.some(p =>
+    p.id === editMovForm.value.requestedByPersonId &&
+    p.name.toLowerCase() === String(editMovForm.value.requestedBy || '').trim().toLowerCase()
+  )
+})
+
+function selectEditRequestedPerson(person) {
+  editMovForm.value.requestedBy = person.name
+  editMovForm.value.requestedByPersonId = person.id
+  editPersonDropdownOpen.value = false
+}
+
+function syncEditRequestedPersonFromInput() {
+  const q = String(editMovForm.value.requestedBy || '').trim().toLowerCase()
+  const exact = activePeople.value.find(p => p.name.toLowerCase() === q)
+  editMovForm.value.requestedByPersonId = exact?.id || ''
+  editPersonDropdownOpen.value = true
+}
+
+function handleEditRequestedPersonEnter() {
+  if (filteredEditPeople.value.length === 1) selectEditRequestedPerson(filteredEditPeople.value[0])
+}
+
+const editUnitCostInvalid = computed(() => {
+  if (!editingMovement.value || editingMovement.value.type !== 'entrada') return false
+  if (editMovForm.value.unitCost === '' || editMovForm.value.unitCost === null || editMovForm.value.unitCost === undefined) return false
+  const n = Number(editMovForm.value.unitCost)
+  return !Number.isFinite(n) || n < 0
+})
+
+const editMovementBlockReason = computed(() => {
+  if (!editingMovement.value) return ''
+  const qty = Number(editMovForm.value.qty)
+  if (!Number.isFinite(qty) || qty <= 0) return 'Informe uma quantidade maior que zero.'
+  if (editingMovement.value.type === 'entrada' && editUnitCostInvalid.value) return 'Informe um custo valido ou deixe vazio.'
+  if (editingMovement.value.type === 'saida' && !editMovForm.value.requestedBy.trim()) return 'Selecione quem retirou.'
+  if (editingMovement.value.type === 'saida' && !editRequestedPersonIsValid.value) return 'Quem retirou precisa ser uma pessoa cadastrada.'
+  if (editingMovement.value.type === 'saida' && !editMovForm.value.destination.trim()) return 'Selecione ou informe o destino.'
+  return ''
+})
+
+const canSaveEditMovement = computed(() => !editMovementSaving.value && !editMovementBlockReason.value)
+
 async function saveEditMovement() {
-  if (!editingMovement.value) return
+  if (!editingMovement.value || editMovementSaving.value) return
+  if (!canSaveEditMovement.value) {
+    error(editMovementBlockReason.value || 'Revise os campos da movimentacao.')
+    return
+  }
   const liveVar = variations.value.find(v => v.id === editingMovement.value.variationId)
   const changes = { ...editMovForm.value }
   if (editingMovement.value.type === 'entrada') {
@@ -920,15 +1055,22 @@ async function saveEditMovement() {
     changes.unitCost = null
     const person = activePeople.value.find(p => p.name.toLowerCase() === String(changes.requestedBy || '').trim().toLowerCase())
     changes.requestedByPersonId = person?.id || ''
+    changes.destinationId = editMovementDestinationId.value
+    changes.destinationOther = editMovementDestinationOther.value
   }
   // Convert local datetime string to ISO
   if (changes.date) changes.date = new Date(changes.date).toISOString()
-  const result = await editMovement(editingMovement.value.id, changes, liveVar)
-  if (!result.ok) { error(result.error); return }
-  success('Movimentação atualizada!')
-  editingMovement.value = null
-  editMovementDestinationId.value = ''
-  editMovementDestinationOther.value = false
+  editMovementSaving.value = true
+  try {
+    const result = await editMovement(editingMovement.value.id, changes, liveVar)
+    if (!result.ok) { error(result.error); return }
+    success('Movimentacao atualizada!')
+    editingMovement.value = null
+    editMovementDestinationId.value = ''
+    editMovementDestinationOther.value = false
+  } finally {
+    editMovementSaving.value = false
+  }
 }
 
 defineExpose({
@@ -1031,7 +1173,7 @@ defineExpose({
       ></div>
 
       <!-- Batch cart -->
-      <div v-if="batchPreviewOpen && batchItems.length && step !== 3" class="fixed inset-x-6 top-24 bottom-6 z-50 flex flex-col rounded-xl border border-primary-600 bg-white dark:bg-gray-900 overflow-hidden shadow-2xl shadow-gray-950/40">
+      <div v-if="batchPreviewOpen && batchItems.length && step !== 3" class="fixed inset-x-3 sm:inset-x-6 top-20 sm:top-24 bottom-4 sm:bottom-6 z-50 flex flex-col rounded-xl border border-primary-600 bg-white dark:bg-gray-900 overflow-hidden shadow-2xl shadow-gray-950/40">
         <div class="px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -1050,9 +1192,10 @@ defineExpose({
             >Limpar</button>
             <button
               class="px-4 py-2 text-sm font-medium rounded-lg text-white"
-              :class="batchKind === 'entrada' ? 'bg-green-600 hover:bg-green-700' : batchKind === 'saida' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'"
+              :class="confirmPending ? 'bg-gray-400 cursor-not-allowed' : batchKind === 'entrada' ? 'bg-green-600 hover:bg-green-700' : batchKind === 'saida' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'"
+              :disabled="confirmPending"
               @click="confirmBatch"
-            >Confirmar lote</button>
+            >{{ confirmPending ? 'Confirmando...' : 'Confirmar lote' }}</button>
           </div>
 
         </div>
@@ -1488,14 +1631,14 @@ defineExpose({
                 step="1"
                 placeholder="0"
                 class="w-36 px-3 py-2.5 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
-                :class="saidaExceedsStock
-                  ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                :class="movementFormAttempted && saidaExceedsStock
+                  ? 'border-amber-400 dark:border-amber-700 focus:border-amber-500 focus:ring-amber-500'
                   : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
-                @keydown.enter="canConfirm && addCurrentToBatch()"
+                @keydown.enter.prevent="tryAddCurrentToBatch"
               />
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ selectedItem?.unit }}</span>
             </div>
-            <p v-if="saidaExceedsStock" class="text-xs text-red-500 dark:text-red-400 mt-1">
+            <p v-if="movementFormAttempted && saidaExceedsStock" class="text-xs text-amber-600 dark:text-amber-400 mt-1">
               Quantidade excede o estoque disponível para este lote ({{ selectedAvailableStock }} {{ selectedItem?.unit }}).
             </p>
             <p v-else-if="activeSubTab === 'saida' && selectedVariation" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -1531,7 +1674,7 @@ defineExpose({
                       @mousedown.prevent="selectSupplier(supplier)"
                     >
                       <span class="font-medium truncate">{{ supplier.name }}</span>
-                      <span v-if="supplier.contact" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ supplier.contact }}</span>
+                      <span v-if="supplier.description" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ supplier.description }}</span>
                     </button>
                     <p v-if="!filteredSuppliers.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
                       Nenhum fornecedor cadastrado encontrado.
@@ -1552,8 +1695,8 @@ defineExpose({
                 step="0.01"
                 placeholder="Opcional"
                 class="w-full px-3 py-2.5 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
-                :class="form.unitCost !== '' && parsedUnitCost === null
-                  ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                :class="movementFormAttempted && form.unitCost !== '' && parsedUnitCost === null
+                  ? 'border-amber-400 dark:border-amber-700 focus:border-amber-500 focus:ring-amber-500'
                   : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
               />
             </div>
@@ -1630,8 +1773,8 @@ defineExpose({
                     type="text"
                     placeholder="Buscar pessoa cadastrada..."
                     class="w-full px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
-                    :class="form.requestedBy && !requestedPersonIsValid
-                      ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                    :class="movementFormAttempted && form.requestedBy && !requestedPersonIsValid
+                      ? 'border-amber-400 dark:border-amber-700 focus:border-amber-500 focus:ring-amber-500'
                       : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
                     @focus="personDropdownOpen = true"
                     @input="syncRequestedPersonFromInput"
@@ -1661,97 +1804,13 @@ defineExpose({
                     </div>
                   </div>
                 </div>
-                <p v-if="form.requestedBy && !requestedPersonIsValid" class="mt-1 text-xs text-red-500 dark:text-red-400">
+                <p v-if="movementFormAttempted && form.requestedBy && !requestedPersonIsValid" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
                   Selecione uma pessoa cadastrada.
                 </p>
               </template>
               <p v-else class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">
                 Cadastre pessoas antes de registrar saidas.
               </p>
-              <template v-if="false">
-                <!-- Custom dropdown -->
-                <div class="relative">
-                  <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
-                  <button
-                    type="button"
-                    class="w-full flex items-center justify-between px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none transition-colors"
-                    :class="personDropdownOpen
-                      ? 'border-primary-500 ring-1 ring-primary-500'
-                      : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'"
-                    @click="personDropdownOpen = !personDropdownOpen"
-                  >
-                    <span :class="!personSelectVal ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'">
-                      <template v-if="!personSelectVal">— Selecione… —</template>
-                      <template v-else-if="personSelectVal === '__outro__'"><em class="not-italic text-gray-500 dark:text-gray-400">Outro (digitar)…</em></template>
-                      <template v-else>
-                        {{ personSelectVal }}
-                        <span v-if="activePeople.find(p => p.name === personSelectVal)?.role" class="text-xs text-gray-400 dark:text-gray-500 ml-1">– {{ activePeople.find(p => p.name === personSelectVal).role }}</span>
-                      </template>
-                    </span>
-                    <svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150" :class="personDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
-                  <!-- Panel -->
-                  <div
-                    v-if="personDropdownOpen"
-                    class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
-                  >
-                    <div class="max-h-56 overflow-y-auto py-1">
-                      <button
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-sm text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
-                        @click="personSelectVal = ''; personDropdownOpen = false"
-                      >— Selecione… —</button>
-                      <div class="mx-2 my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                      <button
-                        v-for="p in activePeople"
-                        :key="p.id"
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors"
-                        :class="personSelectVal === p.name
-                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                          : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
-                        @click="personSelectVal = p.name; personDropdownOpen = false"
-                      >
-                        <div class="flex items-center gap-2 min-w-0">
-                          <svg v-if="personSelectVal === p.name" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
-                          <span v-else class="w-3.5"></span>
-                          <span class="font-medium truncate">{{ p.name }}</span>
-                        </div>
-                        <span v-if="p.role" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ p.role }}</span>
-                      </button>
-                      <div class="mx-2 my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                      <button
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2"
-                        :class="personSelectVal === '__outro__'
-                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
-                        @click="personSelectVal = '__outro__'; personDropdownOpen = false"
-                      >
-                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
-                        <em class="not-italic">Outro (digitar)…</em>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <input
-                  v-if="personSelectVal === '__outro__'"
-                  v-model="form.requestedBy"
-                  type="text"
-                  placeholder="Digite o nome..."
-                  class="mt-2 w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-                  autofocus
-                />
-              </template>
-              <input
-                v-if="false"
-                v-model="form.requestedBy"
-                type="text"
-                placeholder="Nome do solicitante..."
-                class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-              />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -1814,7 +1873,7 @@ defineExpose({
             />
           </div>
 
-          <div class="md:col-span-2 mt-28 flex flex-wrap items-center gap-3">
+          <div class="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-wrap items-center gap-3">
             <button
               class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
               :class="canConfirm
@@ -1822,8 +1881,8 @@ defineExpose({
                   ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-red-600 hover:bg-red-700 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
-              :disabled="!canConfirm"
-              @click="addCurrentToBatch"
+              :aria-disabled="!canConfirm"
+              @click="tryAddCurrentToBatch"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
@@ -1835,10 +1894,10 @@ defineExpose({
               class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               @click="resetCurrentItem"
             >
-              Cancelar
+              Voltar a selecao
             </button>
-            <p v-if="activeSubTab === 'saida' && !form.requestedBy.trim() || activeSubTab === 'saida' && !form.destination.trim()" class="text-xs text-gray-400 dark:text-gray-500">
-              Preencha quem retirou e o local de destino.
+            <p v-if="visibleFormBlockReason" class="text-xs text-amber-600 dark:text-amber-400">
+              {{ visibleFormBlockReason }}
             </p>
           </div>
           </div>
@@ -1900,22 +1959,25 @@ defineExpose({
             <div class="mt-4 flex flex-wrap gap-2">
               <button
                 class="px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors"
-                :class="batchItems.length
+                :class="batchItems.length && !confirmPending
                   ? batchKind === 'entrada'
                     ? 'bg-green-600 hover:bg-green-700'
                     : batchKind === 'saida'
                       ? 'bg-red-600 hover:bg-red-700'
                       : 'bg-primary-600 hover:bg-primary-700'
                   : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'"
-                :disabled="!batchItems.length"
+                :disabled="confirmPending"
                 @click="confirmBatch"
-              >Confirmar lote</button>
+              >{{ confirmPending ? 'Confirmando...' : 'Confirmar lote' }}</button>
               <button
                 v-if="batchItems.length"
                 class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="clearBatch"
               >Limpar</button>
             </div>
+            <p v-if="batchConfirmAttempted && !batchItems.length" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              Adicione ao menos um item ao lote antes de confirmar.
+            </p>
           </aside>
         </div>
 
@@ -2150,16 +2212,41 @@ defineExpose({
         <!-- Entrada: Fornecedor -->
         <div v-if="editingMovement.type === 'entrada'" class="mb-4">
           <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Fornecedor</label>
-          <input
-            v-model="editMovForm.supplier"
-            type="text"
-            list="edit-movement-suppliers"
-            placeholder="Fornecedor..."
-            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-          />
-          <datalist id="edit-movement-suppliers">
-            <option v-for="supplier in activeSuppliers" :key="supplier.id" :value="supplier.name" />
-          </datalist>
+          <div class="relative">
+            <div v-if="editSupplierDropdownOpen" class="fixed inset-0 z-10" @click="editSupplierDropdownOpen = false"></div>
+            <input
+              v-model="editMovForm.supplier"
+              type="text"
+              placeholder="Buscar ou digitar fornecedor..."
+              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              @focus="editSupplierDropdownOpen = true"
+              @input="editSupplierDropdownOpen = true"
+              @keydown.enter.prevent="handleEditSupplierEnter"
+            />
+            <div
+              v-if="editSupplierDropdownOpen"
+              class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+            >
+              <div class="max-h-52 overflow-y-auto py-1">
+                <button
+                  v-for="supplier in filteredEditSuppliers"
+                  :key="supplier.id"
+                  type="button"
+                  class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+                  @mousedown.prevent="selectEditSupplier(supplier)"
+                >
+                  <span class="font-medium truncate">{{ supplier.name }}</span>
+                  <span v-if="supplier.description" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ supplier.description }}</span>
+                </button>
+                <p v-if="!filteredEditSuppliers.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                  Nenhum fornecedor cadastrado encontrado.
+                </p>
+              </div>
+            </div>
+          </div>
+          <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+            {{ editMovForm.supplier && !editSupplierNameExists ? 'Novo fornecedor sera cadastrado ao salvar.' : 'Selecione um cadastrado para evitar duplicatas.' }}
+          </p>
         </div>
 
         <div v-if="editingMovement.type === 'entrada'" class="mb-4">
@@ -2178,12 +2265,47 @@ defineExpose({
         <template v-else>
           <div class="mb-4">
             <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Quem retirou</label>
-            <input
-              v-model="editMovForm.requestedBy"
-              type="text"
-              placeholder="Nome..."
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-            />
+            <div class="relative">
+              <div v-if="editPersonDropdownOpen" class="fixed inset-0 z-10" @click="editPersonDropdownOpen = false"></div>
+              <input
+                v-model="editMovForm.requestedBy"
+                type="text"
+                placeholder="Buscar pessoa cadastrada..."
+                class="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
+                :class="editMovForm.requestedBy && !editRequestedPersonIsValid
+                  ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
+                @focus="editPersonDropdownOpen = true"
+                @input="syncEditRequestedPersonFromInput"
+                @keydown.enter.prevent="handleEditRequestedPersonEnter"
+              />
+              <div
+                v-if="editPersonDropdownOpen"
+                class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+              >
+                <div class="max-h-52 overflow-y-auto py-1">
+                  <button
+                    v-for="p in filteredEditPeople"
+                    :key="p.id"
+                    type="button"
+                    class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors"
+                    :class="editMovForm.requestedByPersonId === p.id
+                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                      : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                    @mousedown.prevent="selectEditRequestedPerson(p)"
+                  >
+                    <span class="font-medium truncate">{{ p.name }}</span>
+                    <span v-if="p.role" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ p.role }}</span>
+                  </button>
+                  <p v-if="!filteredEditPeople.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                    Nenhuma pessoa cadastrada encontrada.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p v-if="editMovForm.requestedBy && !editRequestedPersonIsValid" class="mt-1 text-xs text-red-500 dark:text-red-400">
+              Selecione uma pessoa cadastrada.
+            </p>
           </div>
           <div class="mb-4">
             <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Destino</label>
@@ -2230,14 +2352,19 @@ defineExpose({
 
         <!-- Ações -->
         <div class="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <p v-if="editMovementBlockReason" class="mr-auto self-center text-xs text-amber-600 dark:text-amber-400">
+            {{ editMovementBlockReason }}
+          </p>
           <button
-            class="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            class="px-4 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="editMovementSaving"
             @click="cancelEditMovement"
           >Cancelar</button>
           <button
-            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
+            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!canSaveEditMovement"
             @click="saveEditMovement"
-          >Salvar</button>
+          >{{ editMovementSaving ? 'Salvando...' : 'Salvar' }}</button>
         </div>
       </div>
     </div>

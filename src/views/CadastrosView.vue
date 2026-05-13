@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject, watch } from 'vue'
+import { computed, ref, inject, watch } from 'vue'
 import EditHierarchyView from './EditHierarchyView.vue'
 import DestinationsTab from '../components/cadastros/DestinationsTab.vue'
 import LocationsTab from '../components/cadastros/LocationsTab.vue'
@@ -17,6 +17,16 @@ const emit = defineEmits(['quick-movement', 'update:tab'])
 
 const validTabs = ['hierarquia', 'destinos', 'locais', 'pessoas', 'fornecedores', 'cargos', 'epis', 'operadores']
 const activeSubTab = ref(validTabs.includes(props.initialTab) ? props.initialTab : 'hierarquia')
+const cadastroTabs = computed(() => [
+  { id: 'hierarquia', label: 'Hierarquia' },
+  { id: 'destinos', label: 'Destinos' },
+  { id: 'locais', label: 'Locais' },
+  { id: 'pessoas', label: 'Pessoas' },
+  { id: 'fornecedores', label: 'Fornecedores' },
+  { id: 'cargos', label: 'Cargos' },
+  { id: 'epis', label: 'EPIs' },
+  ...(isAdmin.value ? [{ id: 'operadores', label: 'Operadores' }] : []),
+])
 
 watch(() => props.initialTab, tab => {
   if (validTabs.includes(tab)) activeSubTab.value = tab
@@ -33,15 +43,16 @@ watch(isAdmin, admin => {
 
 <template>
   <!-- Sub-tab bar -->
-  <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
-    <nav class="flex gap-1 px-1 -mb-px">
+  <div class="mb-6 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900">
+    <nav class="flex min-w-max gap-1">
       <button
-        v-for="tab in [{ id: 'hierarquia', label: 'Hierarquia' }, { id: 'destinos', label: 'Destinos' }, { id: 'locais', label: 'Locais' }, { id: 'pessoas', label: 'Pessoas' }, { id: 'fornecedores', label: 'Fornecedores' }, { id: 'cargos', label: 'Cargos' }, { id: 'epis', label: 'EPIs' }, ...(isAdmin ? [{ id: 'operadores', label: 'Operadores' }] : [])]"
+        v-for="tab in cadastroTabs"
         :key="tab.id"
-        class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+        type="button"
+        class="rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors whitespace-nowrap"
         :class="activeSubTab === tab.id
-          ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-          : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'"
+          ? 'bg-primary-600 text-white shadow-sm'
+          : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100'"
         @click="activeSubTab = tab.id"
       >{{ tab.label }}</button>
     </nav>
