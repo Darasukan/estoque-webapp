@@ -144,6 +144,7 @@ function selectDocType(v) {
 }
 
 const personDropdownOpen = ref(false)
+const supplierDropdownOpen = ref(false)
 const destDropdownOpen = ref(false)
 const destSearch = ref('')
 const docDropdownOpen = ref(false)
@@ -165,6 +166,7 @@ function resetFlow() {
   confirmPending.value = false
   selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
+  supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
   docDropdownOpen.value = false
@@ -177,6 +179,7 @@ function adaptFormForSubTab(tab) {
   confirmPending.value = false
   selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
+  supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
   docDropdownOpen.value = false
@@ -454,6 +457,29 @@ const filteredOtherDests = computed(() => {
   if (!q) return otherDestinations.value
   return otherDestinations.value.filter(d => getDestFullName(d.id).toLowerCase().includes(q))
 })
+
+const filteredSuppliers = computed(() => {
+  const q = String(form.value.supplier || '').trim().toLowerCase()
+  if (!q) return activeSuppliers.value
+  return activeSuppliers.value.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    String(s.contact || '').toLowerCase().includes(q)
+  )
+})
+
+const supplierNameExists = computed(() => {
+  const q = String(form.value.supplier || '').trim().toLowerCase()
+  return Boolean(q && activeSuppliers.value.some(s => s.name.toLowerCase() === q))
+})
+
+function selectSupplier(supplier) {
+  form.value.supplier = supplier.name
+  supplierDropdownOpen.value = false
+}
+
+function handleSupplierEnter() {
+  if (filteredSuppliers.value.length === 1) selectSupplier(filteredSuppliers.value[0])
+}
 
 const filteredPeople = computed(() => {
   const q = String(form.value.requestedBy || '').trim().toLowerCase()
@@ -1481,17 +1507,41 @@ defineExpose({
           <template v-if="activeSubTab === 'entrada'">
             <div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
-              <input
-                v-model="form.supplier"
-                type="text"
-                list="movement-suppliers"
-                placeholder="Nome do fornecedor..."
-                class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-              />
-              <datalist id="movement-suppliers">
-                <option v-for="supplier in activeSuppliers" :key="supplier.id" :value="supplier.name" />
-              </datalist>
-              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">Se nao existir, sera cadastrado ao confirmar.</p>
+              <div class="relative">
+                <div v-if="supplierDropdownOpen" class="fixed inset-0 z-10" @click="supplierDropdownOpen = false"></div>
+                <input
+                  v-model="form.supplier"
+                  type="text"
+                  placeholder="Buscar ou digitar fornecedor..."
+                  class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+                  @focus="supplierDropdownOpen = true"
+                  @input="supplierDropdownOpen = true"
+                  @keydown.enter.prevent="handleSupplierEnter"
+                />
+                <div
+                  v-if="supplierDropdownOpen"
+                  class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+                >
+                  <div class="max-h-56 overflow-y-auto py-1">
+                    <button
+                      v-for="supplier in filteredSuppliers"
+                      :key="supplier.id"
+                      type="button"
+                      class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+                      @mousedown.prevent="selectSupplier(supplier)"
+                    >
+                      <span class="font-medium truncate">{{ supplier.name }}</span>
+                      <span v-if="supplier.contact" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ supplier.contact }}</span>
+                    </button>
+                    <p v-if="!filteredSuppliers.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                      Nenhum fornecedor cadastrado encontrado.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                {{ form.supplier && !supplierNameExists ? 'Novo fornecedor sera cadastrado ao confirmar.' : 'Selecione um cadastrado para evitar duplicatas.' }}
+              </p>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Custo unitario</label>
