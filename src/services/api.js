@@ -4,6 +4,20 @@ function getToken() {
   return sessionStorage.getItem('auth_token') || ''
 }
 
+function setAuthData(user) {
+  localStorage.setItem('auth_user', JSON.stringify(user))
+  localStorage.removeItem('auth_token')
+  sessionStorage.removeItem('auth_token')
+  sessionStorage.removeItem('auth_user')
+}
+
+function clearAuthData() {
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('auth_user')
+  sessionStorage.removeItem('auth_token')
+  sessionStorage.removeItem('auth_user')
+}
+
 async function request(path, options = {}) {
   const url = BASE + path
   const headers = {
@@ -16,11 +30,10 @@ async function request(path, options = {}) {
     headers['Content-Type'] = 'application/json'
   }
 
-  const res = await fetch(url, { ...options, headers })
+  const res = await fetch(url, { ...options, headers, credentials: 'include' })
 
   if (res.status === 401) {
-    sessionStorage.removeItem('auth_token')
-    sessionStorage.removeItem('auth_user')
+    clearAuthData()
   }
 
   const data = await res.json().catch(() => ({}))
@@ -38,15 +51,13 @@ export async function login(name, pin) {
     method: 'POST',
     body: JSON.stringify({ name, pin })
   })
-  sessionStorage.setItem('auth_token', data.token)
-  sessionStorage.setItem('auth_user', JSON.stringify(data.user))
+  setAuthData(data.user)
   return data.user
 }
 
 export async function logout() {
   try { await request('/auth/logout', { method: 'POST' }) } catch {}
-  sessionStorage.removeItem('auth_token')
-  sessionStorage.removeItem('auth_user')
+  clearAuthData()
 }
 
 export async function getMe() {

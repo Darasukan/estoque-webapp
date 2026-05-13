@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import * as api from '../services/api.js'
 
-const user = ref(JSON.parse(sessionStorage.getItem('auth_user') || 'null'))
+const user = ref(JSON.parse(localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user') || 'null'))
 
 export function useAuth() {
   const isAdmin = computed(() => user.value?.role === 'admin')
@@ -23,7 +23,6 @@ export function useAuth() {
   }
 
   async function checkSession() {
-    if (!sessionStorage.getItem('auth_token')) return
     try {
       const u = await api.getMe()
       user.value = u

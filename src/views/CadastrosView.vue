@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, inject, watch } from 'vue'
 import EditHierarchyView from './EditHierarchyView.vue'
 import DestinationsTab from '../components/cadastros/DestinationsTab.vue'
 import LocationsTab from '../components/cadastros/LocationsTab.vue'
@@ -10,10 +10,25 @@ import EpisTab from '../components/cadastros/EpisTab.vue'
 import UsersTab from '../components/cadastros/UsersTab.vue'
 
 const isAdmin = inject('isAdmin')
-const emit = defineEmits(['quick-movement'])
+const props = defineProps({
+  initialTab: { type: String, default: 'hierarquia' },
+})
+const emit = defineEmits(['quick-movement', 'update:tab'])
 
-const activeSubTab = ref('hierarquia') // 'hierarquia' | 'destinos' | 'locais' | 'pessoas' | 'fornecedores' | 'cargos' | 'epis' | 'operadores'
+const validTabs = ['hierarquia', 'destinos', 'locais', 'pessoas', 'fornecedores', 'cargos', 'epis', 'operadores']
+const activeSubTab = ref(validTabs.includes(props.initialTab) ? props.initialTab : 'hierarquia')
 
+watch(() => props.initialTab, tab => {
+  if (validTabs.includes(tab)) activeSubTab.value = tab
+})
+
+watch(activeSubTab, tab => {
+  emit('update:tab', tab)
+})
+
+watch(isAdmin, admin => {
+  if (!admin && activeSubTab.value === 'operadores') activeSubTab.value = 'hierarquia'
+}, { immediate: true })
 </script>
 
 <template>

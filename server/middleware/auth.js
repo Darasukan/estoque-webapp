@@ -1,8 +1,20 @@
 import db from '../db.js'
 
+export function getAuthToken(req) {
+  const headerToken = req.headers['x-auth-token']
+  if (headerToken) return headerToken
+
+  const authCookie = String(req.headers.cookie || '')
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.startsWith('auth_token='))
+
+  return authCookie ? decodeURIComponent(authCookie.slice('auth_token='.length)) : ''
+}
+
 // Middleware: require valid session token
 export function requireAuth(req, res, next) {
-  const token = req.headers['x-auth-token']
+  const token = getAuthToken(req)
   if (!token) return res.status(401).json({ error: 'Token não fornecido' })
 
   const session = db.prepare(`
