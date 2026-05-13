@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoles } from '../../composables/useRoles.js'
 import { useToast } from '../../composables/useToast.js'
 
@@ -12,14 +12,24 @@ const addingRole = ref(false)
 const editingRoleId = ref(null)
 const editRoleName = ref('')
 const editRoleDesc = ref('')
+const roleSaving = ref(false)
+
+const canAddRole = computed(() => newRoleName.value.trim().length > 0 && !roleSaving.value)
+const canEditRole = computed(() => editRoleName.value.trim().length > 0 && !roleSaving.value)
 
 function startAddRole() { addingRole.value = true; newRoleName.value = ''; newRoleDesc.value = '' }
 function cancelAddRole() { addingRole.value = false }
 async function confirmAddRole() {
-  const r = await addRole(newRoleName.value, newRoleDesc.value)
-  if (!r.ok) { error(r.error); return }
-  success('Cargo adicionado.')
-  addingRole.value = false
+  if (!canAddRole.value) return
+  roleSaving.value = true
+  try {
+    const r = await addRole(newRoleName.value, newRoleDesc.value)
+    if (!r.ok) { error(r.error); return }
+    success('Cargo adicionado.')
+    addingRole.value = false
+  } finally {
+    roleSaving.value = false
+  }
 }
 function startEditRole(r) {
   editingRoleId.value = r.id
@@ -28,15 +38,26 @@ function startEditRole(r) {
 }
 function cancelEditRole() { editingRoleId.value = null }
 async function confirmEditRole() {
-  const r = await editRole(editingRoleId.value, { name: editRoleName.value, description: editRoleDesc.value })
-  if (!r.ok) { error(r.error); return }
-  success('Cargo atualizado.')
-  editingRoleId.value = null
+  if (!canEditRole.value) return
+  roleSaving.value = true
+  try {
+    const r = await editRole(editingRoleId.value, { name: editRoleName.value, description: editRoleDesc.value })
+    if (!r.ok) { error(r.error); return }
+    success('Cargo atualizado.')
+    editingRoleId.value = null
+  } finally {
+    roleSaving.value = false
+  }
 }
-function onDeleteRole(r) {
+async function onDeleteRole(r) {
   if (!confirm(`Excluir cargo "${r.name}"?`)) return
-  deleteRole(r.id)
-  success('Cargo removido.')
+  try {
+    const result = await deleteRole(r.id)
+    if (result?.ok === false) { error(result.error); return }
+    success('Cargo removido.')
+  } catch (e) {
+    error(e.message)
+  }
 }
 </script>
 <template>
@@ -76,12 +97,17 @@ function onDeleteRole(r) {
           @keydown.enter="confirmAddRole"
           @keydown.escape="cancelAddRole"
         />
+        <p v-if="!newRoleName.trim()" class="text-xs text-amber-600 dark:text-amber-400">Informe o nome do cargo.</p>
         <div class="flex gap-2">
-          <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="confirmAddRole">
+          <button
+            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!canAddRole"
+            @click="confirmAddRole"
+          >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-            Salvar
+            {{ roleSaving ? 'Salvando...' : 'Salvar' }}
           </button>
-          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddRole">Cancelar</button>
+          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :disabled="roleSaving" @click="cancelAddRole">Cancelar</button>
         </div>
       </div>
 
@@ -113,10 +139,10 @@ function onDeleteRole(r) {
                 </td>
                 <td colspan="2" class="px-4 py-2">
                   <div class="flex items-center gap-1">
-                    <button class="p-1 text-green-500 hover:text-green-600" title="Salvar" @click="confirmEditRole">
+                    <button class="p-1 text-green-500 hover:text-green-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Salvar" :disabled="!canEditRole" @click="confirmEditRole">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                     </button>
-                    <button class="p-1 text-gray-400 hover:text-gray-600" title="Cancelar" @click="cancelEditRole">
+                    <button class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Cancelar" :disabled="roleSaving" @click="cancelEditRole">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                     </button>
                   </div>

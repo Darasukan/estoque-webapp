@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { usePeople } from '../../composables/usePeople.js'
 import { useRoles } from '../../composables/useRoles.js'
 import { useToast } from '../../composables/useToast.js'
@@ -14,14 +14,24 @@ const addingPerson = ref(false)
 const editingPersonId = ref(null)
 const editPersonName = ref('')
 const editPersonRole = ref('')
+const personSaving = ref(false)
+
+const canAddPerson = computed(() => newPersonName.value.trim().length > 0 && !personSaving.value)
+const canEditPerson = computed(() => editPersonName.value.trim().length > 0 && !personSaving.value)
 
 function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = '' }
 function cancelAddPerson() { addingPerson.value = false }
 async function confirmAddPerson() {
-  const r = await addPerson(newPersonName.value, newPersonRole.value)
-  if (!r.ok) { error(r.error); return }
-  success('Pessoa adicionada.')
-  addingPerson.value = false
+  if (!canAddPerson.value) return
+  personSaving.value = true
+  try {
+    const r = await addPerson(newPersonName.value, newPersonRole.value)
+    if (!r.ok) { error(r.error); return }
+    success('Pessoa adicionada.')
+    addingPerson.value = false
+  } finally {
+    personSaving.value = false
+  }
 }
 function startEditPerson(p) {
   editingPersonId.value = p.id
@@ -30,10 +40,16 @@ function startEditPerson(p) {
 }
 function cancelEditPerson() { editingPersonId.value = null }
 async function confirmEditPerson() {
-  const r = await editPerson(editingPersonId.value, { name: editPersonName.value, role: editPersonRole.value })
-  if (!r.ok) { error(r.error); return }
-  success('Pessoa atualizada.')
-  editingPersonId.value = null
+  if (!canEditPerson.value) return
+  personSaving.value = true
+  try {
+    const r = await editPerson(editingPersonId.value, { name: editPersonName.value, role: editPersonRole.value })
+    if (!r.ok) { error(r.error); return }
+    success('Pessoa atualizada.')
+    editingPersonId.value = null
+  } finally {
+    personSaving.value = false
+  }
 }
 function onDeletePerson(p) {
   if (!confirm(`Excluir "${p.name}"?`)) return
@@ -83,12 +99,17 @@ function onDeletePerson(p) {
         <div v-else class="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
           Nenhum cargo cadastrado. Adicione na aba <strong>Cargos</strong> para vincular.
         </div>
+        <p v-if="!newPersonName.trim()" class="text-xs text-amber-600 dark:text-amber-400">Informe o nome da pessoa.</p>
         <div class="flex gap-2">
-          <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="confirmAddPerson">
+          <button
+            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="!canAddPerson"
+            @click="confirmAddPerson"
+          >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-            Salvar
+            {{ personSaving ? 'Salvando...' : 'Salvar' }}
           </button>
-          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddPerson">Cancelar</button>
+          <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" :disabled="personSaving" @click="cancelAddPerson">Cancelar</button>
         </div>
       </div>
 
@@ -124,10 +145,10 @@ function onDeletePerson(p) {
                 </td>
                 <td colspan="2" class="px-4 py-2">
                   <div class="flex items-center gap-1">
-                    <button class="p-1 text-green-500 hover:text-green-600" title="Salvar" @click="confirmEditPerson">
+                    <button class="p-1 text-green-500 hover:text-green-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Salvar" :disabled="!canEditPerson" @click="confirmEditPerson">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                     </button>
-                    <button class="p-1 text-gray-400 hover:text-gray-600" title="Cancelar" @click="cancelEditPerson">
+                    <button class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Cancelar" :disabled="personSaving" @click="cancelEditPerson">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                     </button>
                   </div>

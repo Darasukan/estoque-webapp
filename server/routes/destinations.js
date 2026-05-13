@@ -5,6 +5,10 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
+function clean(value) {
+  return String(value ?? '').trim()
+}
+
 function parseRules(value) {
   if (Array.isArray(value)) return value
   try { return JSON.parse(value || '[]') } catch { return [] }
@@ -16,9 +20,9 @@ function normalizeRules(rules) {
   const result = []
   for (const rule of rules) {
     const normalized = {
-      group: String(rule?.group || '').trim(),
-      category: String(rule?.category || '').trim(),
-      subcategory: String(rule?.subcategory || '').trim(),
+      group: clean(rule?.group),
+      category: clean(rule?.category),
+      subcategory: clean(rule?.subcategory),
     }
     if (!normalized.group) continue
     const key = `${normalized.group}\u0000${normalized.category}\u0000${normalized.subcategory}`
@@ -40,6 +44,23 @@ function toDestination(r) {
   }
 }
 
+function validateParent(parentId) {
+  if (!parentId) return { ok: true, parentId: null }
+  const parent = db.prepare('SELECT parent_id FROM destinations WHERE id = ?').get(parentId)
+  if (!parent) return { ok: false, error: 'Destino pai nao encontrado' }
+  if (parent.parent_id) return { ok: false, error: 'Maximo 2 niveis' }
+  return { ok: true, parentId }
+}
+
+function destinationDuplicate(name, parentId, ignoreId = '') {
+  return db.prepare(`
+    SELECT id FROM destinations
+    WHERE lower(name) = lower(?)
+      AND coalesce(parent_id, '') = coalesce(?, '')
+      AND id != ?
+  `).get(name, parentId || '', ignoreId)
+}
+
 // GET /api/destinations
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM destinations ORDER BY name').all()
@@ -48,32 +69,47 @@ router.get('/', (req, res) => {
 
 // POST /api/destinations
 router.post('/', requireAuth, (req, res) => {
-  const { name, description, active, parentId, materialRules } = req.body
-  if (!name) return res.status(400).json({ error: 'Nome obrigatório' })
-
-  if (parentId) {
-    const parent = db.prepare('SELECT parent_id FROM destinations WHERE id = ?').get(parentId)
-    if (!parent) return res.status(400).json({ error: 'Destino pai não encontrado' })
-    if (parent.parent_id) return res.status(400).json({ error: 'Máximo 2 níveis' })
+  const name = clean(req.body.name)
+  const description = clean(req.body.description)
+  const active = req.body.active !== false
+  const parent = validateParent(req.body.parentId || null)
+  if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
+  if (!parent.ok) return res.status(400).json({ error: parent.error })
+  if (destinationDuplicate(name, parent.parentId)) {
+    return res.status(409).json({ error: 'Ja existe um destino com esse nome neste nivel.' })
   }
 
   const id = 'dest_' + crypto.randomBytes(6).toString('hex')
-  const rules = normalizeRules(materialRules)
+  const rules = normalizeRules(req.body.materialRules)
   db.prepare('INSERT INTO destinations (id, name, description, active, parent_id, material_rules) VALUES (?, ?, ?, ?, ?, ?)').run(
-    id, name, description || '', active !== false ? 1 : 0, parentId || null, JSON.stringify(rules)
+    id, name, description, active ? 1 : 0, parent.parentId, JSON.stringify(rules)
   )
 
-  res.json({ id, name, description: description || '', active: active !== false, parentId: parentId || null, materialRules: rules })
+  res.json({ id, name, description, active, parentId: parent.parentId, materialRules: rules })
 })
 
 // PUT /api/destinations/:id
 router.put('/:id', requireAuth, (req, res) => {
-  const { name, description, active, parentId, materialRules } = req.body
-  const rules = normalizeRules(materialRules)
+  const current = db.prepare('SELECT * FROM destinations WHERE id = ?').get(req.params.id)
+  if (!current) return res.status(404).json({ error: 'Destino nao encontrado' })
+
+  const name = clean(req.body.name ?? current.name)
+  const description = clean(req.body.description ?? current.description)
+  const active = req.body.active !== undefined ? req.body.active !== false : !!current.active
+  const requestedParentId = req.body.parentId !== undefined ? req.body.parentId || null : current.parent_id
+  const parent = validateParent(requestedParentId)
+  if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
+  if (!parent.ok) return res.status(400).json({ error: parent.error })
+  if (parent.parentId === req.params.id) return res.status(400).json({ error: 'Destino nao pode ser pai dele mesmo.' })
+  if (destinationDuplicate(name, parent.parentId, req.params.id)) {
+    return res.status(409).json({ error: 'Ja existe um destino com esse nome neste nivel.' })
+  }
+
+  const rules = normalizeRules(req.body.materialRules !== undefined ? req.body.materialRules : current.material_rules)
   db.prepare('UPDATE destinations SET name=?, description=?, active=?, parent_id=?, material_rules=? WHERE id=?').run(
-    name, description || '', active !== false ? 1 : 0, parentId || null, JSON.stringify(rules), req.params.id
+    name, description, active ? 1 : 0, parent.parentId, JSON.stringify(rules), req.params.id
   )
-  res.json({ id: req.params.id, name, description: description || '', active: active !== false, parentId: parentId || null, materialRules: rules })
+  res.json({ id: req.params.id, name, description, active, parentId: parent.parentId, materialRules: rules })
 })
 
 // DELETE /api/destinations/:id

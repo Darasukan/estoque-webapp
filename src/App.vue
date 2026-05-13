@@ -31,7 +31,7 @@ const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue')
 
 const { isDark, toggleTheme } = useTheme()
 const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
-const { recentMovements, loadData: loadMovements } = useMovements()
+const { loadData: loadMovements } = useMovements()
 const { loadData: loadLocations } = useLocations()
 const { loadData: loadDestinations } = useDestinations()
 const { loadData: loadPeople } = usePeople()
@@ -128,11 +128,19 @@ const navigationShortcuts = [
 ]
 
 const actionShortcuts = [
-  { chord: '?', label: 'Abrir atalhos' },
-  { chord: 'M', label: 'Abrir movimentação rápida' },
-  { chord: 'M E', label: 'Entrada rápida' },
-  { chord: 'M S', label: 'Saída rápida' },
+  { chord: '?', label: 'Abrir atalhos', always: true },
+  { chord: 'M', label: 'Abrir movimentação rápida', requiresQuickMovement: true },
+  { chord: 'M E', label: 'Entrada rápida', requiresQuickMovement: true },
+  { chord: 'M S', label: 'Saída rápida', requiresQuickMovement: true },
 ]
+
+const visibleNavigationShortcuts = computed(() =>
+  navigationShortcuts.filter(shortcut => !shortcut.target?.requiresAuth || isLoggedIn.value)
+)
+
+const visibleActionShortcuts = computed(() =>
+  actionShortcuts.filter(shortcut => shortcut.always || !shortcut.requiresQuickMovement || showQuickMovementActions.value)
+)
 
 // Load all data from API
 async function loadAllData() {
@@ -497,10 +505,6 @@ function handleGlobalShortcutKeydown(event) {
               @click="selectMainTab(tab.id)"
             >
               {{ tab.label }}
-              <span
-                v-if="tab.id === 'movimentacoes' && recentMovements.length > 0"
-                class="ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400"
-              >{{ recentMovements.length }}</span>
             </button>
           </div>
 
@@ -691,7 +695,7 @@ function handleGlobalShortcutKeydown(event) {
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Navegação</h3>
             <div class="space-y-1">
               <button
-                v-for="shortcut in navigationShortcuts"
+                v-for="shortcut in visibleNavigationShortcuts"
                 :key="shortcut.chord"
                 type="button"
                 class="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
@@ -707,7 +711,7 @@ function handleGlobalShortcutKeydown(event) {
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Ações</h3>
             <div class="space-y-1">
               <div
-                v-for="shortcut in actionShortcuts"
+                v-for="shortcut in visibleActionShortcuts"
                 :key="shortcut.chord"
                 class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
               >
