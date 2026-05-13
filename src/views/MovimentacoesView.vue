@@ -455,6 +455,42 @@ const filteredOtherDests = computed(() => {
   return otherDestinations.value.filter(d => getDestFullName(d.id).toLowerCase().includes(q))
 })
 
+const filteredPeople = computed(() => {
+  const q = String(form.value.requestedBy || '').trim().toLowerCase()
+  if (!q) return activePeople.value
+  return activePeople.value.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    String(p.role || '').toLowerCase().includes(q)
+  )
+})
+
+const requestedPersonIsValid = computed(() => {
+  if (activeSubTab.value !== 'saida') return true
+  return activePeople.value.some(p =>
+    p.id === form.value.requestedByPersonId &&
+    p.name.toLowerCase() === String(form.value.requestedBy || '').trim().toLowerCase()
+  )
+})
+
+function selectRequestedPerson(person) {
+  personSelectVal.value = person.name
+  form.value.requestedBy = person.name
+  form.value.requestedByPersonId = person.id
+  personDropdownOpen.value = false
+}
+
+function syncRequestedPersonFromInput() {
+  const q = String(form.value.requestedBy || '').trim().toLowerCase()
+  const exact = activePeople.value.find(p => p.name.toLowerCase() === q)
+  form.value.requestedByPersonId = exact?.id || ''
+  personSelectVal.value = exact?.name || form.value.requestedBy
+  personDropdownOpen.value = true
+}
+
+function handleRequestedPersonEnter() {
+  if (filteredPeople.value.length === 1) selectRequestedPerson(filteredPeople.value[0])
+}
+
 function movementDestinationIdForName(name) {
   const q = String(name || '').trim().toLowerCase()
   if (!q) return ''
@@ -542,7 +578,7 @@ const canConfirm = computed(() => {
   if (saidaExceedsStock.value) return false
   if (activeSubTab.value === 'entrada' && form.value.unitCost !== '' && parsedUnitCost.value === null) return false
   if (activeSubTab.value === 'saida') {
-    return form.value.requestedBy.trim().length > 0 && form.value.destination.trim().length > 0
+    return requestedPersonIsValid.value && form.value.destination.trim().length > 0
   }
   return true
 })
@@ -917,7 +953,8 @@ defineExpose({
     <template v-if="activeSubTab === 'entrada' || activeSubTab === 'saida'">
 
       <!-- Step indicator -->
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
         <div
           v-for="(label, i) in ['Buscar item', 'Escolher variação', activeSubTab === 'entrada' ? 'Registrar entrada' : 'Registrar saída']"
           :key="i"
@@ -948,17 +985,18 @@ defineExpose({
         </div>
       </div>
 
-      <button
-        v-if="batchItems.length && step !== 3"
-        class="fixed right-6 bottom-6 z-30 inline-flex items-center gap-2 rounded-full bg-primary-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-primary-900/20 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-400"
-        @click="batchPreviewOpen = true"
-      >
+        <button
+          v-if="batchItems.length && step !== 3"
+          class="inline-flex items-center gap-2 rounded-lg border border-primary-500/60 bg-primary-600/10 px-3 py-2 text-xs font-semibold text-primary-700 hover:bg-primary-600 hover:text-white dark:text-primary-300 dark:hover:text-white transition-colors"
+          @click="batchPreviewOpen = true"
+        >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
         </svg>
-        Ver lote
-        <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs">{{ batchItems.length }}</span>
-      </button>
+          Ver lote
+          <span class="rounded-full bg-primary-600 px-2 py-0.5 text-[11px] text-white">{{ batchItems.length }}</span>
+        </button>
+      </div>
 
       <div
         v-if="batchPreviewOpen && batchItems.length && step !== 3"
@@ -1535,6 +1573,52 @@ defineExpose({
                 Quem retirou <span class="text-red-500">*</span>
               </label>
               <template v-if="activePeople.length">
+                <div class="relative">
+                  <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
+                  <input
+                    v-model="form.requestedBy"
+                    type="text"
+                    placeholder="Buscar pessoa cadastrada..."
+                    class="w-full px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
+                    :class="form.requestedBy && !requestedPersonIsValid
+                      ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
+                    @focus="personDropdownOpen = true"
+                    @input="syncRequestedPersonFromInput"
+                    @keydown.enter.prevent="handleRequestedPersonEnter"
+                  />
+                  <div
+                    v-if="personDropdownOpen"
+                    class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+                  >
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button
+                        v-for="p in filteredPeople"
+                        :key="p.id"
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors"
+                        :class="form.requestedByPersonId === p.id
+                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                          : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                        @mousedown.prevent="selectRequestedPerson(p)"
+                      >
+                        <span class="font-medium truncate">{{ p.name }}</span>
+                        <span v-if="p.role" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ p.role }}</span>
+                      </button>
+                      <p v-if="!filteredPeople.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                        Nenhuma pessoa cadastrada encontrada.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <p v-if="form.requestedBy && !requestedPersonIsValid" class="mt-1 text-xs text-red-500 dark:text-red-400">
+                  Selecione uma pessoa cadastrada.
+                </p>
+              </template>
+              <p v-else class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">
+                Cadastre pessoas antes de registrar saidas.
+              </p>
+              <template v-if="false">
                 <!-- Custom dropdown -->
                 <div class="relative">
                   <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
@@ -1612,7 +1696,7 @@ defineExpose({
                 />
               </template>
               <input
-                v-else
+                v-if="false"
                 v-model="form.requestedBy"
                 type="text"
                 placeholder="Nome do solicitante..."
