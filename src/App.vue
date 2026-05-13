@@ -102,6 +102,9 @@ const showHistorySidebar = computed(() =>
   activeTab.value === 'movimentacoes' && movSubTab.value === 'historico'
 )
 const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
+const showQuickMovementActions = computed(() =>
+  isLoggedIn.value && activeTab.value !== 'movimentacoes'
+)
 
 const allTabs = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -173,7 +176,10 @@ watch(user, (newUser, oldUser) => {
   if (!newUser && activeTab.value === 'cadastros') activeTab.value = 'catalogo'
 })
 
-watch(activeTab, value => saveUiState({ activeTab: value }))
+watch(activeTab, value => {
+  saveUiState({ activeTab: value })
+  if (value === 'movimentacoes') quickActionsOpen.value = false
+})
 watch(sidebarCollapsed, value => saveUiState({ sidebarCollapsed: value }))
 watch(catalogSearch, value => saveUiState({ catalogSearch: value }))
 watch(activeGroup, value => saveUiState({ catalogGroup: value || '' }))
@@ -248,7 +254,7 @@ function closeQuickActions() {
 }
 
 function toggleQuickActions() {
-  if (!isLoggedIn.value) return
+  if (!showQuickMovementActions.value) return
   quickActionsOpen.value = !quickActionsOpen.value
   shortcutHelpOpen.value = false
   clearShortcutPrefix()
@@ -412,7 +418,7 @@ function handleGlobalShortcutKeydown(event) {
     startShortcutPrefix('g')
     return
   }
-  if (!isLoggedIn.value) return
+  if (!showQuickMovementActions.value) return
   if (key === 'm' && !quickActionsOpen.value) {
     event.preventDefault()
     shortcutHelpOpen.value = false
@@ -725,7 +731,7 @@ function handleGlobalShortcutKeydown(event) {
       {{ shortcutPrefix.toUpperCase() }}...
     </div>
 
-    <div v-if="isLoggedIn" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+    <div v-if="showQuickMovementActions" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
       <div
         v-if="quickActionsOpen"
         id="quick-movement-menu"
