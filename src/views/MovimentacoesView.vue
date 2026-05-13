@@ -129,6 +129,7 @@ const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
 const batchItems = ref([])
+const batchPreviewOpen = ref(false)
 const suppressFlowReset = ref(false)
 
 const batchKind = computed(() => {
@@ -168,6 +169,7 @@ function resetFlow() {
   destSearch.value = ''
   docDropdownOpen.value = false
   batchItems.value = []
+  batchPreviewOpen.value = false
   nextTick(() => focusRef(searchInputEl))
 }
 
@@ -256,7 +258,16 @@ function resetCurrentItem() {
   itemSearch.value = ''
   selectedItem.value = null
   selectedVariation.value = null
-  form.value.qty = ''
+  form.value = { qty: '', supplier: '', unitCost: '', requestedBy: '', requestedByPersonId: '', destination: '', docRef: '', note: '' }
+  personSelectVal.value = ''
+  destSelectVal.value = ''
+  movementDestinationId.value = ''
+  docType.value = 'sem'
+  selectedWorkOrderId.value = ''
+  personDropdownOpen.value = false
+  destDropdownOpen.value = false
+  destSearch.value = ''
+  docDropdownOpen.value = false
   confirmPending.value = false
   nextTick(() => focusRef(searchInputEl))
 }
@@ -383,6 +394,15 @@ function backToStep1() {
   nextTick(() => focusRef(searchInputEl))
 }
 
+function backToHierarchyLevel(level) {
+  if (!selectedItem.value) return
+  setActiveGroup(selectedItem.value.group || null)
+  setActiveCategory(level === 'group' ? null : (selectedItem.value.category || null))
+  setActiveSubcategory(level === 'subcategory' ? (selectedItem.value.subcategory || null) : null)
+  itemSearch.value = ''
+  backToStep1()
+}
+
 // ===== Variation picker (step 2) =====
 const itemVariations = computed(() =>
   selectedItem.value ? getVariationsForItem(selectedItem.value.id) : []
@@ -434,6 +454,42 @@ const filteredOtherDests = computed(() => {
   if (!q) return otherDestinations.value
   return otherDestinations.value.filter(d => getDestFullName(d.id).toLowerCase().includes(q))
 })
+
+const filteredPeople = computed(() => {
+  const q = String(form.value.requestedBy || '').trim().toLowerCase()
+  if (!q) return activePeople.value
+  return activePeople.value.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    String(p.role || '').toLowerCase().includes(q)
+  )
+})
+
+const requestedPersonIsValid = computed(() => {
+  if (activeSubTab.value !== 'saida') return true
+  return activePeople.value.some(p =>
+    p.id === form.value.requestedByPersonId &&
+    p.name.toLowerCase() === String(form.value.requestedBy || '').trim().toLowerCase()
+  )
+})
+
+function selectRequestedPerson(person) {
+  personSelectVal.value = person.name
+  form.value.requestedBy = person.name
+  form.value.requestedByPersonId = person.id
+  personDropdownOpen.value = false
+}
+
+function syncRequestedPersonFromInput() {
+  const q = String(form.value.requestedBy || '').trim().toLowerCase()
+  const exact = activePeople.value.find(p => p.name.toLowerCase() === q)
+  form.value.requestedByPersonId = exact?.id || ''
+  personSelectVal.value = exact?.name || form.value.requestedBy
+  personDropdownOpen.value = true
+}
+
+function handleRequestedPersonEnter() {
+  if (filteredPeople.value.length === 1) selectRequestedPerson(filteredPeople.value[0])
+}
 
 function movementDestinationIdForName(name) {
   const q = String(name || '').trim().toLowerCase()
@@ -496,6 +552,20 @@ const selectedAvailableStock = computed(() => {
   return selectedVariation.value.stock + batchStockDeltaForVariation(selectedVariation.value.id)
 })
 
+const currentBatchDelta = computed(() => {
+  if (!selectedVariation.value) return 0
+  return batchStockDeltaForVariation(selectedVariation.value.id)
+})
+
+const projectedStockAfterCurrent = computed(() => {
+  if (!selectedVariation.value) return 0
+  const currentStock = selectedVariation.value.stock + currentBatchDelta.value
+  if (!parsedQty.value) return currentStock
+  return activeSubTab.value === 'entrada'
+    ? currentStock + parsedQty.value
+    : currentStock - parsedQty.value
+})
+
 const saidaExceedsStock = computed(() =>
   activeSubTab.value === 'saida' &&
   parsedQty.value !== null &&
@@ -508,7 +578,7 @@ const canConfirm = computed(() => {
   if (saidaExceedsStock.value) return false
   if (activeSubTab.value === 'entrada' && form.value.unitCost !== '' && parsedUnitCost.value === null) return false
   if (activeSubTab.value === 'saida') {
-    return form.value.requestedBy.trim().length > 0 && form.value.destination.trim().length > 0
+    return requestedPersonIsValid.value && form.value.destination.trim().length > 0
   }
   return true
 })
@@ -572,6 +642,7 @@ async function addCurrentToBatch() {
 
 function removeBatchItem(uid) {
   batchItems.value = batchItems.value.filter(i => i.uid !== uid)
+  if (!batchItems.value.length) batchPreviewOpen.value = false
 }
 
 function editBatchItem(line) {
@@ -620,6 +691,7 @@ function editBatchItem(line) {
 
 function clearBatch() {
   batchItems.value = []
+  batchPreviewOpen.value = false
 }
 
 async function confirmBatch() {
@@ -881,7 +953,8 @@ defineExpose({
     <template v-if="activeSubTab === 'entrada' || activeSubTab === 'saida'">
 
       <!-- Step indicator -->
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
         <div
           v-for="(label, i) in ['Buscar item', 'Escolher variação', activeSubTab === 'entrada' ? 'Registrar entrada' : 'Registrar saída']"
           :key="i"
@@ -912,8 +985,27 @@ defineExpose({
         </div>
       </div>
 
+        <button
+          v-if="batchItems.length && step !== 3"
+          class="inline-flex items-center gap-2 rounded-lg border border-primary-500/60 bg-primary-600/10 px-3 py-2 text-xs font-semibold text-primary-700 hover:bg-primary-600 hover:text-white dark:text-primary-300 dark:hover:text-white transition-colors"
+          @click="batchPreviewOpen = true"
+        >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+          Ver lote
+          <span class="rounded-full bg-primary-600 px-2 py-0.5 text-[11px] text-white">{{ batchItems.length }}</span>
+        </button>
+      </div>
+
+      <div
+        v-if="batchPreviewOpen && batchItems.length && step !== 3"
+        class="fixed inset-0 z-40 bg-gray-950/60"
+        @click="batchPreviewOpen = false"
+      ></div>
+
       <!-- Batch cart -->
-      <div v-if="batchItems.length" class="rounded-xl border border-primary-200 dark:border-primary-800 bg-white dark:bg-gray-900 overflow-hidden">
+      <div v-if="batchPreviewOpen && batchItems.length && step !== 3" class="fixed inset-x-6 top-24 bottom-6 z-50 flex flex-col rounded-xl border border-primary-600 bg-white dark:bg-gray-900 overflow-hidden shadow-2xl shadow-gray-950/40">
         <div class="px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -924,6 +1016,10 @@ defineExpose({
           <div class="flex flex-wrap gap-2">
             <button
               class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              @click="batchPreviewOpen = false"
+            >Fechar</button>
+            <button
+              class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               @click="clearBatch"
             >Limpar</button>
             <button
@@ -932,8 +1028,9 @@ defineExpose({
               @click="confirmBatch"
             >Confirmar lote</button>
           </div>
+
         </div>
-        <div class="divide-y divide-gray-100 dark:divide-gray-800">
+        <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
           <div v-for="line in batchItems" :key="line.uid" class="px-4 py-3 flex items-center gap-3">
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -1191,9 +1288,33 @@ defineExpose({
 
         <!-- Breadcrumb: hierarchy + item name -->
         <div class="flex items-center gap-1.5 text-sm mb-5 flex-wrap">
-          <span class="text-gray-400 dark:text-gray-500">{{ hierarchyLabel(selectedItem) }}</span>
+          <button
+            type="button"
+            class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+            @click="backToHierarchyLevel('group')"
+          >{{ selectedItem?.group }}</button>
+          <template v-if="selectedItem?.category">
+            <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+            <button
+              type="button"
+              class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+              @click="backToHierarchyLevel('category')"
+            >{{ selectedItem.category }}</button>
+          </template>
+          <template v-if="selectedItem?.subcategory">
+            <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+            <button
+              type="button"
+              class="text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+              @click="backToHierarchyLevel('subcategory')"
+            >{{ selectedItem.subcategory }}</button>
+          </template>
           <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-          <span class="text-gray-800 dark:text-gray-100 font-semibold">{{ selectedItem?.name }}</span>
+          <button
+            type="button"
+            class="text-gray-800 dark:text-gray-100 font-semibold hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+            @click="backToStep1"
+          >{{ selectedItem?.name }}</button>
         </div>
 
         <!-- Item header (like catalog) -->
@@ -1324,7 +1445,8 @@ defineExpose({
         </div>
 
         <!-- Form body -->
-        <div class="bg-white dark:bg-gray-900 p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        <div class="bg-white dark:bg-gray-900 p-5 grid grid-cols-1 xl:grid-cols-2 gap-5 rounded-b-xl">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 content-start">
 
           <!-- Quantidade -->
           <div class="md:col-span-2">
@@ -1451,6 +1573,52 @@ defineExpose({
                 Quem retirou <span class="text-red-500">*</span>
               </label>
               <template v-if="activePeople.length">
+                <div class="relative">
+                  <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
+                  <input
+                    v-model="form.requestedBy"
+                    type="text"
+                    placeholder="Buscar pessoa cadastrada..."
+                    class="w-full px-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 transition-colors"
+                    :class="form.requestedBy && !requestedPersonIsValid
+                      ? 'border-red-400 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
+                    @focus="personDropdownOpen = true"
+                    @input="syncRequestedPersonFromInput"
+                    @keydown.enter.prevent="handleRequestedPersonEnter"
+                  />
+                  <div
+                    v-if="personDropdownOpen"
+                    class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
+                  >
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button
+                        v-for="p in filteredPeople"
+                        :key="p.id"
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 transition-colors"
+                        :class="form.requestedByPersonId === p.id
+                          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                          : 'text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
+                        @mousedown.prevent="selectRequestedPerson(p)"
+                      >
+                        <span class="font-medium truncate">{{ p.name }}</span>
+                        <span v-if="p.role" class="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{{ p.role }}</span>
+                      </button>
+                      <p v-if="!filteredPeople.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                        Nenhuma pessoa cadastrada encontrada.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <p v-if="form.requestedBy && !requestedPersonIsValid" class="mt-1 text-xs text-red-500 dark:text-red-400">
+                  Selecione uma pessoa cadastrada.
+                </p>
+              </template>
+              <p v-else class="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">
+                Cadastre pessoas antes de registrar saidas.
+              </p>
+              <template v-if="false">
                 <!-- Custom dropdown -->
                 <div class="relative">
                   <div v-if="personDropdownOpen" class="fixed inset-0 z-10" @click="personDropdownOpen = false"></div>
@@ -1528,7 +1696,7 @@ defineExpose({
                 />
               </template>
               <input
-                v-else
+                v-if="false"
                 v-model="form.requestedBy"
                 type="text"
                 placeholder="Nome do solicitante..."
@@ -1595,36 +1763,112 @@ defineExpose({
               class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
             />
           </div>
+
+          <div class="md:col-span-2 mt-28 flex flex-wrap items-center gap-3">
+            <button
+              class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+              :class="canConfirm
+                ? activeSubTab === 'entrada'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
+              :disabled="!canConfirm"
+              @click="addCurrentToBatch"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
+                <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
+              </svg>
+              Adicionar ao lote
+            </button>
+            <button
+              class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              @click="resetCurrentItem"
+            >
+              Cancelar
+            </button>
+            <p v-if="activeSubTab === 'saida' && !form.requestedBy.trim() || activeSubTab === 'saida' && !form.destination.trim()" class="text-xs text-gray-400 dark:text-gray-500">
+              Preencha quem retirou e o local de destino.
+            </p>
+          </div>
+          </div>
+
+          <aside class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-4 self-start">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Status do lote</p>
+                <h3 class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {{ batchItems.length ? `${batchItems.length} item${batchItems.length !== 1 ? 's' : ''} no lote` : 'Lote vazio' }}
+                </h3>
+              </div>
+              <span
+                class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                :class="activeSubTab === 'entrada'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
+              >
+                {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saida' }}
+              </span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">No lote</p>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {{ currentBatchDelta > 0 ? '+' : '' }}{{ currentBatchDelta }} {{ selectedItem?.unit }}
+                </p>
+              </div>
+              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Apos adicionar</p>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {{ projectedStockAfterCurrent }} {{ selectedItem?.unit }}
+                </p>
+              </div>
+            </div>
+
+            <div v-if="batchItems.length" class="mt-4 max-h-72 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <div v-for="line in batchItems" :key="line.uid" class="p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ line.itemName }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
+                    <p v-if="batchLineDetails(line)" class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ batchLineDetails(line) }}</p>
+                  </div>
+                  <span class="shrink-0 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ line.qty }} {{ line.itemUnit }}</span>
+                </div>
+                <div class="mt-2 flex items-center gap-3">
+                  <button class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300" @click="editBatchItem(line)">Editar</button>
+                  <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
+              Adicione o item atual para montar o lote antes de confirmar.
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                class="px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors"
+                :class="batchItems.length
+                  ? batchKind === 'entrada'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : batchKind === 'saida'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-primary-600 hover:bg-primary-700'
+                  : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'"
+                :disabled="!batchItems.length"
+                @click="confirmBatch"
+              >Confirmar lote</button>
+              <button
+                v-if="batchItems.length"
+                class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="clearBatch"
+              >Limpar</button>
+            </div>
+          </aside>
         </div>
 
-        <!-- Footer -->
-        <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-b-xl flex items-center gap-3">
-          <button
-            class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-            :class="canConfirm
-              ? activeSubTab === 'entrada'
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
-            :disabled="!canConfirm"
-            @click="addCurrentToBatch"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
-              <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
-            </svg>
-            Adicionar ao lote
-          </button>
-          <button
-            class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-            @click="resetFlow"
-          >
-            Cancelar
-          </button>
-          <p v-if="activeSubTab === 'saida' && !form.requestedBy.trim() || activeSubTab === 'saida' && !form.destination.trim()" class="text-xs text-gray-400 dark:text-gray-500">
-            Preencha quem retirou e o local de destino.
-          </p>
-        </div>
       </div>
 
     </template>

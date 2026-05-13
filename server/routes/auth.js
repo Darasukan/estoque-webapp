@@ -2,7 +2,8 @@ import { Router } from 'express'
 import bcryptjs from 'bcryptjs'
 import crypto from 'crypto'
 import db from '../db.js'
-import { getAuthToken, requireAuth, requireRole } from '../middleware/auth.js'
+import { requireAuth, requireRole } from '../middleware/auth.js'
+import { getAuthToken } from '../utils/authToken.js'
 
 const router = Router()
 const AUTH_COOKIE = 'auth_token'

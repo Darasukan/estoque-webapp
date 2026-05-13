@@ -2,6 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
+import { calculateStockAfter, parsePositiveQty } from '../utils/stockMath.js'
 
 const router = Router()
 
@@ -45,11 +46,6 @@ function toMovement(row) {
   }
 }
 
-function parsePositiveQty(qty) {
-  const n = Number(qty)
-  return Number.isFinite(n) && n > 0 ? n : null
-}
-
 function parseOptionalCost(value) {
   if (value === undefined || value === null || value === '') return null
   const n = Number(value)
@@ -86,7 +82,7 @@ router.post('/', requireAuth, (req, res) => {
   }
 
   const stockBefore = variation.stock
-  const stockAfter = m.type === 'entrada' ? stockBefore + qty : stockBefore - qty
+  const stockAfter = calculateStockAfter(m.type, stockBefore, qty)
   if (stockAfter < 0) return res.status(400).json({ error: 'Estoque insuficiente para essa saida.' })
   const unitCost = m.type === 'entrada' ? parseOptionalCost(m.unitCost) : null
 
@@ -171,7 +167,7 @@ router.post('/batch', requireAuth, (req, res) => {
     const stockBefore = liveStockByVariation.has(item.variationId)
       ? liveStockByVariation.get(item.variationId)
       : variation.stock
-    const stockAfter = lineType === 'entrada' ? stockBefore + qty : stockBefore - qty
+    const stockAfter = calculateStockAfter(lineType, stockBefore, qty)
     if (stockAfter < 0) return res.status(400).json({ error: `Estoque insuficiente para ${item.itemName || 'item do lote'}.` })
 
     liveStockByVariation.set(item.variationId, stockAfter)
