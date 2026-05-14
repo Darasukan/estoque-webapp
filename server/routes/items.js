@@ -78,19 +78,22 @@ router.post('/variations', requireAuth, (req, res) => {
   const { itemId, values, stock, minStock, initialStock, extras, location, destinations } = req.body
   if (!itemId) return res.status(400).json({ error: 'itemId obrigatório' })
 
-  const item = db.prepare('SELECT id FROM items WHERE id = ?').get(itemId)
+  const item = db.prepare('SELECT id, min_stock FROM items WHERE id = ?').get(itemId)
   if (!item) return res.status(404).json({ error: 'Item não encontrado' })
 
   const id = 'var_' + crypto.randomBytes(6).toString('hex')
   const s = stock || 0
+  const requestedMinStock = minStock === undefined || minStock === null ? item.min_stock : minStock
+  const min = Number(requestedMinStock)
+  const safeMinStock = Number.isFinite(min) ? Math.max(0, Math.round(min)) : 0
   db.prepare(`INSERT INTO variations (id, item_id, vals, stock, min_stock, initial_stock, extras, location, destinations)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, itemId, JSON.stringify(values || {}), s, minStock || 0,
+    id, itemId, JSON.stringify(values || {}), s, safeMinStock,
     initialStock !== undefined ? initialStock : s,
     JSON.stringify(extras || {}), location || '', JSON.stringify(destinations || [])
   )
 
-  res.json({ id, itemId, values: values || {}, stock: s, minStock: minStock || 0, initialStock: initialStock !== undefined ? initialStock : s, extras: extras || {}, location: location || '', destinations: destinations || [] })
+  res.json({ id, itemId, values: values || {}, stock: s, minStock: safeMinStock, initialStock: initialStock !== undefined ? initialStock : s, extras: extras || {}, location: location || '', destinations: destinations || [] })
 })
 
 // PUT /api/items/variations/:id

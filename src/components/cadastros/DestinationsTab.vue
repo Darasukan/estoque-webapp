@@ -4,6 +4,7 @@ import { useAuth } from '../../composables/useAuth.js'
 import { useDestinations } from '../../composables/useDestinations.js'
 import { useItems } from '../../composables/useItems.js'
 import { useToast } from '../../composables/useToast.js'
+import AttributeBadges from '../ui/AttributeBadges.vue'
 
 const {
   addDestination,
@@ -243,7 +244,7 @@ const linkedMaterials = computed(() => {
   const destination = selectedMaterialDestination.value
   if (!destination) return []
   return variations.value
-    .filter(variation => variationBelongsToDestination(variation, destination))
+    .filter(variation => (variation.destinations || []).includes(destination.id))
     .sort((a, b) => materialLabel(a).localeCompare(materialLabel(b)))
 })
 
@@ -290,13 +291,14 @@ watch(linkedMaterialsTotalPages, (total) => {
 })
 
 function materialCountForDestination(destinationId) {
-  const destination = [selectedParent.value, ...selectedChildren.value].filter(Boolean).find(d => d.id === destinationId)
-  if (destination) {
-    return variations.value.filter(variation => variationBelongsToDestination(variation, destination)).length
-  }
   return variations.value.filter(variation =>
     (variation.destinations || []).includes(destinationId)
   ).length
+}
+
+function materialRuleCountForDestination(destinationId) {
+  const destination = [selectedParent.value, ...selectedChildren.value].filter(Boolean).find(d => d.id === destinationId)
+  return destination?.materialRules?.length || 0
 }
 
 function goLinkedMaterialsPage(delta) {
@@ -838,7 +840,10 @@ async function removeMaterialFromDestination(variation) {
                   <button class="w-full text-left p-4 cursor-pointer" type="button" @click="selectMaterialDestination(child.id)">
                     <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate pr-20">{{ child.name }}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 line-clamp-2">{{ child.description || 'Sem descricao' }}</p>
-                    <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-3">{{ materialCountForDestination(child.id) }} materiais</p>
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-3">
+                      {{ materialCountForDestination(child.id) }} materiais manuais
+                      <span v-if="materialRuleCountForDestination(child.id)"> · {{ materialRuleCountForDestination(child.id) }} regra{{ materialRuleCountForDestination(child.id) === 1 ? '' : 's' }}</span>
+                    </p>
                   </button>
                   <span
                     v-if="selectedMaterialDestId === child.id"
@@ -883,7 +888,7 @@ async function removeMaterialFromDestination(variation) {
                   {{ getDestFullName(selectedMaterialDestination?.id) }}
                 </p>
                 <p v-if="linkedMaterials.length" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  {{ linkedMaterialsPageStart }}-{{ linkedMaterialsPageEnd }} de {{ linkedMaterials.length }} materiais
+                  {{ linkedMaterialsPageStart }}-{{ linkedMaterialsPageEnd }} de {{ linkedMaterials.length }} materiais manuais
                 </p>
               </div>
               <button
@@ -928,8 +933,15 @@ async function removeMaterialFromDestination(variation) {
                 class="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
               >
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{{ materialLabel(variation) }}</p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialMeta(variation) || 'Sem hierarquia' }}</p>
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{{ itemForVariation(variation)?.name || 'Item' }}</p>
+                  <AttributeBadges
+                    v-if="itemForVariation(variation)"
+                    class="mt-1"
+                    :item="itemForVariation(variation)"
+                    :variation="variation"
+                    compact
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialMeta(variation) || 'Sem hierarquia' }}</p>
                 </div>
                 <div class="text-right flex-shrink-0">
                   <p class="text-xs text-gray-400 dark:text-gray-500">Estoque</p>
@@ -971,7 +983,7 @@ async function removeMaterialFromDestination(variation) {
             </div>
 
             <div v-else class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-              Nenhum material vinculado a este destino.
+              Nenhum material manual vinculado a este destino.
             </div>
           </section>
         </div>
@@ -1145,7 +1157,8 @@ async function removeMaterialFromDestination(variation) {
                 <svg v-if="isPendingMaterial(variation.id)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
               </span>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ variationLabel(variation) }}</p>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedMaterialItem.name }}</p>
+                <AttributeBadges class="mt-1" :item="selectedMaterialItem" :variation="variation" compact />
                 <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ materialMeta(variation) || selectedMaterialItem.name }}</p>
               </div>
               <div class="flex items-center gap-2 flex-shrink-0">

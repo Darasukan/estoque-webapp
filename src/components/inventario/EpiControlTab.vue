@@ -4,6 +4,7 @@ import { useItems } from '../../composables/useItems.js'
 import { usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
+import AttributeBadges from '../ui/AttributeBadges.vue'
 
 const emit = defineEmits(['quick-movement'])
 
@@ -139,6 +140,13 @@ function resolveQuickTarget(rule) {
     .map(variation => ({ variation, item: itemById.value.get(variation.itemId) }))
     .filter(row => row.item && targetMatchesCatalogRow(target, row.item, row.variation))
   return matches.length === 1 ? matches[0] : null
+}
+
+function targetVariationRow(rule) {
+  if (rule?.targetType !== 'variacao') return null
+  const variation = variations.value.find(row => row.id === rule.targetKey)
+  const item = variation ? itemById.value.get(variation.itemId) : null
+  return variation && item ? { variation, item } : null
 }
 
 const records = computed(() => {
@@ -307,7 +315,11 @@ function quickMovement(record) {
               </td>
               <td class="px-4 py-3">
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[record.rule.targetType] }}</span>
-                <p class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
+                <template v-if="targetVariationRow(record.rule)">
+                  <p class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
+                  <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
+                </template>
+                <p v-else class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
                 <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Troca a cada {{ record.period.days }} dias</p>
               </td>
               <td class="px-4 py-3">
