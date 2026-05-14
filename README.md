@@ -1,130 +1,195 @@
-# Estoque App
+# Estoque Webapp
 
-Sistema de controle de estoque industrial com catálogo estilo McMaster-Carr, filtros facetados, hierarquia de itens e gestão de variações.
+Sistema web com foco em gerenciamento operacional de estoque, possui ferramentas para dar movimentações, ordens de serviço, motores, Controle de EPIs, destinos e fechamento mensal.
+
+O projeto usa um frontend em Vue 3 com Vite e uma API Express com SQLite. O foco é uso interno/industrial: cadastro de materiais, busca por hierarquia, entradas, saídas, histórico, controle por destino e gestão de OS.
 
 ## Tecnologias
 
-- **Vue.js 3** (Composition API, `<script setup>`)
-- **Vite** (build tool + proxy de desenvolvimento)
-- **Tailwind CSS v4** (estilização)
-- **Express 5** (API REST)
-- **better-sqlite3** (banco de dados SQLite)
-- **bcryptjs** (hash de senhas)
+- Vue 3
+- Vite
+- Tailwind CSS
+- Express
+- SQLite com `better-sqlite3`
+- Autenticação por sessão com cookie `httpOnly`
 
-## Funcionalidades
+## Bancos separados
 
-- **Catálogo** — Navegação por grupos com filtros facetados na sidebar, busca por nome/categoria/subcategoria, visualização de variações e estoque
-- **Cadastro** — Criação de itens com hierarquia (Grupo → Categoria → Subcategoria), atributos dinâmicos e variações
-- **Editar Hierarquia** — Renomear/excluir grupos, categorias e subcategorias, editar atributos dos itens
-- **Inventário** — Tabela com filtros laterais, status de estoque (OK/Alerta/Crítico/Zero), ajuste de estoque inline, paginação e exportação CSV
-- **Movimentações** — Registro de entradas e saídas com histórico completo
-- **Ordens de Serviço** — Criação e gestão de ordens de serviço (protótipo)
-- **Autenticação** — Login com PIN, controle de sessão, roles (admin/operador)
-- **Acesso público** — Catálogo, inventário e histórico visíveis sem login; operações de escrita requerem autenticação
-- **Tema** — Claro/escuro com toggle
-- **Dados de teste** — Gerador de ~100 itens e ~400 variações para testes
+O projeto usa arquivos `.env` para separar banco de desenvolvimento e produção.
 
-## Pré-requisitos
+- `.env.dev`: banco de desenvolvimento.
+- `.env.prod`: banco de produção.
+- `.env.example`: modelo versionado.
 
-- [Node.js](https://nodejs.org/) v18 ou superior
-- [Git](https://git-scm.com/)
+Scripts úteis:
+
+```powershell
+# Popular banco dev com seed
+npm run db:seed:dev
+
+# Limpar banco prod
+npm run db:reset:prod
+```
 
 ## Instalação
 
-```bash
-# Clonar o repositório
-git clone https://github.com/Darasukan/estoque-main.git
-
-# Entrar na pasta
-cd estoque-main
-
-# Instalar dependências
+```powershell
+git clone https://github.com/Darasukan/estoque-webapp.git
+cd estoque-webapp
 npm install
 ```
 
-## Como rodar (desenvolvimento)
+Crie seus arquivos de ambiente a partir do exemplo:
 
-São necessários **dois terminais**:
+```powershell
+copy .env.example .env.dev
+copy .env.example .env.prod
+```
 
-```bash
-# Terminal 1 — Servidor backend (porta 3000)
-npm run server
+Ajuste `DB_PATH` em cada arquivo para apontar para bancos diferentes.
 
-# Terminal 2 — Vite dev server (porta 5173)
+## Rodando o sistema
+
+### Desenvolvimento com Vite
+
+Use dois terminais:
+
+```powershell
+# Terminal 1: API usando banco dev
+npm run server:dev
+
+# Terminal 2: frontend Vite
 npm run dev
 ```
 
-Acesse `http://localhost:5173` no navegador. O Vite faz proxy automático de `/api` para o backend.
+Acesse:
 
-## Build para produção
-
-```bash
-# Build + iniciar servidor
-npm start
+```text
+http://localhost:5173
 ```
 
-Isso executa `vite build` e depois inicia o Express servindo o frontend e a API na porta 3000.
+### Produção/local estável
 
-## Estrutura do projeto
-
+```powershell
+npm start master
 ```
+
+Também existem aliases:
+
+```powershell
+npm run start:master
+npm run start:prod
+npm run start:dev
+```
+
+Observação: `npm start master` faz build e inicia o servidor usando `.env.prod`. `npm start dev` faz build e inicia usando `.env.dev`.
+
+## Autenticação e permissões
+
+- Usuário não logado pode visualizar áreas públicas.
+- Usuário não logado não pode criar, editar, excluir, movimentar, ajustar estoque ou fechar período.
+- Login usa sessão persistente por cookie `httpOnly`.
+- Admin pode criar operadores.
+- Admin mestre pode alterar senha de qualquer usuário.
+- Usuário logado pode alterar a própria senha.
+- Admin comum não pode excluir outro admin.
+
+Login padrão em banco novo:
+
+```text
+admin / admin123
+```
+
+## Funcionalidades principais
+
+- Dashboard operacional com alertas e atalhos.
+- Catálogo por grupos, categorias, subcategorias, itens e variações.
+- Cadastro e edição de hierarquia.
+- Inventário com tabela, filtros, estoque mínimo, ajustes e ficha operacional da variação.
+- Entrada e saída de materiais com lote de movimentações.
+- Histórico de movimentações com busca única e filtros.
+- Resumo por destino em blocos hierárquicos.
+- Fechamento mensal de estoque com exportação CSV.
+- Ordens de serviço comuns e ordens de serviço de motor.
+- Exportação CSV de OS individual, filtrada ou completa.
+- Motores com eventos, histórico, OS vinculadas e materiais previstos/usados.
+- Cadastros auxiliares: pessoas, cargos, destinos, locais, fornecedores, usuários e EPIs.
+- Controle de EPIs por cargo, periodicidade e pessoa.
+- Atalhos de teclado e popup de ajuda com `?`.
+
+## Seed e ferramentas de teste
+
+Botões de `Popular` e `Limpar` aparecem somente quando:
+
+```text
+VITE_ENABLE_SEED_TOOLS=true
+```
+
+Isso deve ficar ligado no ambiente dev e desligado no ambiente master.
+
+Mesmo se a branch `dev` for mesclada na `master`, a exibição desses botões depende do `.env` usado no build.
+
+## Estrutura
+
+```text
 server/
-├── index.js                    # Express app + rotas
-├── db.js                       # Inicialização SQLite
-├── middleware/
-│   └── auth.js                 # Middleware de autenticação e roles
-└── routes/
-    ├── auth.js                 # Login, logout, sessão, usuários
-    ├── items.js                # CRUD de itens e variações
-    ├── movements.js            # Movimentações de estoque
-    ├── locations.js            # Locais de armazenamento
-    ├── destinations.js         # Destinos de saída
-    ├── people.js               # Pessoas/solicitantes
-    ├── roles.js                # Cargos/funções
-    ├── seed.js                 # Seed de dados e ordem de exibição
-    └── workOrders.js           # Ordens de serviço
+  index.js                  API Express
+  db.js                     schema SQLite, migrações e conexão
+  backup.js                 rotina de backup
+  middleware/
+    auth.js                 proteção por sessão/role
+  routes/
+    auth.js                 login, logout e usuários
+    items.js                itens e variações
+    movements.js            entradas, saídas e histórico
+    destinations.js         destinos
+    locations.js            locais
+    people.js               pessoas
+    suppliers.js            fornecedores
+    roles.js                cargos
+    epis.js                 EPIs
+    motors.js               motores
+    workOrders.js           ordens de serviço
+    closings.js             fechamento
+    seed.js                 seed e ordem de exibição
+  scripts/
+    start.js                start por ambiente
+    seedDatabase.js         seed/reset por ambiente
+
 src/
-├── App.vue                     # Layout principal com abas e sidebar
-├── main.js                     # Entry point
-├── style.css                   # Tema Tailwind e variáveis
-├── composables/
-│   ├── useAuth.js              # Autenticação e sessão
-│   ├── useItems.js             # Estado central (itens, variações, filtros)
-│   ├── useMovements.js         # Movimentações
-│   ├── useLocations.js         # Locais
-│   ├── useDestinations.js      # Destinos
-│   ├── usePeople.js            # Pessoas
-│   ├── useRoles.js             # Cargos
-│   ├── useUsers.js             # Gestão de usuários
-│   ├── useWorkOrders.js        # Ordens de serviço
-│   ├── useTheme.js             # Tema claro/escuro
-│   └── useToast.js             # Notificações toast
-├── services/
-│   ├── api.js                  # Cliente HTTP para a API
-│   └── storageService.js       # Persistência local (localStorage)
-├── data/
-│   └── seedData.js             # Gerador de dados de teste
-├── utils/
-│   ├── id.js                   # Gerador de IDs únicos
-│   └── units.js                # Unidades de medida
-├── views/
-│   ├── CatalogView.vue         # Catálogo com cards e tabela
-│   ├── CadastroView.vue        # Formulário de cadastro
-│   ├── CadastrosView.vue       # Gestão de cadastros auxiliares
-│   ├── EditHierarchyView.vue   # Editor de hierarquia e atributos
-│   ├── InventarioView.vue      # Inventário com paginação
-│   ├── ManageView.vue          # Tabela de itens com filtros
-│   ├── MovimentacoesView.vue   # Entradas, saídas e histórico
-│   └── OrdensServicoView.vue   # Ordens de serviço
-└── components/
-    ├── ui/
-    │   ├── AppModal.vue        # Modal genérico
-    │   ├── AppSidebar.vue      # Sidebar de navegação/filtros
-    │   ├── HistorySidebar.vue  # Sidebar de histórico
-    │   ├── LoginModal.vue      # Modal de login
-    │   └── ToastContainer.vue  # Container de notificações
-    └── catalog/
-        ├── CategorySection.vue
-        ├── ItemCard.vue
-        └── SubcategorySection.vue
+  App.vue                   layout principal e navegação
+  main.js                   entrada Vue
+  style.css                 tema e estilos globais
+  services/
+    api.js                  cliente HTTP
+  composables/              estados e regras por domínio
+  components/
+    ui/                     componentes comuns
+    cadastros/              abas de cadastros
+    inventario/             abas e painéis do inventário
+    movements/              painéis de movimentações
+  views/
+    DashboardView.vue
+    CatalogView.vue
+    EditHierarchyView.vue
+    InventarioView.vue
+    MovimentacoesView.vue
+    OrdensServicoView.vue
+    MotoresView.vue
+    CadastrosView.vue
+```
+
+## Scripts
+
+```powershell
+npm run dev             # Vite em modo dev
+npm run build           # build frontend
+npm run server          # API usando .env
+npm run server:dev      # API usando .env.dev
+npm run server:prod     # API usando .env.prod
+npm start dev           # build + servidor dev
+npm start master        # build + servidor prod/master
+npm run db:seed:dev     # popula banco dev com seed
+npm run db:reset:prod   # limpa banco prod
+npm test                # testes node:test
 ```
