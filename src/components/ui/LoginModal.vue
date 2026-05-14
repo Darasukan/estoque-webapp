@@ -46,6 +46,15 @@ function onCancel() {
       @keydown.escape="onCancel"
     >
       <div class="ds-panel w-full max-w-sm mx-4 p-6" @click.stop>
+        <div class="mb-5 flex justify-center">
+          <img
+            src="/local-brand/logo.jpg"
+            alt="Colorindo Beneficiamento Textil"
+            class="max-h-28 w-auto rounded-lg bg-white object-contain p-2"
+            @error="$event.currentTarget.style.display = 'none'"
+          />
+        </div>
+
         <!-- Header -->
         <div class="flex items-center gap-3 mb-5">
           <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center">

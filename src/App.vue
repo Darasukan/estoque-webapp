@@ -497,6 +497,15 @@ function handleGlobalShortcutKeydown(event) {
         <div class="flex items-center justify-between px-5 h-12">
           <!-- Tabs -->
           <div class="flex items-center gap-1">
+            <div class="mr-2 flex items-center gap-2 border-r border-gray-200 pr-3 dark:border-white/[0.08]">
+              <img
+                src="/local-brand/favicon.png"
+                alt="Colorindo"
+                class="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
+                @error="$event.currentTarget.style.display = 'none'"
+              />
+              <span class="hidden text-sm font-semibold text-gray-800 dark:text-gray-100 sm:inline">Colorindo</span>
+            </div>
             <button
               v-for="tab in tabs"
               :key="tab.id"
