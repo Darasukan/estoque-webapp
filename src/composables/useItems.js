@@ -229,9 +229,13 @@ export function useItems() {
    * Returns { ok: true, variation } on success
    * Returns { ok: false, error: string } on validation failure
    */
-  async function addVariation(itemId, values = {}, stock = 0, minStock = 0, extras = {}, location = '', destinations = []) {
+  async function addVariation(itemId, values = {}, stock = 0, minStock = null, extras = {}, location = '', destinations = []) {
     const sanitizedStock = _sanitizeNumber(stock)
-    const sanitizedMinStock = _sanitizeNumber(minStock)
+    const item = items.value.find(i => i.id === itemId)
+    const inheritedMinStock = minStock === null || minStock === undefined
+      ? item?.minStock
+      : minStock
+    const sanitizedMinStock = _sanitizeNumber(inheritedMinStock)
     if (_hasDuplicateVariation(itemId, values)) {
       return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
     }

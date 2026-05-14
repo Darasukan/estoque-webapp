@@ -73,8 +73,7 @@ function switchSubTab(tab) {
   const keepMovementContext =
     movementSubTabs.includes(activeSubTab.value) &&
     movementSubTabs.includes(tab) &&
-    step.value > 1 &&
-    batchItems.value.length === 0
+    step.value > 1
 
   suppressFlowReset.value = true
   activeSubTab.value = tab
@@ -83,18 +82,6 @@ function switchSubTab(tab) {
     nextTick(() => {
       suppressFlowReset.value = false
       if (step.value === 3) focusRef(qtyInputEl)
-    })
-    return
-  }
-
-  if (movementSubTabs.includes(activeSubTab.value) && movementSubTabs.includes(tab) && batchItems.value.length) {
-    const currentBatch = [...batchItems.value]
-    suppressFlowReset.value = true
-    activeSubTab.value = tab
-    resetFlow()
-    batchItems.value = currentBatch
-    nextTick(() => {
-      suppressFlowReset.value = false
     })
     return
   }
@@ -128,17 +115,8 @@ const form = ref({
 const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
 const movementFormAttempted = ref(false)
-const batchConfirmAttempted = ref(false)
 const selectedWorkOrderId = ref('') // optional OS link for saída
-const batchItems = ref([])
-const batchPreviewOpen = ref(false)
 const suppressFlowReset = ref(false)
-
-const batchKind = computed(() => {
-  const types = new Set(batchItems.value.map(i => i.type))
-  if (types.size === 1) return types.has('entrada') ? 'entrada' : 'saida'
-  return 'mixed'
-})
 
 function selectDocType(v) {
   docType.value = v
@@ -167,15 +145,12 @@ function resetFlow() {
   docType.value = 'sem'
   confirmPending.value = false
   movementFormAttempted.value = false
-  batchConfirmAttempted.value = false
   selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
   docDropdownOpen.value = false
-  batchItems.value = []
-  batchPreviewOpen.value = false
   nextTick(() => focusRef(searchInputEl))
 }
 
@@ -574,29 +549,9 @@ const parsedUnitCost = computed(() => {
   return Number.isFinite(n) && n >= 0 ? n : null
 })
 
-function batchStockDeltaForVariation(variationId) {
-  return batchItems.value
-    .filter(i => i.variationId === variationId)
-    .reduce((sum, i) => sum + (i.type === 'entrada' ? i.qty : -i.qty), 0)
-}
-
 const selectedAvailableStock = computed(() => {
   if (activeSubTab.value !== 'saida' || !selectedVariation.value) return selectedVariation.value?.stock || 0
-  return selectedVariation.value.stock + batchStockDeltaForVariation(selectedVariation.value.id)
-})
-
-const currentBatchDelta = computed(() => {
-  if (!selectedVariation.value) return 0
-  return batchStockDeltaForVariation(selectedVariation.value.id)
-})
-
-const projectedStockAfterCurrent = computed(() => {
-  if (!selectedVariation.value) return 0
-  const currentStock = selectedVariation.value.stock + currentBatchDelta.value
-  if (!parsedQty.value) return currentStock
-  return activeSubTab.value === 'entrada'
-    ? currentStock + parsedQty.value
-    : currentStock - parsedQty.value
+  return selectedVariation.value.stock
 })
 
 const saidaExceedsStock = computed(() =>
@@ -665,13 +620,9 @@ async function ensureSuppliersForLines(lines) {
   for (const name of names) await ensureSupplier(name)
 }
 
-async function addCurrentToBatch() {
-  if (!canConfirm.value || !selectedVariation.value || !selectedItem.value) return
-  const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
-  if (!liveVar) { error('Variação não encontrada.'); return }
-
-  batchItems.value.push({
-    uid: `batch_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+function currentMovementLine(liveVar) {
+  return {
+    uid: `movement_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: activeSubTab.value,
     variationId: liveVar.id,
     itemId: selectedItem.value.id,
@@ -684,116 +635,50 @@ async function addCurrentToBatch() {
     variationExtras: { ...(liveVar.extras || {}) },
     qty: parsedQty.value,
     ...commonMovementFields(),
-  })
-
-  batchConfirmAttempted.value = false
-  success('Item adicionado ao lote.')
-  resetCurrentItem()
+  }
 }
 
-function tryAddCurrentToBatch() {
-  movementFormAttempted.value = true
-  if (!canConfirm.value) {
-    if (formBlockReason.value) error(formBlockReason.value)
-    return
-  }
-  addCurrentToBatch()
-}
+async function confirmCurrentMovement() {
+  if (confirmPending.value || !canConfirm.value || !selectedVariation.value || !selectedItem.value) return
+  const liveVar = variations.value.find(v => v.id === selectedVariation.value.id)
+  if (!liveVar) { error('Variacao nao encontrada.'); return }
 
-function removeBatchItem(uid) {
-  batchItems.value = batchItems.value.filter(i => i.uid !== uid)
-  if (!batchItems.value.length) batchPreviewOpen.value = false
-}
-
-function editBatchItem(line) {
-  const item = items.value.find(i => i.id === line.itemId)
-  const variation = variations.value.find(v => v.id === line.variationId)
-  if (!item || !variation) {
-    error('Item do lote nao foi encontrado para edicao.')
-    return
-  }
-
-  removeBatchItem(line.uid)
-  suppressFlowReset.value = true
-  activeSubTab.value = line.type || 'entrada'
-  selectedItem.value = item
-  selectedVariation.value = variation
-  step.value = 3
-  form.value = {
-    qty: String(line.qty || ''),
-    supplier: line.supplier || '',
-    unitCost: line.unitCost ?? '',
-    requestedBy: line.requestedBy || '',
-    requestedByPersonId: line.requestedByPersonId || '',
-    destination: line.destination || '',
-    docRef: '',
-    note: line.note || '',
-  }
-  const doc = String(line.docRef || '')
-  if (doc.startsWith('NF ')) {
-    docType.value = 'nf'
-    form.value.docRef = doc.slice(3)
-  } else if (doc.startsWith('PC ')) {
-    docType.value = 'pedido'
-    form.value.docRef = doc.slice(3)
-  } else {
-    docType.value = 'sem'
-  }
-  personSelectVal.value = line.requestedBy || ''
-  destSelectVal.value = line.destination || ''
-  movementDestinationId.value = movementDestinationIdForName(line.destination)
-  setViewingItem(item.id)
-  nextTick(() => {
-    suppressFlowReset.value = false
-    focusRef(qtyInputEl)
-  })
-}
-
-function clearBatch() {
-  batchItems.value = []
-  batchPreviewOpen.value = false
-  batchConfirmAttempted.value = false
-}
-
-async function confirmBatch() {
-  if (confirmPending.value) return
-  if (!batchItems.value.length) {
-    batchConfirmAttempted.value = true
-    error('Adicione ao menos um item ao lote antes de confirmar.')
-    return
-  }
-  if (batchItems.value.some(i => i.type === 'saida' && (!String(i.requestedBy || '').trim() || !String(i.destination || '').trim()))) {
-    error('Preencha quem retirou e o local de destino em todos os itens do lote.')
-    return
-  }
-
+  const line = currentMovementLine(liveVar)
   const woId = selectedWorkOrderId.value
 
   try {
     confirmPending.value = true
-    await ensureSuppliersForLines(batchItems.value)
-    const created = await addMovementBatch(batchKind.value, batchItems.value, {})
-    for (const m of created) {
-      const liveVar = variations.value.find(v => v.id === m.variationId)
-      if (liveVar) liveVar.stock = m.stockAfter
+    await ensureSuppliersForLines([line])
+    const created = await addMovementBatch(activeSubTab.value, [line], {})
+    for (const movement of created) {
+      const updatedVar = variations.value.find(v => v.id === movement.variationId)
+      if (updatedVar) updatedVar.stock = movement.stockAfter
     }
 
-    if (woId) {
+    if (woId && activeSubTab.value === 'saida') {
       try {
-        for (const movement of created.filter(m => m.type === 'saida')) await linkMovement(woId, movement.id)
+        for (const movement of created) await linkMovement(woId, movement.id)
       } catch (e) {
-        error('Lote criado, mas houve falha ao vincular algum item à OS: ' + e.message)
+        error('Movimentacao criada, mas houve falha ao vincular a OS: ' + e.message)
       }
     }
 
-    const typeLabel = batchKind.value === 'entrada' ? 'Entrada' : batchKind.value === 'saida' ? 'Saída' : 'Movimentação'
-    success(`${typeLabel} em lote registrada com sucesso.`)
-    resetFlow()
+    success(`${activeSubTab.value === 'entrada' ? 'Entrada' : 'Saida'} registrada com sucesso.`)
+    resetCurrentItem()
   } catch (e) {
     error(e.message)
   } finally {
     confirmPending.value = false
   }
+}
+
+function tryConfirmCurrentMovement() {
+  movementFormAttempted.value = true
+  if (!canConfirm.value) {
+    if (formBlockReason.value) error(formBlockReason.value)
+    return
+  }
+  confirmCurrentMovement()
 }
 
 // ===== Helpers =====
@@ -810,22 +695,6 @@ function variationLabel(v, item) {
     if (val) parts.push(`${k}: ${val}`)
   }
   return parts.length ? parts.join(' · ') : '—'
-}
-
-function batchVariationLabel(line) {
-  const parts = [
-    ...Object.entries(line.variationValues || {}).map(([k, val]) => `${k}: ${val}`),
-    ...Object.entries(line.variationExtras || {}).filter(([, val]) => val).map(([k, val]) => `${k}: ${val}`),
-  ]
-  return parts.length ? parts.join(' · ') : '—'
-}
-
-function batchLineDetails(line) {
-  const details = line.type === 'entrada'
-    ? [line.supplier && `Fornecedor: ${line.supplier}`, line.unitCost != null && `Custo: ${formatCurrency(line.unitCost)}`, line.docRef && `Doc: ${line.docRef}`]
-    : [line.requestedBy && `Retirado por: ${line.requestedBy}`, line.destination && `Destino: ${line.destination}`, line.docRef && `Doc: ${line.docRef}`]
-  if (line.note) details.push(`Obs: ${line.note}`)
-  return details.filter(Boolean).join(' · ')
 }
 
 function formatCurrency(value) {
@@ -1153,72 +1022,6 @@ defineExpose({
         </div>
       </div>
 
-        <button
-          v-if="batchItems.length && step !== 3"
-          class="inline-flex items-center gap-2 rounded-lg border border-primary-500/60 bg-primary-600/10 px-3 py-2 text-xs font-semibold text-primary-700 hover:bg-primary-600 hover:text-white dark:text-primary-300 dark:hover:text-white transition-colors"
-          @click="batchPreviewOpen = true"
-        >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
-          Ver lote
-          <span class="rounded-full bg-primary-600 px-2 py-0.5 text-[11px] text-white">{{ batchItems.length }}</span>
-        </button>
-      </div>
-
-      <div
-        v-if="batchPreviewOpen && batchItems.length && step !== 3"
-        class="fixed inset-0 z-40 bg-gray-950/60"
-        @click="batchPreviewOpen = false"
-      ></div>
-
-      <!-- Batch cart -->
-      <div v-if="batchPreviewOpen && batchItems.length && step !== 3" class="fixed inset-x-3 sm:inset-x-6 top-20 sm:top-24 bottom-4 sm:bottom-6 z-50 flex flex-col rounded-xl border border-primary-600 bg-white dark:bg-gray-900 overflow-hidden shadow-2xl shadow-gray-950/40">
-        <div class="px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Lote de {{ batchKind === 'mixed' ? 'movimentações' : batchKind === 'entrada' ? 'entrada' : 'saída' }}
-            </h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ batchItems.length }} item{{ batchItems.length !== 1 ? 's' : '' }} aguardando confirmação</p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              @click="batchPreviewOpen = false"
-            >Fechar</button>
-            <button
-              class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              @click="clearBatch"
-            >Limpar</button>
-            <button
-              class="px-4 py-2 text-sm font-medium rounded-lg text-white"
-              :class="confirmPending ? 'bg-gray-400 cursor-not-allowed' : batchKind === 'entrada' ? 'bg-green-600 hover:bg-green-700' : batchKind === 'saida' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'"
-              :disabled="confirmPending"
-              @click="confirmBatch"
-            >{{ confirmPending ? 'Confirmando...' : 'Confirmar lote' }}</button>
-          </div>
-
-        </div>
-        <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
-          <div v-for="line in batchItems" :key="line.uid" class="px-4 py-3 flex items-center gap-3">
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                <span
-                  class="mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  :class="line.type === 'entrada'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
-                >{{ line.type === 'entrada' ? 'Entrada' : 'Saída' }}</span>
-                {{ line.itemName }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
-              <p v-if="batchLineDetails(line)" class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ batchLineDetails(line) }}</p>
-            </div>
-            <span class="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ line.qty }} {{ line.itemUnit }}</span>
-            <button class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300" @click="editBatchItem(line)">Editar</button>
-            <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>
-          </div>
-        </div>
       </div>
 
       <!-- ===== STEP 1: Catalog browser ===== -->
@@ -1614,7 +1417,7 @@ defineExpose({
         </div>
 
         <!-- Form body -->
-        <div class="bg-white dark:bg-gray-900 p-5 grid grid-cols-1 xl:grid-cols-2 gap-5 rounded-b-xl">
+        <div class="bg-white dark:bg-gray-900 p-5 rounded-b-xl">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 content-start">
 
           <!-- Quantidade -->
@@ -1634,15 +1437,15 @@ defineExpose({
                 :class="movementFormAttempted && saidaExceedsStock
                   ? 'border-amber-400 dark:border-amber-700 focus:border-amber-500 focus:ring-amber-500'
                   : 'border-gray-300 dark:border-gray-600 focus:border-primary-500 focus:ring-primary-500'"
-                @keydown.enter.prevent="tryAddCurrentToBatch"
+                @keydown.enter.prevent="tryConfirmCurrentMovement"
               />
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ selectedItem?.unit }}</span>
             </div>
             <p v-if="movementFormAttempted && saidaExceedsStock" class="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Quantidade excede o estoque disponível para este lote ({{ selectedAvailableStock }} {{ selectedItem?.unit }}).
+              Quantidade excede o estoque disponivel ({{ selectedAvailableStock }} {{ selectedItem?.unit }}).
             </p>
             <p v-else-if="activeSubTab === 'saida' && selectedVariation" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Disponível para este lote: {{ selectedAvailableStock }} {{ selectedItem?.unit }}
+              Disponivel: {{ selectedAvailableStock }} {{ selectedItem?.unit }}
             </p>
           </div>
 
@@ -1876,19 +1679,20 @@ defineExpose({
           <div class="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-wrap items-center gap-3">
             <button
               class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-              :class="canConfirm
+              :class="canConfirm && !confirmPending
                 ? activeSubTab === 'entrada'
                   ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-red-600 hover:bg-red-700 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
-              :aria-disabled="!canConfirm"
-              @click="tryAddCurrentToBatch"
+              :aria-disabled="!canConfirm || confirmPending"
+              :disabled="confirmPending"
+              @click="tryConfirmCurrentMovement"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
                 <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 19.5v-15m0 15-6-6m6 6 6-6" />
               </svg>
-              Adicionar ao lote
+              {{ confirmPending ? 'Registrando...' : activeSubTab === 'entrada' ? 'Registrar entrada' : 'Registrar saida' }}
             </button>
             <button
               class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
@@ -1901,84 +1705,6 @@ defineExpose({
             </p>
           </div>
           </div>
-
-          <aside class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-4 self-start">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Status do lote</p>
-                <h3 class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {{ batchItems.length ? `${batchItems.length} item${batchItems.length !== 1 ? 's' : ''} no lote` : 'Lote vazio' }}
-                </h3>
-              </div>
-              <span
-                class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                :class="activeSubTab === 'entrada'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'"
-              >
-                {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saida' }}
-              </span>
-            </div>
-
-            <div class="mt-4 grid grid-cols-2 gap-2">
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">No lote</p>
-                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {{ currentBatchDelta > 0 ? '+' : '' }}{{ currentBatchDelta }} {{ selectedItem?.unit }}
-                </p>
-              </div>
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-                <p class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Apos adicionar</p>
-                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {{ projectedStockAfterCurrent }} {{ selectedItem?.unit }}
-                </p>
-              </div>
-            </div>
-
-            <div v-if="batchItems.length" class="mt-4 max-h-72 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-              <div v-for="line in batchItems" :key="line.uid" class="p-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ line.itemName }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ batchVariationLabel(line) }}</p>
-                    <p v-if="batchLineDetails(line)" class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ batchLineDetails(line) }}</p>
-                  </div>
-                  <span class="shrink-0 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ line.qty }} {{ line.itemUnit }}</span>
-                </div>
-                <div class="mt-2 flex items-center gap-3">
-                  <button class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300" @click="editBatchItem(line)">Editar</button>
-                  <button class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400" @click="removeBatchItem(line.uid)">Remover</button>
-                </div>
-              </div>
-            </div>
-
-            <div v-else class="mt-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-              Adicione o item atual para montar o lote antes de confirmar.
-            </div>
-
-            <div class="mt-4 flex flex-wrap gap-2">
-              <button
-                class="px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors"
-                :class="batchItems.length && !confirmPending
-                  ? batchKind === 'entrada'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : batchKind === 'saida'
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-primary-600 hover:bg-primary-700'
-                  : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'"
-                :disabled="confirmPending"
-                @click="confirmBatch"
-              >{{ confirmPending ? 'Confirmando...' : 'Confirmar lote' }}</button>
-              <button
-                v-if="batchItems.length"
-                class="px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                @click="clearBatch"
-              >Limpar</button>
-            </div>
-            <p v-if="batchConfirmAttempted && !batchItems.length" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              Adicione ao menos um item ao lote antes de confirmar.
-            </p>
-          </aside>
         </div>
 
       </div>

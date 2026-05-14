@@ -11,6 +11,7 @@ import ConfirmInline from '../components/ui/ConfirmInline.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
+import AttributeBadges from '../components/ui/AttributeBadges.vue'
 
 const isLoggedIn = inject('isLoggedIn')
 const canManageMotorOrders = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
@@ -55,7 +56,11 @@ const selectedEventCountType = ref('rebobinado')
 const motorMaterialSearch = ref('')
 const motorMaterialVariationId = ref('')
 const motorMaterialNote = ref('')
-const motorMaterialPickerOpen = ref(false)
+const motorMaterialSelectorOpen = ref(false)
+const motorMaterialGroup = ref('')
+const motorMaterialCategory = ref('')
+const motorMaterialSubcategory = ref('')
+const motorMaterialItemId = ref('')
 const motorSaving = ref(false)
 const motorFormAttempted = ref(false)
 
@@ -172,6 +177,7 @@ const visibleMotorFormBlockReason = computed(() =>
 )
 
 const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
+const DIRECT_ITEMS_SUBCATEGORY = 'Itens diretos'
 
 function variationLabel(variation, item) {
   const values = Object.entries(variation.values || {}).map(([key, value]) => `${key}: ${value}`)
@@ -199,6 +205,13 @@ const selectedMotorMaterialIds = computed(() => {
   return new Set((motorMaterials.value[selectedMotor.value.id] || []).map(material => material.variationId))
 })
 
+const availableMotorMaterialRows = computed(() =>
+  variations.value
+    .map(variation => ({ variation, item: itemById.value.get(variation.itemId) }))
+    .filter(row => row.item)
+    .filter(row => !selectedMotorMaterialIds.value.has(row.variation.id))
+)
+
 const motorMaterialOptions = computed(() => {
   const terms = normalizeText(motorMaterialSearch.value).split(/\s+/).filter(Boolean)
   return variations.value
@@ -217,8 +230,57 @@ const motorMaterialOptions = computed(() => {
       return terms.every(term => haystack.includes(term))
     })
     .sort((a, b) => materialOptionLabel(a).localeCompare(materialOptionLabel(b), 'pt-BR', { sensitivity: 'base', numeric: true }))
-    .slice(0, 40)
 })
+
+function uniqueSorted(values) {
+  return [...new Set(values.filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }))
+}
+
+const motorMaterialGroups = computed(() =>
+  uniqueSorted(availableMotorMaterialRows.value.map(row => row.item.group || 'Sem grupo'))
+)
+
+const motorMaterialCategories = computed(() => {
+  if (!motorMaterialGroup.value) return []
+  return uniqueSorted(
+    availableMotorMaterialRows.value
+      .filter(row => (row.item.group || 'Sem grupo') === motorMaterialGroup.value)
+      .map(row => row.item.category || 'Sem categoria')
+  )
+})
+
+const motorMaterialSubcategories = computed(() => {
+  if (!motorMaterialGroup.value || !motorMaterialCategory.value) return []
+  const scopedRows = availableMotorMaterialRows.value.filter(row =>
+    (row.item.group || 'Sem grupo') === motorMaterialGroup.value &&
+    (row.item.category || 'Sem categoria') === motorMaterialCategory.value
+  )
+  const subs = uniqueSorted(scopedRows.map(row => row.item.subcategory))
+  if (subs.length && scopedRows.some(row => !row.item.subcategory)) return [...subs, DIRECT_ITEMS_SUBCATEGORY]
+  return subs
+})
+
+const motorMaterialItems = computed(() => {
+  if (!motorMaterialGroup.value || !motorMaterialCategory.value) return []
+  const hasSubcategories = motorMaterialSubcategories.value.length > 0
+  const byId = new Map()
+  for (const row of availableMotorMaterialRows.value) {
+    if ((row.item.group || 'Sem grupo') !== motorMaterialGroup.value) continue
+    if ((row.item.category || 'Sem categoria') !== motorMaterialCategory.value) continue
+    if (motorMaterialSubcategory.value === DIRECT_ITEMS_SUBCATEGORY && row.item.subcategory) continue
+    else if (hasSubcategories && motorMaterialSubcategory.value && row.item.subcategory !== motorMaterialSubcategory.value) continue
+    else if (hasSubcategories && !motorMaterialSubcategory.value) continue
+    if (!byId.has(row.item.id)) byId.set(row.item.id, row.item)
+  }
+  return [...byId.values()].sort((a, b) => compareText(a.name, b.name))
+})
+
+const motorMaterialItemVariations = computed(() =>
+  availableMotorMaterialRows.value
+    .filter(row => row.item.id === motorMaterialItemId.value)
+    .sort((a, b) => variationLabel(a.variation, a.item).localeCompare(variationLabel(b.variation, b.item), 'pt-BR', { sensitivity: 'base', numeric: true }))
+)
 
 const selectedMotorMaterialOption = computed(() => {
   if (!motorMaterialVariationId.value) return null
@@ -229,27 +291,83 @@ const selectedMotorMaterialOption = computed(() => {
 
 function selectMotorMaterial(row) {
   motorMaterialVariationId.value = row.variation.id
-  motorMaterialSearch.value = materialOptionLabel(row)
-  motorMaterialPickerOpen.value = false
+  motorMaterialSearch.value = ''
+  motorMaterialGroup.value = row.item.group || 'Sem grupo'
+  motorMaterialCategory.value = row.item.category || 'Sem categoria'
+  motorMaterialSubcategory.value = row.item.subcategory || (motorMaterialSubcategories.value.includes(DIRECT_ITEMS_SUBCATEGORY) ? DIRECT_ITEMS_SUBCATEGORY : '')
+  motorMaterialItemId.value = row.item.id
+  motorMaterialSelectorOpen.value = false
 }
 
-function onMotorMaterialSearchInput() {
-  motorMaterialVariationId.value = ''
-  motorMaterialPickerOpen.value = true
+function openMotorMaterialSelector() {
+  motorMaterialSelectorOpen.value = true
 }
 
-function onMotorMaterialSearchKeydown(event) {
-  if (event.key !== 'Enter') return
-  if (motorMaterialOptions.value.length === 1) {
-    event.preventDefault()
-    selectMotorMaterial(motorMaterialOptions.value[0])
+function resetMotorMaterialPath(level = 'root') {
+  if (level === 'root') {
+    motorMaterialGroup.value = ''
+    motorMaterialCategory.value = ''
+    motorMaterialSubcategory.value = ''
+    motorMaterialItemId.value = ''
+    return
   }
+  if (level === 'group') {
+    motorMaterialCategory.value = ''
+    motorMaterialSubcategory.value = ''
+    motorMaterialItemId.value = ''
+    return
+  }
+  if (level === 'category') {
+    motorMaterialSubcategory.value = ''
+    motorMaterialItemId.value = ''
+    return
+  }
+  motorMaterialItemId.value = ''
 }
 
-function closeMotorMaterialPickerSoon() {
-  window.setTimeout(() => {
-    motorMaterialPickerOpen.value = false
-  }, 120)
+function selectMotorMaterialGroup(group) {
+  motorMaterialGroup.value = group
+  resetMotorMaterialPath('group')
+}
+
+function selectMotorMaterialCategory(category) {
+  motorMaterialCategory.value = category
+  resetMotorMaterialPath('category')
+}
+
+function selectMotorMaterialSubcategory(subcategory) {
+  motorMaterialSubcategory.value = subcategory
+  motorMaterialItemId.value = ''
+}
+
+function motorMaterialRowsForGroup(group) {
+  return availableMotorMaterialRows.value.filter(row => (row.item.group || 'Sem grupo') === group)
+}
+
+function motorMaterialRowsForCategory(category) {
+  return availableMotorMaterialRows.value.filter(row =>
+    (row.item.group || 'Sem grupo') === motorMaterialGroup.value &&
+    (row.item.category || 'Sem categoria') === category
+  )
+}
+
+function motorMaterialRowsForSubcategory(subcategory) {
+  return availableMotorMaterialRows.value.filter(row => {
+    if ((row.item.group || 'Sem grupo') !== motorMaterialGroup.value) return false
+    if ((row.item.category || 'Sem categoria') !== motorMaterialCategory.value) return false
+    if (subcategory === DIRECT_ITEMS_SUBCATEGORY) return !row.item.subcategory
+    return row.item.subcategory === subcategory
+  })
+}
+
+function motorMaterialItemStock(item) {
+  return availableMotorMaterialRows.value
+    .filter(row => row.item.id === item.id)
+    .reduce((sum, row) => sum + Number(row.variation.stock || 0), 0)
+}
+
+function motorMaterialStockTotal(rows) {
+  return rows.reduce((sum, row) => sum + Number(row.variation.stock || 0), 0)
 }
 
 const selectedMotorMaterials = computed(() => {
@@ -454,7 +572,7 @@ async function addSelectedMotorMaterial() {
     motorMaterialVariationId.value = ''
     motorMaterialSearch.value = ''
     motorMaterialNote.value = ''
-    motorMaterialPickerOpen.value = false
+    motorMaterialSelectorOpen.value = false
     success('Material vinculado ao motor.')
   } catch (e) {
     error(e.message)
@@ -585,55 +703,24 @@ function workOrderEndLabel(order) {
       </div>
 
       <div v-if="isLoggedIn" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 lg:grid-cols-[1fr_1fr_auto]">
-        <div class="relative">
-          <label class="ds-label">Buscar material</label>
-          <input
-            v-model="motorMaterialSearch"
-            class="ds-input"
-            placeholder="Buscar por nome, caminho, atributo ou local..."
-            autocomplete="off"
-            @input="onMotorMaterialSearchInput"
-            @focus="motorMaterialPickerOpen = true"
-            @blur="closeMotorMaterialPickerSoon"
-            @keydown="onMotorMaterialSearchKeydown"
-          />
-          <select v-model="motorMaterialVariationId" class="hidden">
-            <option value="">Selecione uma variação</option>
-            <option v-for="row in motorMaterialOptions" :key="row.variation.id" :value="row.variation.id">
-              {{ materialOptionLabel(row) }}
-            </option>
-          </select>
-          <div
-            v-if="motorMaterialPickerOpen"
-            class="absolute left-0 right-0 top-[4.6rem] z-30 max-h-80 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        <div>
+          <label class="ds-label">Material</label>
+          <button
+            type="button"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            @click="openMotorMaterialSelector"
           >
-            <button
-              v-for="row in motorMaterialOptions"
-              :key="row.variation.id"
-              type="button"
-              class="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left transition last:border-b-0 hover:bg-primary-50 dark:border-gray-800 dark:hover:bg-primary-900/20"
-              @mousedown.prevent="selectMotorMaterial(row)"
-            >
-              <span class="min-w-0">
-                <span class="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ row.item.name }}</span>
-                <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ materialOptionPath(row) }}</span>
-                <span class="mt-1 block truncate text-xs text-primary-700 dark:text-primary-300">{{ materialOptionDetails(row) || 'Sem variacao detalhada' }}</span>
-              </span>
-              <span class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
-                <span class="block font-semibold" :class="row.variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">{{ row.variation.stock }} {{ row.item.unit }}</span>
-                <span>min. {{ row.variation.minStock || '-' }}</span>
-              </span>
-            </button>
-            <div v-if="!motorMaterialOptions.length" class="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-              Nenhum material encontrado ou todas as variacoes encontradas ja estao vinculadas.
-            </div>
-          </div>
+            <span v-if="selectedMotorMaterialOption" class="block">
+              <span class="block font-semibold">{{ selectedMotorMaterialOption.item.name }}</span>
+              <AttributeBadges class="mt-1" :item="selectedMotorMaterialOption.item" :variation="selectedMotorMaterialOption.variation" compact />
+            </span>
+            <span v-else class="text-gray-500 dark:text-gray-400">Selecionar por blocos do catalogo...</span>
+          </button>
           <div
             v-if="selectedMotorMaterialOption"
             class="mt-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-200"
           >
-            Selecionado: <strong>{{ selectedMotorMaterialOption.item.name }}</strong>
-            <span class="text-primary-500 dark:text-primary-300">- {{ materialOptionDetails(selectedMotorMaterialOption) || materialOptionPath(selectedMotorMaterialOption) }}</span>
+            <span class="font-semibold">Selecionado:</span> {{ materialOptionPath(selectedMotorMaterialOption) || selectedMotorMaterialOption.item.name }}
           </div>
         </div>
         <label>
@@ -665,7 +752,9 @@ function workOrderEndLabel(order) {
                 <p class="font-medium text-gray-900 dark:text-gray-100">{{ item.name }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ item.group }} > {{ item.category }} > {{ item.subcategory }}</p>
               </td>
-              <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ variationLabel(variation, item) }}</td>
+              <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                <AttributeBadges :item="item" :variation="variation" compact />
+              </td>
               <td class="px-4 py-3 text-center">
                 <span class="font-semibold" :class="variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">{{ variation.stock }}</span>
                 <span class="ml-1 text-xs text-gray-400">{{ item.unit }}</span>
@@ -684,6 +773,192 @@ function workOrderEndLabel(order) {
         title="Nenhum material vinculado."
         text="Vincule rolamentos, tampas, buchas ou outras peças cadastradas no catalogo."
       />
+
+      <div
+        v-if="motorMaterialSelectorOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+        @click.self="motorMaterialSelectorOpen = false"
+      >
+        <section class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+          <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Materiais do Motor</p>
+              <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">Selecionar material do catálogo</h3>
+            </div>
+            <AppButton variant="ghost" size="sm" @click="motorMaterialSelectorOpen = false">Fechar</AppButton>
+          </header>
+
+          <div class="border-b border-gray-200 p-4 dark:border-gray-700">
+            <input
+              v-model="motorMaterialSearch"
+              type="search"
+              placeholder="Buscar por nome, caminho, atributo ou local..."
+              class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            />
+          </div>
+
+          <div class="min-h-0 flex-1 overflow-auto p-4">
+            <div v-if="motorMaterialSearch.trim()" class="space-y-2">
+              <button
+                v-for="row in motorMaterialOptions.slice(0, 40)"
+                :key="row.variation.id"
+                type="button"
+                class="flex w-full items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left transition-colors hover:border-primary-400 hover:bg-primary-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500 dark:hover:bg-primary-950/20"
+                @click="selectMotorMaterial(row)"
+              >
+                <span class="min-w-0">
+                  <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ row.item.name }}</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">{{ materialOptionPath(row) || 'Sem hierarquia' }}</span>
+                  <AttributeBadges class="mt-2" :item="row.item" :variation="row.variation" compact />
+                </span>
+                <span class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
+                  <span class="block font-semibold" :class="row.variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">{{ row.variation.stock }} {{ row.item.unit }}</span>
+                  <span>min. {{ row.variation.minStock || '-' }}</span>
+                </span>
+              </button>
+              <p v-if="!motorMaterialOptions.length" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                Nenhum material encontrado ou todas as variações encontradas já estão vinculadas.
+              </p>
+            </div>
+
+            <div v-else class="space-y-4">
+              <div v-if="motorMaterialGroup" class="flex flex-wrap items-center gap-1.5 text-sm">
+                <button type="button" class="font-medium text-primary-600 hover:underline dark:text-primary-400" @click="resetMotorMaterialPath('root')">Catálogo</button>
+                <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                <button
+                  v-if="motorMaterialCategory"
+                  type="button"
+                  class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                  @click="resetMotorMaterialPath('group')"
+                >{{ motorMaterialGroup }}</button>
+                <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ motorMaterialGroup }}</span>
+                <template v-if="motorMaterialCategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <button
+                    v-if="motorMaterialSubcategory || motorMaterialItemId"
+                    type="button"
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetMotorMaterialPath('category')"
+                  >{{ motorMaterialCategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ motorMaterialCategory }}</span>
+                </template>
+                <template v-if="motorMaterialSubcategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <button
+                    v-if="motorMaterialItemId"
+                    type="button"
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetMotorMaterialPath('subcategory')"
+                  >{{ motorMaterialSubcategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ motorMaterialSubcategory }}</span>
+                </template>
+              </div>
+
+              <div v-if="!motorMaterialGroup" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="group in motorMaterialGroups"
+                  :key="group"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMotorMaterialGroup(group)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ group }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ motorMaterialRowsForGroup(group).length }} var. · Estoque: {{ motorMaterialStockTotal(motorMaterialRowsForGroup(group)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="!motorMaterialCategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="category in motorMaterialCategories"
+                  :key="category"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMotorMaterialCategory(category)"
+                >
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ category }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ motorMaterialRowsForCategory(category).length }} var. · Estoque: {{ motorMaterialStockTotal(motorMaterialRowsForCategory(category)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="motorMaterialSubcategories.length && !motorMaterialSubcategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="subcategory in motorMaterialSubcategories"
+                  :key="subcategory"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMotorMaterialSubcategory(subcategory)"
+                >
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ subcategory }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ motorMaterialRowsForSubcategory(subcategory).length }} var. · Estoque: {{ motorMaterialStockTotal(motorMaterialRowsForSubcategory(subcategory)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="!motorMaterialItemId" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="item in motorMaterialItems"
+                  :key="item.id"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-4 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="motorMaterialItemId = item.id"
+                >
+                  <p class="mb-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <p class="mb-1 truncate text-xs text-gray-400 dark:text-gray-500">{{ [item.group, item.category, item.subcategory].filter(Boolean).join(' > ') || 'Sem hierarquia' }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ availableMotorMaterialRows.filter(row => row.item.id === item.id).length }} var. · Estoque: {{ motorMaterialItemStock(item) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else>
+                <div v-if="motorMaterialItemVariations.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                    <thead class="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                      <tr>
+                        <th class="px-4 py-3">Variação</th>
+                        <th class="px-4 py-3 text-right">Estoque</th>
+                        <th class="px-4 py-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-900">
+                      <tr
+                        v-for="row in motorMaterialItemVariations"
+                        :key="row.variation.id"
+                        class="cursor-pointer transition-colors hover:bg-primary-50/70 dark:hover:bg-primary-950/20"
+                        @click="selectMotorMaterial(row)"
+                      >
+                        <td class="px-4 py-3 text-gray-900 dark:text-gray-100">
+                          <p class="font-semibold">{{ row.item.name }}</p>
+                          <AttributeBadges class="mt-1" :item="row.item" :variation="row.variation" compact />
+                        </td>
+                        <td class="px-4 py-3 text-right font-semibold" :class="row.variation.stock <= 0 ? 'text-red-500' : 'text-green-500'">
+                          {{ row.variation.stock }} {{ row.item.unit }}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                          <AppButton variant="primary" size="xs" @click.stop="selectMotorMaterial(row)">Selecionar</AppButton>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  Nenhuma variação disponível para este item.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </section>
   </div>
 

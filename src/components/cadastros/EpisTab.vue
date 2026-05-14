@@ -6,6 +6,7 @@ import { usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import { useToast } from '../../composables/useToast.js'
+import AttributeBadges from '../ui/AttributeBadges.vue'
 
 const emit = defineEmits(['quick-movement'])
 const isLoggedIn = inject('isLoggedIn')
@@ -60,6 +61,7 @@ const targetTypeLabels = {
   item: 'Item',
   variacao: 'Variacao',
 }
+const DIRECT_ITEMS_SUBCATEGORY = 'Itens diretos'
 
 const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
 
@@ -106,6 +108,13 @@ function makeVariationTarget(variation, item) {
     itemId: item.id,
     variationId: variation.id,
   }
+}
+
+function targetVariationRow(target) {
+  if (target?.targetType !== 'variacao') return null
+  const variation = variations.value.find(row => row.id === target.targetKey)
+  const item = variation ? itemById.value.get(variation.itemId) : null
+  return variation && item ? { variation, item } : null
 }
 
 const catalogTargets = computed(() => {
@@ -169,21 +178,34 @@ const categoriesForGroup = computed(() =>
 )
 
 const subcategoriesForCategory = computed(() =>
-  [...new Set(items.value
-    .filter(item => item.group === selectedGroup.value && item.category === selectedCategory.value)
-    .map(item => item.subcategory)
-    .filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }))
+  {
+    const scopedItems = items.value.filter(item =>
+      item.group === selectedGroup.value &&
+      item.category === selectedCategory.value
+    )
+    const subcategories = [...new Set(scopedItems.map(item => item.subcategory).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }))
+    if (subcategories.length && scopedItems.some(item => !item.subcategory)) {
+      return [...subcategories, DIRECT_ITEMS_SUBCATEGORY]
+    }
+    return subcategories
+  }
 )
 
 const itemsForSelection = computed(() =>
-  items.value
-    .filter(item =>
-      (!selectedGroup.value || item.group === selectedGroup.value) &&
-      (!selectedCategory.value || item.category === selectedCategory.value) &&
-      (!selectedSubcategory.value || item.subcategory === selectedSubcategory.value)
-    )
+  {
+    const hasSubcategories = subcategoriesForCategory.value.length > 0
+    return items.value
+      .filter(item => {
+        if (!selectedGroup.value || item.group !== selectedGroup.value) return false
+        if (!selectedCategory.value || item.category !== selectedCategory.value) return false
+        if (selectedSubcategory.value === DIRECT_ITEMS_SUBCATEGORY) return !item.subcategory
+        if (hasSubcategories && selectedSubcategory.value) return item.subcategory === selectedSubcategory.value
+        if (hasSubcategories && !selectedSubcategory.value) return false
+        return true
+      })
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }))
+  }
 )
 
 const variationsForSelectedItem = computed(() =>
@@ -196,6 +218,32 @@ const variationsForSelectedItem = computed(() =>
 const modalSelectedLabel = computed(() =>
   modalSelectedTarget.value?.targetLabel || 'Nenhum EPI selecionado'
 )
+
+function itemStock(item) {
+  return variations.value
+    .filter(variation => variation.itemId === item.id)
+    .reduce((sum, variation) => sum + Number(variation.stock || 0), 0)
+}
+
+function itemsInGroup(group) {
+  return items.value.filter(item => item.group === group)
+}
+
+function itemsInCategory(category) {
+  return items.value.filter(item => item.group === selectedGroup.value && item.category === category)
+}
+
+function itemsInSubcategory(subcategory) {
+  return items.value.filter(item => {
+    if (item.group !== selectedGroup.value || item.category !== selectedCategory.value) return false
+    if (subcategory === DIRECT_ITEMS_SUBCATEGORY) return !item.subcategory
+    return item.subcategory === subcategory
+  })
+}
+
+function stockTotal(list) {
+  return list.reduce((sum, item) => sum + itemStock(item), 0)
+}
 
 function openSelector(context) {
   selectorContext.value = context
@@ -245,6 +293,32 @@ function selectSubcategory(subcategory) {
 function selectItem(item) {
   selectedItemId.value = item.id
   if (selectorScope.value === 'levels') setModalTarget(makeItemTarget(item))
+}
+
+function resetSelectorPath(level = 'root') {
+  if (level === 'root') {
+    selectedGroup.value = ''
+    selectedCategory.value = ''
+    selectedSubcategory.value = ''
+    selectedItemId.value = ''
+    modalSelectedTarget.value = null
+    return
+  }
+  if (level === 'group') {
+    selectedCategory.value = ''
+    selectedSubcategory.value = ''
+    selectedItemId.value = ''
+    if (selectorScope.value === 'levels') setModalTarget(makeGroupTarget(selectedGroup.value))
+    return
+  }
+  if (level === 'category') {
+    selectedSubcategory.value = ''
+    selectedItemId.value = ''
+    if (selectorScope.value === 'levels') setModalTarget(makeCategoryTarget(selectedGroup.value, selectedCategory.value))
+    return
+  }
+  selectedItemId.value = ''
+  if (selectorScope.value === 'levels') setModalTarget(makeSubcategoryTarget(selectedGroup.value, selectedCategory.value, selectedSubcategory.value))
 }
 
 const rulesForRole = computed(() =>
@@ -445,7 +519,11 @@ function quickMovement(record) {
           <article v-for="rule in rulesForRole" :key="rule.id" class="flex flex-wrap items-center justify-between gap-3 px-4 py-3" :class="{ 'opacity-60': !rule.active }">
             <div>
               <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[rule.targetType] }}</span>
-              <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ rule.targetLabel || rule.targetKey }}</p>
+              <template v-if="targetVariationRow(rule)">
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(rule).item.name }}</p>
+                <AttributeBadges class="mt-1" :item="targetVariationRow(rule).item" :variation="targetVariationRow(rule).variation" compact />
+              </template>
+              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ rule.targetLabel || rule.targetKey }}</p>
             </div>
             <div class="flex items-center gap-2">
               <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
@@ -481,7 +559,11 @@ function quickMovement(record) {
           <article v-for="period in periodicities" :key="period.id" class="grid gap-3 px-4 py-3 md:grid-cols-[1fr_8rem_auto]" :class="{ 'opacity-60': !period.active }">
             <div>
               <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[period.targetType] }}</span>
-              <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ period.targetLabel || period.targetKey }}</p>
+              <template v-if="targetVariationRow(period)">
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(period).item.name }}</p>
+                <AttributeBadges class="mt-1" :item="targetVariationRow(period).item" :variation="targetVariationRow(period).variation" compact />
+              </template>
+              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ period.targetLabel || period.targetKey }}</p>
             </div>
             <input v-model.number="periodDrafts[period.id]" :placeholder="String(period.days)" type="number" min="1" step="1" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
             <div class="flex flex-wrap items-center gap-2">
@@ -516,7 +598,11 @@ function quickMovement(record) {
           <article v-for="record in personEpiRecords" :key="record.rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_10rem_10rem_9rem_auto]">
             <div>
               <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[record.rule.targetType] }}</span>
-              <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
+              <template v-if="targetVariationRow(record.rule)">
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
+                <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
+              </template>
+              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ record.movement ? `${record.movement.itemName} - ${record.movement.qty} ${record.movement.itemUnit}` : 'Nenhuma saida registrada' }}</p>
             </div>
             <div>
@@ -600,87 +686,166 @@ function quickMovement(record) {
                 @click="setModalTarget(target)"
               >
                 <span class="block text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[target.targetType] }}</span>
-                <span class="mt-1 block text-sm font-semibold">{{ target.targetLabel }}</span>
+                <template v-if="targetVariationRow(target)">
+                  <span class="mt-1 block text-sm font-semibold">{{ targetVariationRow(target).item.name }}</span>
+                  <AttributeBadges class="mt-2" :item="targetVariationRow(target).item" :variation="targetVariationRow(target).variation" compact />
+                </template>
+                <span v-else class="mt-1 block text-sm font-semibold">{{ target.targetLabel }}</span>
               </button>
             </div>
 
-            <div v-else class="grid gap-3 xl:grid-cols-5">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700">
-                <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">Grupos</div>
-                <div class="max-h-96 overflow-auto p-2">
+            <div v-else class="space-y-4">
+              <div v-if="selectedGroup" class="flex flex-wrap items-center gap-1.5 text-sm">
+                <button type="button" class="font-medium text-primary-600 hover:underline dark:text-primary-400" @click="resetSelectorPath('root')">Catálogo</button>
+                <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                <button
+                  v-if="selectedCategory"
+                  type="button"
+                  class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                  @click="resetSelectorPath('group')"
+                >{{ selectedGroup }}</button>
+                <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ selectedGroup }}</span>
+                <template v-if="selectedCategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                   <button
-                    v-for="group in groups"
-                    :key="group"
+                    v-if="selectedSubcategory || selectedItemId"
                     type="button"
-                    class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors"
-                    :class="selectedGroup === group ? 'bg-primary-600 text-white' : 'text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800'"
-                    @click="selectGroup(group)"
-                  >{{ group }}</button>
-                </div>
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetSelectorPath('category')"
+                  >{{ selectedCategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ selectedCategory }}</span>
+                </template>
+                <template v-if="selectedSubcategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <button
+                    v-if="selectedItemId"
+                    type="button"
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetSelectorPath('subcategory')"
+                  >{{ selectedSubcategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ selectedSubcategory }}</span>
+                </template>
               </div>
 
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700">
-                <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">Categorias</div>
-                <div class="max-h-96 overflow-auto p-2">
-                  <button
-                    v-for="category in categoriesForGroup"
-                    :key="category"
-                    type="button"
-                    class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors"
-                    :class="selectedCategory === category ? 'bg-primary-600 text-white' : 'text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800'"
-                    @click="selectCategory(category)"
-                  >{{ category }}</button>
-                  <p v-if="!selectedGroup" class="p-3 text-sm text-gray-500 dark:text-gray-400">Selecione um grupo.</p>
-                </div>
+              <div v-if="!selectedGroup" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="group in groups"
+                  :key="group"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectGroup(group)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ group }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ itemsInGroup(group).length }} {{ itemsInGroup(group).length === 1 ? 'item' : 'itens' }} · Estoque: {{ stockTotal(itemsInGroup(group)) }}
+                  </p>
+                </button>
               </div>
 
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700">
-                <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">Subcategorias</div>
-                <div class="max-h-96 overflow-auto p-2">
-                  <button
-                    v-for="subcategory in subcategoriesForCategory"
-                    :key="subcategory"
-                    type="button"
-                    class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors"
-                    :class="selectedSubcategory === subcategory ? 'bg-primary-600 text-white' : 'text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800'"
-                    @click="selectSubcategory(subcategory)"
-                  >{{ subcategory }}</button>
-                  <p v-if="!selectedCategory" class="p-3 text-sm text-gray-500 dark:text-gray-400">Selecione uma categoria.</p>
-                </div>
+              <div v-else-if="!selectedCategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="category in categoriesForGroup"
+                  :key="category"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectCategory(category)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ category }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ itemsInCategory(category).length }} {{ itemsInCategory(category).length === 1 ? 'item' : 'itens' }} · Estoque: {{ stockTotal(itemsInCategory(category)) }}
+                  </p>
+                </button>
               </div>
 
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700">
-                <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">Itens</div>
-                <div class="max-h-96 overflow-auto p-2">
-                  <button
-                    v-for="item in itemsForSelection"
-                    :key="item.id"
-                    type="button"
-                    class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm transition-colors"
-                    :class="selectedItemId === item.id ? 'bg-primary-600 text-white' : 'text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800'"
-                    @click="selectItem(item)"
-                  >
-                    <span class="block font-semibold">{{ item.name }}</span>
-                    <span class="block text-xs opacity-70">{{ hierarchy(item) || '-' }}</span>
-                  </button>
-                </div>
+              <div v-else-if="subcategoriesForCategory.length && !selectedSubcategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="subcategory in subcategoriesForCategory"
+                  :key="subcategory"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectSubcategory(subcategory)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ subcategory }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ itemsInSubcategory(subcategory).length }} {{ itemsInSubcategory(subcategory).length === 1 ? 'item' : 'itens' }} · Estoque: {{ stockTotal(itemsInSubcategory(subcategory)) }}
+                  </p>
+                </button>
               </div>
 
-              <div class="rounded-xl border border-gray-200 dark:border-gray-700">
-                <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">Variações</div>
-                <div class="max-h-96 overflow-auto p-2">
-                  <button
-                    v-for="{ variation, item } in variationsForSelectedItem"
-                    :key="variation.id"
-                    type="button"
-                    class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm transition-colors"
-                    :class="modalSelectedTarget?.targetType === 'variacao' && modalSelectedTarget?.targetKey === variation.id
-                      ? 'bg-primary-600 text-white'
-                      : 'text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800'"
-                    @click="setModalTarget(makeVariationTarget(variation, item))"
-                  >{{ variationLabel(variation, item) }}</button>
-                  <p v-if="!selectedItemId" class="p-3 text-sm text-gray-500 dark:text-gray-400">Selecione um item.</p>
+              <div v-else-if="!selectedItemId" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="item in itemsForSelection"
+                  :key="item.id"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-4 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectItem(item)"
+                >
+                  <p class="mb-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <p class="mb-1 truncate text-xs text-gray-400 dark:text-gray-500">{{ hierarchy(item) || 'Sem hierarquia' }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ variations.filter(variation => variation.itemId === item.id).length }} var. · Estoque: {{ itemStock(item) }}
+                  </p>
+                </button>
+                <p v-if="!itemsForSelection.length" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  Nenhum item neste nível.
+                </p>
+              </div>
+
+              <div v-else>
+                <div v-if="variationsForSelectedItem.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                    <thead class="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                      <tr>
+                        <th class="px-4 py-3">Variação</th>
+                        <th class="px-4 py-3 text-right">Estoque</th>
+                        <th class="px-4 py-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-900">
+                      <tr
+                        v-for="{ variation, item } in variationsForSelectedItem"
+                        :key="variation.id"
+                        class="cursor-pointer transition-colors hover:bg-primary-50/70 dark:hover:bg-primary-950/20"
+                        @click="setModalTarget(makeVariationTarget(variation, item))"
+                      >
+                        <td class="px-4 py-3 text-gray-900 dark:text-gray-100">
+                          <p class="font-semibold">{{ item?.name }}</p>
+                          <AttributeBadges class="mt-1" :item="item" :variation="variation" compact />
+                        </td>
+                        <td class="px-4 py-3 text-right font-semibold" :class="variation.stock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'">
+                          {{ variation.stock }} {{ item?.unit }}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                            @click.stop="setModalTarget(makeVariationTarget(variation, item))"
+                          >
+                            Selecionar
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
+                <p v-else class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  Nenhuma variação encontrada.
+                </p>
               </div>
             </div>
           </div>
@@ -688,7 +853,11 @@ function quickMovement(record) {
           <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 p-4 dark:border-gray-700">
             <div class="min-w-0">
               <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Selecionado</p>
-              <p class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ modalSelectedLabel }}</p>
+              <template v-if="targetVariationRow(modalSelectedTarget)">
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(modalSelectedTarget).item.name }}</p>
+                <AttributeBadges class="mt-1" :item="targetVariationRow(modalSelectedTarget).item" :variation="targetVariationRow(modalSelectedTarget).variation" compact />
+              </template>
+              <p v-else class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ modalSelectedLabel }}</p>
             </div>
             <button
               type="button"

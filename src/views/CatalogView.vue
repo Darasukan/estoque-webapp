@@ -220,7 +220,7 @@ function startAddVariation() {
   const attrs = viewingItem.value?.attributes || []
   const values = {}
   for (const a of attrs) values[a] = ''
-  varForm.value = { values, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] }
+  varForm.value = { values, stock: 0, minStock: viewingItem.value?.minStock || 0, extrasList: [], location: '', destinations: [] }
   addingVariation.value = true
   editingVariationId.value = null
   nextTick(() => {
