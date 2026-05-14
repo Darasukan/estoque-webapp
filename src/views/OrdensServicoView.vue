@@ -9,6 +9,7 @@ import { useMotors, MOTOR_EVENT_TYPES, motorEventLabel } from '../composables/us
 import { useToast } from '../composables/useToast.js'
 import AppButton from '../components/ui/AppButton.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
+import PersonPicker from '../components/ui/PersonPicker.vue'
 
 const props = defineProps({
   mode: { type: String, default: 'general' },
@@ -105,6 +106,8 @@ const expandedOrderId = ref(null)
 const showNewForm = ref(false)
 const editingOrderId = ref(null)
 const confirmDeleteId = ref(null)
+const quickOsFieldRefs = ref([])
+const osEntryMode = ref('form')
 
 function pad(n) {
   return String(n).padStart(2, '0')
@@ -233,7 +236,12 @@ function resetOsForm() {
   osForm.value = createEmptyOsForm()
   destinationPickerSearch.value = ''
   destinationPickerOpen.value = false
+  resetQuickOsEntry()
   applyScopedMotorToOsForm()
+}
+
+function resetQuickOsEntry() {
+  quickOsFieldRefs.value = []
 }
 
 // ===== "Add Material" flow inside an OS =====
@@ -245,6 +253,9 @@ const matSelectedVariation = ref(null)
 const matQty = ref('')
 const matSearchEl = ref(null)
 const matQtyEl = ref(null)
+const matSelectedGroup = ref('')
+const matSelectedCategory = ref('')
+const matSelectedSubcategory = ref('')
 const confirmRemoveItemId = ref(null)
 
 function startAddMaterial(orderId) {
@@ -253,6 +264,9 @@ function startAddMaterial(orderId) {
   matSearch.value = ''
   matSelectedItem.value = null
   matSelectedVariation.value = null
+  matSelectedGroup.value = ''
+  matSelectedCategory.value = ''
+  matSelectedSubcategory.value = ''
   matQty.value = '1'
   nextTick(() => focusRef(matSearchEl))
 }
@@ -410,9 +424,58 @@ function updateNormalOsEquipmentFromDestination() {
   osForm.value.equipment = selectedDestinationLabel(osForm.value.destinationId)
 }
 
+const quickOsFields = [
+  { key: 'number', label: 'Nº da Ordem', type: 'number', placeholder: 'Automático' },
+  { key: 'requestDate', label: 'Data', type: 'date', required: true },
+  { key: 'requestTime', label: 'Horário', type: 'time', required: true },
+  { key: 'requestedBy', label: 'Solicitante', type: 'person', required: true, placeholder: 'Pessoa cadastrada' },
+  { key: 'equipment', label: 'Equipamento / destino', type: 'destination', required: true, placeholder: 'Destino cadastrado' },
+  { key: 'serviceType', label: 'Tipo', type: 'select', options: ['Elétrica', 'Mecânica', 'Outros'] },
+  { key: 'note', label: 'Observações', type: 'text', placeholder: 'Abertura da OS' },
+  { key: 'maintenanceStartDate', label: 'Início - data', type: 'date' },
+  { key: 'maintenanceStartTime', label: 'Início - hora', type: 'time' },
+  { key: 'maintenanceEndDate', label: 'Término - data', type: 'date' },
+  { key: 'maintenanceEndTime', label: 'Término - hora', type: 'time' },
+  { key: 'maintenanceProfessional', label: 'Profissional', type: 'person', placeholder: 'Pessoa cadastrada' },
+  { key: 'maintenanceMaterials', label: 'Materiais adicionais', type: 'text', placeholder: 'Opcional' },
+  { key: 'maintenanceNote', label: 'Obs. manutenção', type: 'text', placeholder: 'Opcional' },
+]
+
+function setQuickOsFieldRef(el, index) {
+  if (el) quickOsFieldRefs.value[index] = el
+}
+
+function focusQuickOsField(index) {
+  nextTick(() => quickOsFieldRefs.value[index]?.focus?.())
+}
+
+function focusNextQuickOsField(index) {
+  focusQuickOsField(Math.min(index + 1, quickOsFields.length - 1))
+}
+
+function focusPreviousQuickOsField(index) {
+  focusQuickOsField(Math.max(index - 1, 0))
+}
+
+function handleQuickOsMove(field, index) {
+  focusNextQuickOsField(index)
+}
+
+function handleQuickDestinationSelect(payload, index) {
+  handleNormalOsDestinationSelect(payload)
+  focusNextQuickOsField(index)
+}
+
 function handleNormalOsDestinationSelect({ fullName }) {
   if (isMotorMode.value) return
   osForm.value.equipment = fullName
+}
+
+function clearNormalOsDestination() {
+  if (isMotorMode.value) return
+  osForm.value.destinationId = ''
+  osForm.value.equipment = ''
+  destinationPickerSearch.value = ''
 }
 
 function isRegisteredRequester(name) {
@@ -507,8 +570,8 @@ watch(() => props.initialTab, (tab) => {
 const matSearchNorm = computed(() => matSearch.value.trim().toLowerCase())
 const matItemResults = computed(() => {
   const q = matSearchNorm.value
-  if (!q) return []
   return items.value.filter(item => {
+    if (!q) return true
     if (item.name.toLowerCase().includes(q) ||
       (item.group || '').toLowerCase().includes(q) ||
       (item.category || '').toLowerCase().includes(q) ||
@@ -519,12 +582,88 @@ const matItemResults = computed(() => {
       Object.values(v.extras || {}).some(val => String(val || '').toLowerCase().includes(q)) ||
       (v.location || '').toLowerCase().includes(q)
     )
-  }).slice(0, 30)
+  })
+})
+
+function uniqueSorted(values) {
+  return [...new Set(values.filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }))
+}
+
+const DIRECT_ITEMS_SUBCATEGORY = 'Itens diretos'
+
+const matGroupOptions = computed(() =>
+  uniqueSorted(matItemResults.value.map(item => item.group || 'Sem grupo'))
+)
+
+const matCategoryOptions = computed(() => {
+  if (!matSelectedGroup.value) return []
+  return uniqueSorted(
+    matItemResults.value
+      .filter(item => (item.group || 'Sem grupo') === matSelectedGroup.value)
+      .map(item => item.category || 'Sem categoria')
+  )
+})
+
+const matSubcategoryOptions = computed(() => {
+  if (!matSelectedGroup.value || !matSelectedCategory.value) return []
+  const scopedItems = matItemResults.value.filter(item =>
+    (item.group || 'Sem grupo') === matSelectedGroup.value &&
+    (item.category || 'Sem categoria') === matSelectedCategory.value
+  )
+  const subcategories = uniqueSorted(scopedItems.map(item => item.subcategory))
+  if (subcategories.length && scopedItems.some(item => !item.subcategory)) {
+    return [...subcategories, DIRECT_ITEMS_SUBCATEGORY]
+  }
+  return subcategories
+})
+
+const matItemsForSelection = computed(() => {
+  if (!matSelectedGroup.value || !matSelectedCategory.value) return []
+  const hasSubcategories = matSubcategoryOptions.value.length > 0
+  return matItemResults.value
+    .filter(item => {
+      if ((item.group || 'Sem grupo') !== matSelectedGroup.value) return false
+      if ((item.category || 'Sem categoria') !== matSelectedCategory.value) return false
+      if (matSelectedSubcategory.value === DIRECT_ITEMS_SUBCATEGORY) return !item.subcategory
+      if (hasSubcategories && matSelectedSubcategory.value) return item.subcategory === matSelectedSubcategory.value
+      if (hasSubcategories && !matSelectedSubcategory.value) return false
+      return true
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }))
 })
 
 const matItemVariations = computed(() =>
   matSelectedItem.value ? getVariationsForItem(matSelectedItem.value.id) : []
 )
+
+function matItemStock(item) {
+  return getVariationsForItem(item.id).reduce((sum, variation) => sum + Number(variation.stock || 0), 0)
+}
+
+function matItemsInGroup(group) {
+  return matItemResults.value.filter(item => (item.group || 'Sem grupo') === group)
+}
+
+function matItemsInCategory(category) {
+  return matItemResults.value.filter(item =>
+    (item.group || 'Sem grupo') === matSelectedGroup.value &&
+    (item.category || 'Sem categoria') === category
+  )
+}
+
+function matItemsInSubcategory(subcategory) {
+  return matItemResults.value.filter(item => {
+    if ((item.group || 'Sem grupo') !== matSelectedGroup.value) return false
+    if ((item.category || 'Sem categoria') !== matSelectedCategory.value) return false
+    if (subcategory === DIRECT_ITEMS_SUBCATEGORY) return !item.subcategory
+    return item.subcategory === subcategory
+  })
+}
+
+function matItemsStockTotal(itemsList) {
+  return itemsList.reduce((sum, item) => sum + matItemStock(item), 0)
+}
 
 const matParsedQty = computed(() => {
   const n = Number(matQty.value)
@@ -536,6 +675,75 @@ const matExceedsStock = computed(() =>
   matSelectedVariation.value !== null &&
   matParsedQty.value > matSelectedVariation.value.stock
 )
+
+function selectSingleMatItemOnEnter() {
+  if (matItemResults.value.length === 1) selectMatCatalogItem(matItemResults.value[0])
+}
+
+function selectMatGroup(group) {
+  matSelectedGroup.value = group
+  matSelectedCategory.value = ''
+  matSelectedSubcategory.value = ''
+  matSelectedItem.value = null
+  matSelectedVariation.value = null
+}
+
+function selectMatCategory(category) {
+  matSelectedCategory.value = category
+  matSelectedSubcategory.value = ''
+  matSelectedItem.value = null
+  matSelectedVariation.value = null
+}
+
+function selectMatSubcategory(subcategory) {
+  matSelectedSubcategory.value = subcategory
+  matSelectedItem.value = null
+  matSelectedVariation.value = null
+}
+
+function selectMatCatalogItem(item) {
+  matSelectedGroup.value = item.group || 'Sem grupo'
+  matSelectedCategory.value = item.category || 'Sem categoria'
+  matSelectedSubcategory.value = item.subcategory || (matSubcategoryOptions.value.includes(DIRECT_ITEMS_SUBCATEGORY) ? DIRECT_ITEMS_SUBCATEGORY : '')
+  matSelectedItem.value = item
+  matSelectedVariation.value = null
+  matQty.value = '1'
+}
+
+function resetMatCatalogSelection(level = 'root') {
+  if (level === 'root') {
+    matSelectedGroup.value = ''
+    matSelectedCategory.value = ''
+    matSelectedSubcategory.value = ''
+    matSelectedItem.value = null
+    matSelectedVariation.value = null
+    return
+  }
+  if (level === 'group') {
+    matSelectedCategory.value = ''
+    matSelectedSubcategory.value = ''
+    matSelectedItem.value = null
+    matSelectedVariation.value = null
+    return
+  }
+  if (level === 'category') {
+    matSelectedSubcategory.value = ''
+    matSelectedItem.value = null
+    matSelectedVariation.value = null
+    return
+  }
+  matSelectedItem.value = null
+  matSelectedVariation.value = null
+}
+
+watch(matSearch, () => {
+  matSelectedGroup.value = ''
+  matSelectedCategory.value = ''
+  matSelectedSubcategory.value = ''
+  matSelectedItem.value = null
+  matSelectedVariation.value = null
+  matStep.value = 1
+})
 
 // ===== Filtered OS list =====
 const visibleOrdersBase = computed(() =>
@@ -622,6 +830,101 @@ const historyOrders = computed(() => {
     })
 })
 
+function csvCell(value) {
+  const text = String(value ?? '').replace(/\r?\n/g, ' ').trim()
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function csvDateStamp() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`
+}
+
+function orderItemsCsvLabel(order) {
+  return (order.items || [])
+    .map(item => {
+      const variation = variationLabel(item)
+      const qty = [item.qty, item.itemUnit].filter(Boolean).join(' ')
+      return [item.itemName, variation !== '-' ? variation : '', qty].filter(Boolean).join(' - ')
+    })
+    .join(' | ')
+}
+
+function orderCsvRows(orders) {
+  const headers = [
+    'numero',
+    'status',
+    'data_abertura',
+    'horario_abertura',
+    'solicitante',
+    isMotorMode.value ? 'motor' : 'equipamento',
+    'destino_ou_oficina',
+    'tipo',
+    'observacoes_abertura',
+    'inicio_manutencao',
+    'termino_manutencao',
+    'profissional',
+    'materiais_estoque',
+    'materiais_adicionais',
+    'observacoes_manutencao',
+  ]
+  const rows = orders.map(order => [
+    order.number ? `#${order.number}` : '',
+    orderStatusLabel(order),
+    formatDateOnly(order.requestDate),
+    formatTimeOnly(order.requestTime),
+    order.requestedBy || '',
+    orderDisplayTitle(order),
+    maintenanceLocationLabel(order),
+    order.serviceType || order.service_type || '',
+    order.note || '',
+    formatDateTimeParts(order.maintenanceStartDate, order.maintenanceStartTime, ''),
+    maintenanceEndLabel(order),
+    order.maintenanceProfessional || '',
+    orderItemsCsvLabel(order),
+    order.maintenanceMaterials || '',
+    order.maintenanceNote || '',
+  ])
+  return [headers, ...rows]
+}
+
+function downloadCsv(filename, rows) {
+  if (!rows.length || rows.length === 1) {
+    showError('Nenhuma OS para exportar.')
+    return
+  }
+  const csv = rows.map(row => row.map(csvCell).join(';')).join('\r\n')
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  success('CSV exportado.')
+}
+
+function exportOrdersCsv(orders, scope) {
+  const mode = isMotorMode.value ? 'os-motores' : 'os-comuns'
+  const filename = `${mode}-${scope}-${csvDateStamp()}.csv`
+  downloadCsv(filename, orderCsvRows(orders))
+}
+
+function exportSingleOrderCsv(order) {
+  const number = order.number ? `os-${order.number}` : `os-${order.id || 'individual'}`
+  exportOrdersCsv([order], number)
+}
+
+function exportFilteredHistoryCsv() {
+  exportOrdersCsv(historyOrders.value, 'filtrado')
+}
+
+function exportAllHistoryCsv() {
+  exportOrdersCsv(visibleOrdersBase.value, 'tudo')
+}
+
 watch(() => [props.focusOrderId, visibleOrdersBase.value.length], ([orderId]) => {
   editFocusedOrder(orderId)
 }, { immediate: true })
@@ -631,6 +934,7 @@ function validateOsForm() {
   if (numberText && (!Number.isInteger(Number(numberText)) || Number(numberText) <= 0)) { showError('Número da ordem inválido'); return false }
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
   if (!isRegisteredRequester(osForm.value.requestedBy)) { showError('Solicitante deve ser uma pessoa cadastrada ativa'); return false }
+  if (!isMotorMode.value && osForm.value.maintenanceProfessional.trim() && !isRegisteredRequester(osForm.value.maintenanceProfessional)) { showError('Profissional deve ser uma pessoa cadastrada ativa'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
@@ -707,7 +1011,7 @@ function buildOsPayload() {
     initialMotorEventToDestinationId: hasInitialMotorEvent && form.initialMotorEventType === 'movimentado' ? form.initialMotorEventToDestinationId : '',
     initialMotorEventToDestination: '',
     initialMotorEventNotes: hasInitialMotorEvent ? form.initialMotorEventNotes.trim() : '',
-    serviceType: DEFAULT_SERVICE_TYPE,
+    serviceType: form.serviceType || DEFAULT_SERVICE_TYPE,
     note: form.note.trim(),
     maintenanceStartDate: internalMaintenance ? maintenanceStartDate : '',
     maintenanceStartTime: internalMaintenance ? maintenanceStartTime : '',
@@ -771,15 +1075,14 @@ async function handleSubmitOS() {
   await handleCreateOS()
 }
 
-function startEditOS(order) {
-  if (!canManageOs.value) return
+function loadOrderIntoEditForm(order) {
   expandedOrderId.value = order.id
   editingOrderId.value = order.id
   showNewForm.value = !isMotorMode.value
+  osEntryMode.value = 'form'
   osForm.value = createEmptyOsForm(order)
   destinationPickerSearch.value = selectedDestinationLabel(osForm.value.destinationId)
   destinationPickerOpen.value = false
-  activeSubTab.value = isMotorMode.value ? 'ordens' : 'nova'
   if (isMotorMode.value && order.motorId) {
     motorEventOrderId.value = order.id
     motorEventForm.value = {
@@ -792,6 +1095,16 @@ function startEditOS(order) {
       notes: order.motorEventNotes || '',
     }
   }
+}
+
+async function startEditOS(order) {
+  if (!canManageOs.value) return
+  window.dispatchEvent(new CustomEvent('app-picker-open', { detail: 'edit-os' }))
+  osEntryMode.value = 'form'
+  expandedOrderId.value = order.id
+  activeSubTab.value = isMotorMode.value ? 'ordens' : 'nova'
+  await nextTick()
+  loadOrderIntoEditForm(order)
 }
 
 function cancelEdit() {
@@ -1131,7 +1444,6 @@ function matBackToStep2() {
     <datalist id="os-people-options">
       <option v-for="p in activePeople" :key="p.id" :value="p.name" />
     </datalist>
-
     <!-- Header -->
     <div v-if="!embedded" class="ds-page-header">
       <div>
@@ -1198,7 +1510,86 @@ function matBackToStep2() {
           <span class="text-xs text-gray-400">Campos com * são obrigatórios</span>
         </div>
 
-        <div class="space-y-3">
+        <div v-if="!isMotorMode && !editingOrderId" class="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+          <button
+            type="button"
+            class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+            :class="osEntryMode === 'form' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            @click="osEntryMode = 'form'"
+          >Formulário</button>
+          <button
+            type="button"
+            class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+            :class="osEntryMode === 'quick' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            @click="osEntryMode = 'quick'"
+          >Preenchimento rápido</button>
+        </div>
+
+        <div v-if="!isMotorMode && !editingOrderId && osEntryMode === 'quick'" class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Preenchimento rápido</h4>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Modo planilha: digite uma linha e use Enter, seta para baixo ou seta para cima para navegar.
+              </p>
+            </div>
+          </div>
+          <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div
+              v-for="(field, index) in quickOsFields"
+              :key="field.key"
+              class="grid grid-cols-1 border-b border-gray-100 last:border-b-0 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]"
+            >
+              <label class="flex items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
+              </label>
+              <select
+                v-if="field.type === 'select'"
+                :ref="el => setQuickOsFieldRef(el, index)"
+                v-model="osForm[field.key]"
+                class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                @keydown.enter.prevent="handleQuickOsMove(field, index)"
+                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+              >
+                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+              </select>
+              <PersonPicker
+                v-else-if="field.type === 'person'"
+                :ref="el => setQuickOsFieldRef(el, index)"
+                v-model="osForm[field.key]"
+                :placeholder="field.placeholder"
+                compact
+                :invalid="Boolean(osForm[field.key]) && !isRegisteredRequester(osForm[field.key])"
+                @select="focusNextQuickOsField(index)"
+                @commit="focusNextQuickOsField(index)"
+              />
+              <div v-else-if="field.type === 'destination'" class="px-0 py-0">
+                <DestinationTreePicker
+                  :ref="el => setQuickOsFieldRef(el, index)"
+                  v-model="osForm.destinationId"
+                  :placeholder="field.placeholder"
+                  compact
+                  @select="payload => handleQuickDestinationSelect(payload, index)"
+                  @clear="clearNormalOsDestination"
+                />
+              </div>
+              <input
+                v-else
+                :ref="el => setQuickOsFieldRef(el, index)"
+                v-model="osForm[field.key]"
+                :type="field.type"
+                :list="field.list"
+                :placeholder="field.placeholder"
+                class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                @keydown.enter.prevent="handleQuickOsMove(field, index)"
+                @keydown.down.prevent="handleQuickOsMove(field, index)"
+                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="space-y-3">
           <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Abertura da OS</h4>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
@@ -1215,7 +1606,11 @@ function matBackToStep2() {
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
-              <input v-model="osForm.requestedBy" list="os-people-options" type="text" placeholder="Nome do solicitante" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <PersonPicker
+                v-model="osForm.requestedBy"
+                placeholder="Buscar pessoa cadastrada..."
+                :invalid="Boolean(osForm.requestedBy) && !isRegisteredRequester(osForm.requestedBy)"
+              />
             </div>
             <div v-if="!isMotorMode" class="relative md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
@@ -1223,8 +1618,16 @@ function matBackToStep2() {
                 v-model="osForm.destinationId"
                 placeholder="Buscar destino ou máquina..."
                 @select="handleNormalOsDestinationSelect"
-                @clear="osForm.equipment = ''"
+                @clear="clearNormalOsDestination"
               />
+            </div>
+            <div v-if="!isMotorMode">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
+              <select v-model="osForm.serviceType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                <option>Elétrica</option>
+                <option>Mecânica</option>
+                <option>Outros</option>
+              </select>
             </div>
             <div v-if="isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
@@ -1293,7 +1696,7 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div v-if="!isMotorMode || osForm.maintenanceLocationType === 'interna'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && (!isMotorMode || osForm.maintenanceLocationType === 'interna')" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
           <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução interna</h4>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div v-if="!isMotorMode">
@@ -1314,7 +1717,11 @@ function matBackToStep2() {
             </div>
             <div v-if="!isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Profissional</label>
-              <input v-model="osForm.maintenanceProfessional" list="os-people-options" type="text" placeholder="Nome do profissional" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <PersonPicker
+                v-model="osForm.maintenanceProfessional"
+                placeholder="Buscar pessoa cadastrada..."
+                :invalid="Boolean(osForm.maintenanceProfessional) && !isRegisteredRequester(osForm.maintenanceProfessional)"
+              />
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
@@ -1327,7 +1734,7 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div v-if="isMotorMode && osForm.maintenanceLocationType === 'externa'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && isMotorMode && osForm.maintenanceLocationType === 'externa'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
           <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fechamento</h4>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
@@ -1444,7 +1851,11 @@ function matBackToStep2() {
                     </div>
                     <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
-                      <input v-model="osForm.requestedBy" list="os-people-options" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <PersonPicker
+                        v-model="osForm.requestedBy"
+                        placeholder="Buscar pessoa cadastrada..."
+                        :invalid="Boolean(osForm.requestedBy) && !isRegisteredRequester(osForm.requestedBy)"
+                      />
                     </div>
                     <div v-if="!isMotorMode" class="relative md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Equipamento *</label>
@@ -1452,7 +1863,7 @@ function matBackToStep2() {
                         v-model="osForm.destinationId"
                         placeholder="Buscar destino ou máquina..."
                         @select="handleNormalOsDestinationSelect"
-                        @clear="osForm.equipment = ''"
+                        @clear="clearNormalOsDestination"
                       />
                     </div>
                     <div v-if="isMotorMode" class="md:col-span-2">
@@ -1543,7 +1954,11 @@ function matBackToStep2() {
                     </div>
                     <div v-if="!isMotorMode" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Profissional</label>
-                      <input v-model="osForm.maintenanceProfessional" list="os-people-options" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <PersonPicker
+                        v-model="osForm.maintenanceProfessional"
+                        placeholder="Buscar pessoa cadastrada..."
+                        :invalid="Boolean(osForm.maintenanceProfessional) && !isRegisteredRequester(osForm.maintenanceProfessional)"
+                      />
                     </div>
                     <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
@@ -1757,7 +2172,7 @@ function matBackToStep2() {
               </div>
 
               <!-- Add material flow -->
-              <div v-if="addingMaterialToId === order.id" class="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-3">
+              <div v-if="false && addingMaterialToId === order.id" class="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-3">
                 <div class="flex items-center justify-between">
                   <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Adicionar material do catálogo</h4>
                   <button class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="cancelAddMaterial">Fechar</button>
@@ -1912,8 +2327,8 @@ function matBackToStep2() {
     <!-- TAB: Histórico de Ordens de Serviço -->
     <template v-if="activeSubTab === 'historico'">
       <div class="space-y-3">
-        <div class="ds-toolbar grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
-          <div class="relative">
+        <div class="ds-toolbar flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div class="relative flex-1">
             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
             <input
               v-model="historySearch"
@@ -1923,8 +2338,8 @@ function matBackToStep2() {
             />
           </div>
 
-          <div class="grid grid-cols-2 gap-2">
-            <div>
+          <div class="grid w-full grid-cols-2 gap-2 lg:w-auto">
+            <div class="min-w-[10rem]">
               <label class="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">De</label>
               <input
                 v-model="historyDateFrom"
@@ -1932,7 +2347,7 @@ function matBackToStep2() {
                 class="ds-input"
               />
             </div>
-            <div>
+            <div class="min-w-[10rem]">
               <label class="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Até</label>
               <input
                 v-model="historyDateTo"
@@ -1941,6 +2356,28 @@ function matBackToStep2() {
               />
             </div>
           </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!historyOrders.length"
+            @click="exportFilteredHistoryCsv"
+          >
+            Exportar filtrado
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+            :disabled="!visibleOrdersBase.length"
+            @click="exportAllHistoryCsv"
+          >
+            Exportar tudo
+          </button>
+          <span class="text-xs text-gray-500 dark:text-gray-400">
+            {{ historyOrders.length }} filtrada(s) de {{ visibleOrdersBase.length }} OS
+          </span>
         </div>
 
         <div
@@ -1976,8 +2413,9 @@ function matBackToStep2() {
                   <th class="px-4 py-3">Data</th>
                   <th class="px-4 py-3">Solicitante</th>
                   <th class="px-4 py-3">{{ isMotorMode ? 'Motor / oficina' : 'Equipamento' }}</th>
-                  <th class="px-4 py-3">Data término</th>
                   <th class="px-4 py-3">Observações da manutenção</th>
+                  <th class="px-4 py-3">Data término</th>
+                  <th class="px-4 py-3 text-right">CSV</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -2007,11 +2445,20 @@ function matBackToStep2() {
                       <span v-else-if="order.destinationName">{{ order.destinationName }}</span>
                     </div>
                   </td>
+                  <td class="px-4 py-3 align-top text-gray-600 dark:text-gray-300">
+                    <p class="max-w-[360px] whitespace-pre-wrap break-words line-clamp-3">{{ maintenanceObservation(order) }}</p>
+                  </td>
                   <td class="px-4 py-3 align-top whitespace-nowrap text-gray-600 dark:text-gray-300">
                     {{ maintenanceEndLabel(order) }}
                   </td>
-                  <td class="px-4 py-3 align-top text-gray-600 dark:text-gray-300">
-                    <p class="max-w-[360px] whitespace-pre-wrap break-words line-clamp-3">{{ maintenanceObservation(order) }}</p>
+                  <td class="px-4 py-3 align-top text-right">
+                    <button
+                      type="button"
+                      class="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                      @click.stop="exportSingleOrderCsv(order)"
+                    >
+                      Exportar
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -2110,5 +2557,261 @@ function matBackToStep2() {
         </div>
       </div>
     </template>
+
+    <div v-if="addingMaterialToId" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @mousedown.self="cancelAddMaterial">
+      <div class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Adicionar material do catálogo</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Selecione o item por grupo, categoria e subcategoria; depois escolha a variação e quantidade.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            @click="cancelAddMaterial"
+          >Fechar</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4">
+          <template v-if="matStep === 1">
+            <div class="mb-4">
+              <div class="relative max-w-xl">
+                <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  ref="matSearchEl"
+                  v-model="matSearch"
+                  type="search"
+                  placeholder="Buscar por nome, grupo, categoria, subcategoria, atributo ou local..."
+                  class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pl-9 text-sm text-gray-900 outline-none focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  @keydown.enter.prevent="selectSingleMatItemOnEnter"
+                />
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ matItemResults.length }} item(ns) encontrado(s)
+              </p>
+            </div>
+
+            <div v-if="matItemResults.length" class="space-y-4">
+              <div v-if="matSelectedGroup" class="flex flex-wrap items-center gap-1.5 text-sm">
+                <button type="button" class="font-medium text-primary-600 hover:underline dark:text-primary-400" @click="resetMatCatalogSelection('root')">Catálogo</button>
+                <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                <button
+                  v-if="matSelectedCategory"
+                  type="button"
+                  class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                  @click="resetMatCatalogSelection('group')"
+                >{{ matSelectedGroup }}</button>
+                <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedGroup }}</span>
+                <template v-if="matSelectedCategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <button
+                    v-if="matSelectedSubcategory || matSelectedItem"
+                    type="button"
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetMatCatalogSelection('category')"
+                  >{{ matSelectedCategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedCategory }}</span>
+                </template>
+                <template v-if="matSelectedSubcategory">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <button
+                    v-if="matSelectedItem"
+                    type="button"
+                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    @click="resetMatCatalogSelection('subcategory')"
+                  >{{ matSelectedSubcategory }}</button>
+                  <span v-else class="font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedSubcategory }}</span>
+                </template>
+                <template v-if="matSelectedItem">
+                  <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <span class="font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedItem.name }}</span>
+                </template>
+              </div>
+
+              <div v-if="!matSelectedGroup" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="group in matGroupOptions"
+                  :key="group"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMatGroup(group)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ group }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ matItemsInGroup(group).length }} {{ matItemsInGroup(group).length === 1 ? 'item' : 'itens' }} · Estoque: {{ matItemsStockTotal(matItemsInGroup(group)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="!matSelectedCategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="category in matCategoryOptions"
+                  :key="category"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMatCategory(category)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ category }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ matItemsInCategory(category).length }} {{ matItemsInCategory(category).length === 1 ? 'item' : 'itens' }} · Estoque: {{ matItemsStockTotal(matItemsInCategory(category)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="matSubcategoryOptions.length && !matSelectedSubcategory" class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="subcategory in matSubcategoryOptions"
+                  :key="subcategory"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-5 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMatSubcategory(subcategory)"
+                >
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-primary-900/30 dark:group-hover:bg-primary-900/50">
+                    <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+                    </svg>
+                  </div>
+                  <p class="mb-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ subcategory }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ matItemsInSubcategory(subcategory).length }} {{ matItemsInSubcategory(subcategory).length === 1 ? 'item' : 'itens' }} · Estoque: {{ matItemsStockTotal(matItemsInSubcategory(subcategory)) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else-if="!matSelectedItem" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <button
+                  v-for="item in matItemsForSelection"
+                  :key="item.id"
+                  type="button"
+                  class="group cursor-pointer rounded-lg border border-gray-200 bg-white p-4 text-left transition-all hover:border-primary-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500"
+                  @click="selectMatCatalogItem(item)"
+                >
+                  <p class="mb-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <p class="mb-1 truncate text-xs text-gray-400 dark:text-gray-500">{{ hierarchyLabel(item) || 'Sem hierarquia' }}</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ getVariationsForItem(item.id).length }} var. · Estoque: {{ matItemStock(item) }}
+                  </p>
+                </button>
+              </div>
+
+              <div v-else>
+                <div v-if="matItemVariations.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                    <thead class="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                      <tr>
+                        <th class="px-4 py-3">Variação</th>
+                        <th class="px-4 py-3 text-right">Estoque</th>
+                        <th class="px-4 py-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white dark:divide-gray-800 dark:bg-gray-900">
+                      <tr
+                        v-for="variation in matItemVariations"
+                        :key="variation.id"
+                        class="cursor-pointer transition-colors hover:bg-primary-50/70 dark:hover:bg-primary-950/20"
+                        @click="selectMatVariation(variation)"
+                      >
+                        <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                          {{ variationLabel(variation) }}
+                        </td>
+                        <td class="px-4 py-3 text-right font-semibold" :class="variation.stock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'">
+                          {{ variation.stock }} {{ matSelectedItem?.unit }}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                            @click.stop="selectMatVariation(variation)"
+                          >
+                            Selecionar
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  Nenhuma variação encontrada.
+                </p>
+              </div>
+            </div>
+            <div v-else class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              Nenhum item encontrado no catálogo.
+            </div>
+          </template>
+
+          <template v-else-if="matStep === 2">
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20" @click="matBackToStep1">Voltar</button>
+              <div>
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedItem.name }}</h4>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ hierarchyLabel(matSelectedItem) }}</p>
+              </div>
+            </div>
+            <div v-if="matItemVariations.length" class="grid gap-2 md:grid-cols-2">
+              <button
+                v-for="v in matItemVariations"
+                :key="v.id"
+                type="button"
+                class="rounded-lg border border-gray-200 px-3 py-2 text-left transition-colors hover:border-primary-400 hover:bg-primary-50 dark:border-gray-700 dark:hover:border-primary-500 dark:hover:bg-primary-950/30"
+                @click="selectMatVariation(v)"
+              >
+                <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ variationLabel(v) }}</span>
+                <span class="mt-1 block text-xs" :class="v.stock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'">
+                  Estoque: {{ v.stock }} {{ matSelectedItem.unit }}
+                </span>
+              </button>
+            </div>
+            <p v-else class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Nenhuma variação encontrada.</p>
+          </template>
+
+          <template v-else-if="matStep === 3">
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+              <button class="rounded-lg px-3 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20" @click="matBackToStep2">Voltar</button>
+              <div>
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ matSelectedItem.name }}</h4>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ variationLabel(matSelectedVariation) }}</p>
+              </div>
+            </div>
+            <div class="max-w-xl rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quantidade ({{ matSelectedItem.unit }})</label>
+              <input
+                ref="matQtyEl"
+                v-model="matQty"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+                :class="matExceedsStock ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'"
+                @keydown.enter="handleAddMaterial"
+              />
+              <p v-if="matExceedsStock" class="mt-1 text-xs text-red-500">Estoque insuficiente (disponível: {{ matSelectedVariation.stock }})</p>
+              <div class="mt-4 flex justify-end gap-2">
+                <button class="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="matBackToStep2">Cancelar</button>
+                <button
+                  :disabled="!matParsedQty || matExceedsStock"
+                  class="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  @click="handleAddMaterial"
+                >Adicionar baixa</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

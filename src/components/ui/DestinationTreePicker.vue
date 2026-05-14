@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDestinations } from '../../composables/useDestinations.js'
 
 const props = defineProps({
@@ -8,6 +8,7 @@ const props = defineProps({
   linkedIds: { type: Array, default: () => [] },
   allowOther: { type: Boolean, default: false },
   otherLabel: { type: String, default: 'Outro (digitar)...' },
+  compact: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'other', 'clear'])
@@ -16,6 +17,9 @@ const { groupedDestinations, getDestFullName } = useDestinations()
 const search = ref('')
 const open = ref(false)
 const expandedGroups = ref(new Set())
+const inputEl = ref(null)
+const rootEl = ref(null)
+const pickerId = `destination-${Math.random().toString(36).slice(2)}`
 
 function normalizeText(value) {
   return String(value || '')
@@ -26,8 +30,37 @@ function normalizeText(value) {
 
 const selectedPath = computed(() => props.modelValue ? getDestFullName(props.modelValue) : '')
 
-watch(selectedPath, (path) => {
-  if (!open.value) search.value = path
+function openPicker() {
+  window.dispatchEvent(new CustomEvent('app-picker-open', { detail: pickerId }))
+  open.value = true
+}
+
+function handleOtherPickerOpen(event) {
+  if (event.detail !== pickerId) open.value = false
+}
+
+function handlePointerDownOutside(event) {
+  if (!open.value) return
+  if (rootEl.value?.contains(event.target)) return
+  open.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('app-picker-open', handleOtherPickerOpen)
+  document.addEventListener('pointerdown', handlePointerDownOutside, true)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('app-picker-open', handleOtherPickerOpen)
+  document.removeEventListener('pointerdown', handlePointerDownOutside, true)
+})
+
+watch(() => props.modelValue, (id, oldId) => {
+  if (id && id !== oldId) {
+    search.value = selectedPath.value
+    return
+  }
+  if (!id && !open.value) search.value = ''
 }, { immediate: true })
 
 const filteredGroups = computed(() => {
@@ -92,11 +125,11 @@ function clearSelection() {
   emit('update:modelValue', '')
   emit('clear')
   search.value = ''
-  open.value = true
+  openPicker()
 }
 
 function handleInput() {
-  open.value = true
+  openPicker()
   if (props.modelValue && search.value !== selectedPath.value) {
     emit('update:modelValue', '')
     emit('clear')
@@ -114,25 +147,33 @@ function chooseOther() {
   search.value = ''
   open.value = false
 }
+
+function focus() {
+  inputEl.value?.focus?.()
+}
+
+defineExpose({ focus })
 </script>
 
 <template>
-  <div class="relative">
+  <div ref="rootEl" class="relative" :class="open ? 'z-50' : 'z-0'">
     <input
+      ref="inputEl"
       v-model="search"
       type="search"
       :placeholder="placeholder"
       autocomplete="off"
-      class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+      class="relative z-40 w-full border border-gray-300 bg-white text-sm text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+      :class="compact ? 'min-h-10 rounded-none border-0 px-3 py-2 dark:bg-gray-900' : 'rounded-lg px-3 py-2.5'"
       @input="handleInput"
-      @focus="open = true"
+      @focus="openPicker"
       @keydown.enter.prevent="handleEnter"
       @keydown.escape.stop="open = false"
     />
     <button
       v-if="modelValue && !open"
       type="button"
-      class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      class="absolute right-2 top-1/2 z-40 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
       title="Limpar destino"
       @click.stop="clearSelection"
     >
