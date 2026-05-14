@@ -31,6 +31,7 @@ server/*.db
 server/*.db-shm
 server/*.db-wal
 server/backups/
+public/local-brand/
 
 # Notas de features futuras
 features.md
