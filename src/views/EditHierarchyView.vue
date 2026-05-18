@@ -228,7 +228,10 @@ const {
           </template>
 
           <template v-else>
-            <span class="flex-1 min-w-0 text-sm font-medium truncate">{{ group }}</span>
+            <span class="flex-1 min-w-0 truncate">
+              <span class="block text-[9px] font-bold uppercase tracking-wider opacity-60 leading-none">Grupo</span>
+              <span class="block text-sm font-medium truncate">{{ group }}</span>
+            </span>
             <span class="text-[10px] opacity-60 tabular-nums flex-shrink-0 mr-0.5">{{ countItemsInGroup(group) }}</span>
             <div class="flex-shrink-0 flex opacity-0 group-hover/row:opacity-100 transition-opacity" @click.stop>
               <button class="p-0.5 rounded hover:text-amber-300 transition-colors" title="Renomear" @click.stop="startEdit('group', group)">
@@ -308,35 +311,50 @@ const {
           <!-- Group -->
           <button
             v-if="selectedCategory"
-            class="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
+            class="inline-flex items-center gap-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
             @click="selectedCategory = null"
-          >{{ selectedGroup }}</button>
-          <span v-else class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedGroup }}</span>
+          >
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">Grupo</span>
+            {{ selectedGroup }}
+          </button>
+          <span v-else class="inline-flex items-center gap-1.5 text-sm font-bold text-gray-800 dark:text-gray-100">
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">Grupo</span>
+            {{ selectedGroup }}
+          </span>
 
           <!-- Category -->
           <template v-if="selectedCategory">
             <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
             <button
               v-if="selectedSubcategory"
-              class="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
+              class="inline-flex items-center gap-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
               @click="selectedSubcategory = null"
-            >{{ selectedCategory }}</button>
-            <span v-else class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedCategory }}</span>
+            >
+              <span class="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Subgrupo</span>
+              {{ selectedCategory }}
+            </button>
+            <span v-else class="inline-flex items-center gap-1.5 text-sm font-bold text-gray-800 dark:text-gray-100">
+              <span class="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Subgrupo</span>
+              {{ selectedCategory }}
+            </span>
           </template>
 
           <!-- Subcategory -->
           <template v-if="selectedSubcategory">
             <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedSubcategory }}</span>
+            <span class="inline-flex items-center gap-1.5 text-sm font-bold text-gray-800 dark:text-gray-100">
+              <span class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">Subnivel</span>
+              {{ selectedSubcategory }}
+            </span>
           </template>
         </div>
 
         <!-- ===== CATEGORY GRID ===== -->
-        <div v-if="!selectedCategory" class="p-5">
-          <div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+        <div v-if="!selectedCategory" class="flex flex-col p-5">
+          <div class="order-2 mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white/70 dark:border-gray-700 dark:bg-gray-800/70">
             <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Itens diretos do grupo</p>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Modelos diretos do grupo</p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span
                     v-for="attr in getGroupModelAttrs(selectedGroup)"
@@ -352,31 +370,34 @@ const {
                 @click="startAddItem(groupDirectKey)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                Novo item
+                Novo modelo
               </button>
             </div>
 
             <div v-if="groupDirectItems.length" class="divide-y divide-gray-100 dark:divide-gray-700/50">
               <div v-for="item in groupDirectItems" :key="item.id" class="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <div class="mb-1 flex items-center gap-1.5">
+                    <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Modelo</span>
+                    <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  </div>
                   <div class="mt-1 flex flex-wrap gap-1">
                     <span v-for="attr in (item.attributes || [])" :key="attr" class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">{{ attr }}</span>
                     <span v-if="!(item.attributes || []).length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sem atributos</span>
                   </div>
                 </div>
-                <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover item" @click.stop="startMoveItem(item)">
+                <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
                   Mover
                 </button>
               </div>
             </div>
 
-            <div v-else-if="addingItemForSub !== groupDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">Nenhum item direto neste grupo.</div>
+            <div v-else-if="addingItemForSub !== groupDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">Nenhum modelo direto neste grupo.</div>
 
             <div v-if="addingItemForSub === groupDirectKey" class="px-4 py-3 bg-primary-50/40 dark:bg-primary-900/10">
               <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
-                <input v-model="newItemName" :placeholder="`Nome do item em ${selectedGroup}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
+                <input v-model="newItemName" :placeholder="`Nome do modelo em ${selectedGroup}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <select v-model="newItemUnit" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 outline-none dark:bg-gray-700 dark:text-gray-300">
                     <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
@@ -411,7 +432,7 @@ const {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div class="order-1 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             <div
               v-for="(cat, cIdx) in filteredCategoryList"
               :key="cat"
@@ -445,10 +466,13 @@ const {
                   />
                 </template>
                 <template v-else>
-                  <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate pr-10">{{ cat }}</p>
+                  <div class="mb-1 flex items-center gap-1.5 pr-10">
+                    <span class="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">Subgrupo</span>
+                    <p class="truncate text-sm font-bold text-gray-800 dark:text-gray-100">{{ cat }}</p>
+                  </div>
                   <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    {{ countItemsInCategory(selectedGroup, cat) }} {{ countItemsInCategory(selectedGroup, cat) === 1 ? 'item' : 'itens' }}
-                    · {{ getSubcategoriesForCategory(selectedGroup, cat).length }} subcats.
+                    {{ countItemsInCategory(selectedGroup, cat) }} {{ countItemsInCategory(selectedGroup, cat) === 1 ? 'modelo' : 'modelos' }}
+                    &middot; {{ getSubcategoriesForCategory(selectedGroup, cat).length }} subnivel opcional
                   </p>
                 </template>
               </button>
@@ -468,7 +492,7 @@ const {
               <!-- Delete confirmation overlay -->
               <template v-else-if="isDeleting('category', selectedGroup, cat)">
                 <div class="absolute inset-0 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 flex flex-col items-center justify-center gap-2 p-3">
-                  <p class="text-xs font-medium text-red-600 dark:text-red-400 text-center">Excluir {{ countItemsInCategory(selectedGroup, cat) }} item(ns)?</p>
+                  <p class="text-xs font-medium text-red-600 dark:text-red-400 text-center">Excluir {{ countItemsInCategory(selectedGroup, cat) }} modelo(s)?</p>
                   <div class="flex gap-2">
                     <button class="px-3 py-1 text-xs font-bold rounded bg-red-500 text-white hover:bg-red-600" @click.stop="confirmDelete">Sim</button>
                     <button class="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300" @click.stop="cancelDelete">Não</button>
@@ -492,15 +516,15 @@ const {
               </template>
             </div>
 
-            <!-- Nova categoria: form card -->
+            <!-- Novo subgrupo: form card -->
             <div
               v-if="addingCategory"
               class="relative rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-4 flex flex-col gap-2"
             >
-              <p class="text-xs font-semibold text-primary-600 dark:text-primary-400">Nova categoria</p>
+              <p class="text-xs font-semibold text-primary-600 dark:text-primary-400">Novo subgrupo</p>
               <input
                 v-model="newCategoryName"
-                placeholder="Nome da categoria"
+                placeholder="Nome do subgrupo"
                 class="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
                 @keydown="onAddCategoryKeydown"
                 autofocus
@@ -533,32 +557,36 @@ const {
               </div>
             </div>
 
-            <!-- Nova categoria: "+" button card -->
+            <!-- Novo subgrupo: "+" button card -->
             <button
               v-else-if="!searchQ"
               class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary-400 dark:hover:border-primary-600 text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 flex flex-col items-center justify-center gap-2 p-4 transition-colors min-h-[80px]"
               @click="startAddCategory"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              <span class="text-xs font-medium">Nova categoria</span>
+              <span class="text-xs font-medium">Novo subgrupo</span>
             </button>
           </div>
 
           <!-- Empty hint (no categories and no search) -->
-          <p v-if="!filteredCategoryList.length && !addingCategory && !searchQ" class="mt-4 text-center text-xs text-gray-400 dark:text-gray-500 italic">
-            Nenhuma categoria neste grupo ainda.
+          <p v-if="!filteredCategoryList.length && !addingCategory && !searchQ" class="order-1 mt-4 text-center text-xs text-gray-400 dark:text-gray-500 italic">
+            Nenhum subgrupo neste grupo ainda.
           </p>
-          <p v-else-if="!filteredCategoryList.length && searchQ" class="mt-4 text-center text-xs text-gray-400 dark:text-gray-500 italic">
-            Nenhuma categoria encontrada para "{{ groupSearch }}".
+          <p v-else-if="!filteredCategoryList.length && searchQ" class="order-1 mt-4 text-center text-xs text-gray-400 dark:text-gray-500 italic">
+            Nenhum subgrupo encontrado para "{{ groupSearch }}".
           </p>
         </div>
 
-        <!-- ===== SUBCATEGORY TABLE ===== -->
-        <div v-else-if="!selectedSubcategory" class="p-5">
-          <div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-            <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
+        <!-- ===== SUBGROUP CONTENT ===== -->
+        <div v-else-if="!selectedSubcategory" class="flex flex-col p-5">
+          <div class="order-2 mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white/70 dark:border-gray-700 dark:bg-gray-800/70">
+            <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-700/40">
               <div>
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Itens diretos da categoria</p>
+                <div class="flex items-center gap-2">
+                  <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Modelo</span>
+                  <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Modelos diretos no subgrupo</p>
+                  <span class="rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">{{ categoryDirectItems.length }}</span>
+                </div>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span
                     v-for="attr in getCategoryModelAttrs(selectedGroup, selectedCategory)"
@@ -570,49 +598,40 @@ const {
               </div>
               <button
                 v-if="addingItemForSub !== categoryDirectKey"
-                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                class="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-700"
                 @click="startAddItem(categoryDirectKey)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                Novo item
+                Novo modelo
               </button>
             </div>
 
             <div v-if="categoryDirectItems.length" class="divide-y divide-gray-100 dark:divide-gray-700/50">
-              <div
-                v-for="item in categoryDirectItems"
-                :key="item.id"
-                class="px-4 py-3 flex flex-wrap items-center justify-between gap-3"
-              >
+              <div v-for="item in categoryDirectItems" :key="item.id" class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  <div class="mb-1 flex items-center gap-1.5">
+                    <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Modelo</span>
+                    <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
+                  </div>
                   <div class="mt-1 flex flex-wrap gap-1">
-                    <span
-                      v-for="attr in (item.attributes || [])"
-                      :key="attr"
-                      class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
-                    >{{ attr }}</span>
-                    <span v-if="!(item.attributes || []).length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sem atributos</span>
+                    <span v-for="attr in (item.attributes || [])" :key="attr" class="rounded bg-primary-50 px-1.5 py-0.5 text-[11px] text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ attr }}</span>
+                    <span v-if="!(item.attributes || []).length" class="text-xs italic text-gray-400 dark:text-gray-500">Sem atributos</span>
                   </div>
                 </div>
-                <button
-                  class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
-                  title="Mover item"
-                  @click.stop="startMoveItem(item)"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
                   Mover
                 </button>
               </div>
             </div>
 
             <div v-else-if="addingItemForSub !== categoryDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
-              Nenhum item direto nesta categoria.
+              Nenhum modelo direto neste subgrupo.
             </div>
 
             <div v-if="addingItemForSub === categoryDirectKey" class="px-4 py-3 bg-primary-50/40 dark:bg-primary-900/10">
               <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
-                <input v-model="newItemName" :placeholder="`Nome do item em ${selectedCategory}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
+                <input v-model="newItemName" :placeholder="`Nome do modelo em ${selectedCategory}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <select v-model="newItemUnit" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 outline-none dark:bg-gray-700 dark:text-gray-300">
                     <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
@@ -647,23 +666,23 @@ const {
             </div>
           </div>
 
-          <div v-if="filteredSubcategoryList.length" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                  <th class="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subcategoria</th>
-                  <th class="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Itens</th>
+          <div v-if="filteredSubcategoryList.length" class="order-1">
+            <table class="block text-sm">
+              <thead class="sr-only">
+                <tr class="bg-gray-50/60 dark:bg-gray-700/30 border-b border-gray-200 dark:border-gray-700">
+                  <th class="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subnível opcional</th>
+                  <th class="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Modelos</th>
                   <th class="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos</th>
                   <th class="w-24"></th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100 dark:divide-gray-700/50">
+              <tbody class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <template v-for="(sub, sIdx) in filteredSubcategoryList" :key="sub">
                 <tr
-                  class="group/row hover:bg-primary-50/60 dark:hover:bg-primary-900/10 transition-colors border-t-2"
+                  class="group/row relative block min-h-[78px] rounded-xl border bg-white p-4 transition hover:shadow-sm dark:bg-gray-800"
                   :class="[
                     !isEditing('subcategory', sub, selectedGroup, selectedCategory) && !isDeleting('subcategory', selectedGroup, selectedCategory, sub) ? 'cursor-pointer' : '',
-                    isDragTarget('subcategory', sIdx) ? 'border-primary-500 dark:border-primary-400' : 'border-transparent',
+                    isDragTarget('subcategory', sIdx) ? 'border-primary-500 dark:border-primary-400' : 'border-gray-200 hover:border-primary-500 dark:border-gray-700 dark:hover:border-primary-500',
                     isDragFrom('subcategory', sIdx) ? 'opacity-40' : ''
                   ]"
                   :draggable="!isEditing('subcategory', sub, selectedGroup, selectedCategory) && !isDeleting('subcategory', selectedGroup, selectedCategory, sub) && !searchQ"
@@ -674,7 +693,7 @@ const {
                   @click="!isEditing('subcategory', sub, selectedGroup, selectedCategory) && !isDeleting('subcategory', selectedGroup, selectedCategory, sub) ? selectedSubcategory = sub : null"
                 >
                   <!-- Name / inline edit -->
-                  <td class="px-4 py-3">
+                  <td class="block">
                     <template v-if="isEditing('subcategory', sub, selectedGroup, selectedCategory)">
                       <div class="flex items-center gap-1">
                         <input
@@ -693,45 +712,26 @@ const {
                     </template>
                     <template v-else>
                       <div class="flex items-center gap-1.5">
-                        <svg v-if="!searchQ" class="w-3 h-3 flex-shrink-0 opacity-0 group-hover/row:opacity-30 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                        <svg v-if="!searchQ" class="w-3 h-3 flex-shrink-0 opacity-0 group-hover/row:opacity-40 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500" viewBox="0 0 20 20" fill="currentColor">
                           <circle cx="7" cy="5" r="1.2"/><circle cx="13" cy="5" r="1.2"/>
                           <circle cx="7" cy="10" r="1.2"/><circle cx="13" cy="10" r="1.2"/>
                           <circle cx="7" cy="15" r="1.2"/><circle cx="13" cy="15" r="1.2"/>
                         </svg>
+                        <span class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">Subnivel</span>
                         <span class="font-medium text-gray-800 dark:text-gray-100">{{ sub }}</span>
                       </div>
                     </template>
                   </td>
 
                   <!-- Item count -->
-                  <td class="px-4 py-3 text-gray-500 dark:text-gray-400 tabular-nums">
-                    {{ countVisibleItemsInSubcategory(selectedGroup, selectedCategory, sub) }}
+                  <td class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
+                    {{ countVisibleItemsInSubcategory(selectedGroup, selectedCategory, sub) }} modelo(s)
                   </td>
 
-                  <!-- Attributes summary (read-only pills) -->
-                  <td class="px-4 py-3 align-middle">
-                    <div class="flex flex-wrap gap-1">
-                      <template v-for="item in getItemsForSubcategory(selectedGroup, selectedCategory, sub)" :key="item.id">
-                        <span
-                          v-for="attr in (item.attributes || [])"
-                          :key="item.id + '-' + attr"
-                          class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
-                        >{{ attr }}</span>
-                        <span
-                          v-for="ekey in getItemExtraKeys(item.id)"
-                          :key="item.id + '-extra-' + ekey"
-                          class="px-1.5 py-0.5 text-[11px] rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
-                        >{{ ekey }}</span>
-                      </template>
-                      <span
-                        v-if="!getItemsForSubcategory(selectedGroup, selectedCategory, sub).flatMap(i => i.attributes || []).length"
-                        class="text-xs text-gray-400 dark:text-gray-500 italic"
-                      >—</span>
-                    </div>
-                  </td>
+                  <td class="hidden"></td>
 
                   <!-- Row actions -->
-                  <td class="px-3 py-3" @click.stop>
+                  <td class="absolute right-3 top-3 block" @click.stop>
                     <template v-if="isDeleting('subcategory', selectedGroup, selectedCategory, sub)">
                       <div class="flex items-center gap-1">
                         <span class="text-[11px] text-red-500 font-medium whitespace-nowrap">Excluir?</span>
@@ -741,7 +741,7 @@ const {
                     </template>
                     <template v-else>
                       <div class="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                        <button class="p-1 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 rounded" title="Novo item" @click="selectedSubcategory = sub; startAddItem(sub)">
+                        <button class="p-1 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 rounded" title="Novo modelo" @click="selectedSubcategory = sub; startAddItem(sub)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                         </button>
                         <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 rounded" title="Renomear" @click="startEdit('subcategory', sub, selectedGroup, selectedCategory)">
@@ -763,7 +763,7 @@ const {
                   <td colspan="4" class="px-4 py-3">
                     <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
                       <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                        Novo item em <strong class="text-gray-600 dark:text-gray-300">{{ sub }}</strong>
+                        Novo modelo em <strong class="text-gray-600 dark:text-gray-300">{{ sub }}</strong>
                       </span>
                       <input
                         v-model="newItemName"
@@ -810,16 +810,14 @@ const {
                   </td>
                 </tr>
                 </template>
-              </tbody>
 
-              <!-- Add subcategory row -->
-              <tfoot>
-                <tr v-if="addingSubcategory" class="bg-primary-50/60 dark:bg-primary-900/10">
-                  <td colspan="4" class="px-4 py-3">
+                <!-- Add subcategory row -->
+                <tr v-if="addingSubcategory" class="block rounded-xl border border-primary-300 bg-primary-50/60 p-4 dark:border-primary-700 dark:bg-primary-900/10 md:col-span-2">
+                  <td colspan="4" class="block">
                     <div class="flex items-center gap-2 flex-wrap">
                       <input
                         v-model="newSubcategoryName"
-                        placeholder="Nome da subcategoria"
+                        placeholder="Nome do subnível opcional"
                         class="flex-1 min-w-[160px] px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
                         @keydown="onAddSubcategoryKeydown"
                         autofocus
@@ -857,26 +855,26 @@ const {
                     </div>
                   </td>
                 </tr>
-                <tr v-else>
-                  <td colspan="4" class="px-4 py-2.5">
+                <tr v-else class="block">
+                  <td colspan="4" class="block">
                     <button
-                      class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      class="flex min-h-[78px] w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 p-4 text-gray-400 transition-colors hover:border-primary-400 hover:text-primary-500 dark:border-gray-700 dark:text-gray-500 dark:hover:border-primary-600 dark:hover:text-primary-400"
                       @click="startAddSubcategory"
                     >
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                      Nova subcategoria
+                      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                      <span class="text-xs font-medium">Novo subnivel</span>
                     </button>
                   </td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
           </div>
-          <div v-else class="flex flex-col items-start gap-3 py-8 px-2">
-            <p class="text-sm text-gray-400 dark:text-gray-500 italic">Nenhuma subcategoria nesta categoria.</p>
+          <div v-else class="order-1 flex flex-col items-start gap-3 px-2 py-8">
+            <p class="text-sm text-gray-400 dark:text-gray-500 italic">Nenhum subnível opcional neste subgrupo.</p>
             <div v-if="addingSubcategory" class="flex items-center gap-2 flex-wrap">
               <input
                 v-model="newSubcategoryName"
-                placeholder="Nome da subcategoria"
+                placeholder="Nome do subnível opcional"
                 class="px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
                 @keydown="onAddSubcategoryKeydown"
                 autofocus
@@ -918,7 +916,7 @@ const {
               @click="startAddSubcategory"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              Nova subcategoria
+              Novo subnível opcional
             </button>
           </div>
         </div>
@@ -935,7 +933,10 @@ const {
               <!-- Card header -->
               <div class="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
                 <div>
-                  <p class="text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">{{ item.name }}</p>
+                  <div class="mb-1 flex items-center gap-1.5">
+                    <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Modelo</span>
+                    <p class="text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">{{ item.name }}</p>
+                  </div>
                   <!-- Unit badge (click to edit) -->
                   <template v-if="editingUnitItemId === item.id">
                     <select
@@ -1018,7 +1019,7 @@ const {
                 </div>
                 <button
                   class="opacity-0 group-hover/card:opacity-100 inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
-                  title="Mover item"
+                  title="Mover modelo"
                   @click.stop="startMoveItem(item)"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
@@ -1089,7 +1090,7 @@ const {
             <!-- Add item card -->
             <template v-if="addingItemForSub === selectedSubcategory">
               <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4 shadow-sm">
-                <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Novo item</p>
+                <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Novo modelo</p>
                 <input
                   v-model="newItemName"
                   :placeholder="`Nome (padrão: ${selectedSubcategory})`"
@@ -1155,13 +1156,13 @@ const {
               @click="startAddItem(selectedSubcategory)"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              <span class="text-xs font-medium">Novo item</span>
+              <span class="text-xs font-medium">Novo modelo</span>
             </button>
           </div>
 
           <!-- Empty state -->
           <div v-if="!getVisibleItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory).length && addingItemForSub !== selectedSubcategory" class="mt-8 text-center text-gray-400 dark:text-gray-500 text-sm italic">
-            Nenhum item nesta subcategoria ainda.
+            Nenhum modelo neste subnível ainda.
           </div>
         </div>
       </template>
@@ -1177,9 +1178,9 @@ const {
       <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Mover na hierarquia</p>
         <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
-          <template v-if="moving.type === 'category'">Categoria {{ moving.category }}</template>
-          <template v-else-if="moving.type === 'subcategory'">Subcategoria {{ moving.subcategory }}</template>
-          <template v-else>Item {{ moving.item.name }}</template>
+          <template v-if="moving.type === 'category'">Subgrupo {{ moving.category }}</template>
+          <template v-else-if="moving.type === 'subcategory'">Subnível {{ moving.subcategory }}</template>
+          <template v-else>Modelo {{ moving.item.name }}</template>
         </h3>
       </div>
 
@@ -1196,38 +1197,38 @@ const {
         </label>
 
         <label v-if="moving.type === 'subcategory' || moving.type === 'item'" class="block">
-          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Categoria</span>
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subgrupo</span>
           <select
             v-model="moveTargetCategory"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
-            <option v-if="moving.type === 'item'" value="">Sem categoria</option>
-            <option v-else value="">Selecione uma categoria</option>
+            <option v-if="moving.type === 'item'" value="">Sem subgrupo</option>
+            <option v-else value="">Selecione um subgrupo</option>
             <option v-for="category in moveTargetCategories" :key="category" :value="category">{{ category }}</option>
           </select>
         </label>
 
         <label v-if="moving.type === 'item'" class="block">
-          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subcategoria</span>
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subnível opcional</span>
           <select
             v-model="moveTargetSubcategory"
             :disabled="!moveTargetCategory"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
-            <option value="">Sem subcategoria</option>
+            <option value="">Sem subnível</option>
             <option v-for="subcategory in moveTargetSubcategories" :key="subcategory" :value="subcategory">{{ subcategory }}</option>
           </select>
         </label>
 
         <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           <template v-if="moving.type === 'category'">
-            Move todos os itens desta categoria para outro grupo.
+            Move todos os modelos deste subgrupo para outro grupo.
           </template>
           <template v-else-if="moving.type === 'subcategory'">
-            Move todos os itens desta subcategoria para outra categoria.
+            Move todos os modelos deste subnível para outro subgrupo.
           </template>
           <template v-else>
-            Move este item e mantem suas variacoes e estoque.
+            Move este modelo e mantem suas variacoes e estoque.
           </template>
         </div>
       </div>

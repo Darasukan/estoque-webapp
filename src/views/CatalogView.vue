@@ -63,8 +63,10 @@ function triggerSearchDrill() {
 
     nextTick(() => {
       // Drill into category
-      if (groupCategories.value.length && searchedCategories.value.length === 1) {
+      if (groupCategories.value.length && searchedCategories.value.length === 1 && searchedGroupDirectItems.value.length === 0) {
         setActiveCategory(searchedCategories.value[0])
+      } else if (searchedGroupDirectItems.value.length === 1 && searchedCategories.value.length === 0) {
+        openItem(searchedGroupDirectItems.value[0]); autoDrilling.value = false; return
       } else if (!groupCategories.value.length && searchedGroupItems.value.length === 1) {
         openItem(searchedGroupItems.value[0]); autoDrilling.value = false; return
       } else { autoDrilling.value = false; return }
@@ -73,6 +75,8 @@ function triggerSearchDrill() {
         // Drill into subcategory
         if (categorySubcategories.value.length && searchedSubcategories.value.length === 1) {
           setActiveSubcategory(searchedSubcategories.value[0])
+        } else if (searchedCategoryDirectItems.value.length === 1 && searchedSubcategories.value.length === 0) {
+          openItem(searchedCategoryDirectItems.value[0]); autoDrilling.value = false; return
         } else if (!categorySubcategories.value.length && searchedResults.value.length === 1) {
           openItem(searchedResults.value[0]); autoDrilling.value = false; return
         } else { autoDrilling.value = false; return }
@@ -199,8 +203,51 @@ const totalStock = computed(() => {
 const addingVariation = ref(false)
 const editingVariationId = ref(null)
 const varForm = ref({ values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] })
+const directVariationMode = ref(false)
+const directVariationGroup = ref('')
+const directVariationCategory = ref('')
+const directVariationSubcategory = ref('')
+const directVariationItemId = ref('')
 const sheetVariationId = ref('')
 const sheetVariation = computed(() => itemVariations.value.find(v => v.id === sheetVariationId.value) || null)
+
+const directVariationCategories = computed(() =>
+  directVariationGroup.value ? getCategoriesForGroup(directVariationGroup.value) : []
+)
+const directVariationSubcategories = computed(() =>
+  directVariationGroup.value && directVariationCategory.value
+    ? getSubcategoriesForCategory(directVariationGroup.value, directVariationCategory.value)
+    : []
+)
+
+function sameStructureName(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+}
+
+function isHierarchyModelItem(item) {
+  if (!item) return false
+  if (variations.value.some(v => v.itemId === item.id)) return false
+  if (!item.category && !item.subcategory && sameStructureName(item.name, item.group)) return true
+  if (item.category && !item.subcategory && sameStructureName(item.name, item.category)) return true
+  if (item.subcategory && sameStructureName(item.name, item.subcategory)) return true
+  return false
+}
+
+const directVariationItems = computed(() => {
+  if (!directVariationGroup.value) return []
+  return items.value
+    .filter(item => !isHierarchyModelItem(item))
+    .filter(item => item.group === directVariationGroup.value)
+    .filter(item => directVariationCategory.value ? item.category === directVariationCategory.value : !item.category)
+    .filter(item => directVariationSubcategory.value ? item.subcategory === directVariationSubcategory.value : !item.subcategory)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }))
+})
+const directVariationItem = computed(() =>
+  directVariationItems.value.find(item => item.id === directVariationItemId.value) || null
+)
+const variationFormItem = computed(() =>
+  directVariationMode.value ? directVariationItem.value : viewingItem.value
+)
 
 function _extrasObjToList(obj) {
   return Object.entries(obj || {}).map(([key, value]) => ({ key, value }))
@@ -216,11 +263,23 @@ function _extrasListToObj(list) {
 function addExtraField() { varForm.value.extrasList.push({ key: '', value: '' }) }
 function removeExtraField(i) { varForm.value.extrasList.splice(i, 1) }
 
-function startAddVariation() {
-  const attrs = viewingItem.value?.attributes || []
+function blankVariationFormForItem(item) {
   const values = {}
-  for (const a of attrs) values[a] = ''
-  varForm.value = { values, stock: 0, minStock: viewingItem.value?.minStock || 0, extrasList: [], location: '', destinations: [] }
+  for (const attr of item?.attributes || []) values[attr] = ''
+  return {
+    values,
+    stock: 0,
+    minStock: item?.minStock || 0,
+    extrasList: [],
+    location: item?.location || '',
+    destinations: [],
+  }
+}
+
+function startAddVariation() {
+  if (!viewingItem.value) return
+  directVariationMode.value = false
+  varForm.value = blankVariationFormForItem(viewingItem.value)
   addingVariation.value = true
   editingVariationId.value = null
   nextTick(() => {
@@ -230,6 +289,7 @@ function startAddVariation() {
 }
 
 function startEditVariation(v) {
+  directVariationMode.value = false
   const attrs = viewingItem.value?.attributes || []
   const values = {}
   for (const a of attrs) values[a] = v.values[a] || ''
@@ -238,9 +298,59 @@ function startEditVariation(v) {
   addingVariation.value = false
 }
 
+function resetDirectVariationForm() {
+  directVariationItemId.value = ''
+  varForm.value = { values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] }
+}
+
+function startDirectVariation() {
+  directVariationMode.value = true
+  addingVariation.value = true
+  editingVariationId.value = null
+  directVariationGroup.value = activeGroup.value || ''
+  directVariationCategory.value = activeCategory.value || ''
+  directVariationSubcategory.value = activeSubcategory.value || ''
+  resetDirectVariationForm()
+  localDropOpen.value = false
+  destsDropOpen.value = false
+  nextTick(() => {
+    const el = document.querySelector('.direct-variation-select')
+    if (el) el.focus()
+  })
+}
+
+function onDirectVariationGroupChange() {
+  directVariationCategory.value = ''
+  directVariationSubcategory.value = ''
+  resetDirectVariationForm()
+}
+
+function onDirectVariationCategoryChange() {
+  directVariationSubcategory.value = ''
+  resetDirectVariationForm()
+}
+
+function onDirectVariationSubcategoryChange() {
+  resetDirectVariationForm()
+}
+
+watch(directVariationItem, item => {
+  if (!directVariationMode.value || !item || editingVariationId.value) return
+  varForm.value = blankVariationFormForItem(item)
+  nextTick(() => {
+    const el = document.querySelector('.var-form-input')
+    if (el) el.focus()
+  })
+})
+
 async function saveVariation() {
-  const hasValue = Object.values(varForm.value.values).some(v => v.trim())
-  if (!hasValue && (viewingItem.value?.attributes?.length || 0) > 0) {
+  const targetItem = variationFormItem.value
+  if (!targetItem) {
+    error('Selecione o modelo de item.')
+    return
+  }
+  const hasValue = Object.values(varForm.value.values).some(v => String(v || '').trim())
+  if (!hasValue && (targetItem?.attributes?.length || 0) > 0) {
     error('Preencha ao menos um atributo.')
     return
   }
@@ -259,16 +369,19 @@ async function saveVariation() {
     editingVariationId.value = null
     success('Variação atualizada!')
   } else {
-    const result = await addVariation(viewingItem.value.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, _extrasListToObj(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
+    const result = await addVariation(targetItem.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, _extrasListToObj(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
     if (!result.ok) { error(result.error); return }
     success('Variação adicionada!')
+    if (directVariationMode.value) openItem(targetItem)
   }
   addingVariation.value = false
+  directVariationMode.value = false
 }
 
 function cancelVariation() {
   addingVariation.value = false
   editingVariationId.value = null
+  directVariationMode.value = false
   localDropOpen.value = false
   destsDropOpen.value = false
   destsSearch.value = ''
@@ -371,7 +484,7 @@ function closeAllDrops() {
 
 // ===== Variation Modal =====
 const showVarModal = computed(() => addingVariation.value || !!editingVariationId.value)
-const varModalTitle = computed(() => editingVariationId.value ? 'Editar Variação' : 'Nova Variação')
+const varModalTitle = computed(() => editingVariationId.value ? 'Editar Variação' : directVariationMode.value ? 'Criar Variação' : 'Nova Variação')
 
 function onDeleteVariation(v) {
   const label = Object.values(v.values).filter(Boolean).join(' / ') || 'esta variação'
@@ -517,6 +630,31 @@ const searchedGroupItems = computed(() => {
   return groupItems.value.filter(item => itemMatchesSearch(item, q))
 })
 
+// Search-filtered direct models under the selected group.
+const searchedGroupDirectItems = computed(() => {
+  if (!activeGroup.value) return []
+  const scoped = items.value
+    .filter(item => item.group === activeGroup.value)
+    .filter(item => !item.category && !item.subcategory)
+    .filter(item => !isHierarchyModelItem(item))
+  if (!searchNorm.value) return scoped
+  const q = searchNorm.value
+  return scoped.filter(item => itemMatchesSearch(item, q))
+})
+
+// Search-filtered direct models under the selected subgroup/family.
+const searchedCategoryDirectItems = computed(() => {
+  if (!activeGroup.value || !activeCategory.value) return []
+  const scoped = items.value
+    .filter(item => item.group === activeGroup.value)
+    .filter(item => item.category === activeCategory.value)
+    .filter(item => !item.subcategory)
+    .filter(item => !isHierarchyModelItem(item))
+  if (!searchNorm.value) return scoped
+  const q = searchNorm.value
+  return scoped.filter(item => itemMatchesSearch(item, q))
+})
+
 // Search-filtered items at the current nav level
 const searchedResults = computed(() => {
   if (!searchNorm.value) return navigationItems.value
@@ -530,6 +668,18 @@ defineExpose({ triggerSearchDrill })
 
 <template>
   <div>
+    <div v-if="isAdmin && !viewingItem" class="mb-4 flex justify-end">
+      <button
+        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500"
+        @click="startDirectVariation"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        Criar Variação
+      </button>
+    </div>
+
     <!-- ===== 1. ITEM DETAIL (variations table) ===== -->
     <template v-if="viewingItem">
       <!-- Breadcrumb -->
@@ -734,7 +884,7 @@ defineExpose({ triggerSearchDrill })
         <!-- Empty: no attributes -->
         <div v-if="!viewingItem.attributes?.length" class="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
           <p class="text-sm">Este item não possui atributos definidos.</p>
-          <p class="text-xs mt-1">Edite o item na aba <strong>Itens</strong> para adicionar atributos.</p>
+          <p class="text-xs mt-1">Edite o item na hierarquia para adicionar atributos.</p>
         </div>
         <!-- Empty: no variations -->
         <div v-else-if="itemVariations.length === 0 && !addingVariation" class="px-6 py-8 text-center text-gray-400 dark:text-gray-500">
@@ -758,11 +908,12 @@ defineExpose({ triggerSearchDrill })
 
       <!-- Count -->
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        {{ groupCategories.length ? (searchedCategories.length + ' ' + (searchedCategories.length === 1 ? 'categoria' : 'categorias')) : (searchedGroupItems.length + ' ' + (searchedGroupItems.length === 1 ? 'item' : 'itens')) }}
+        {{ (searchedCategories.length + searchedGroupDirectItems.length) || searchedGroupItems.length }}
+        {{ ((searchedCategories.length + searchedGroupDirectItems.length) || searchedGroupItems.length) === 1 ? 'opção' : 'opções' }}
       </p>
 
       <!-- Category grid -->
-      <div v-if="groupCategories.length && searchedCategories.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-if="searchedCategories.length || searchedGroupDirectItems.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <button
           v-for="cat in searchedCategories"
           :key="cat"
@@ -780,15 +931,30 @@ defineExpose({ triggerSearchDrill })
             &middot; Estoque: {{ categoryStock(cat) }}
           </p>
         </button>
+
+        <button
+          v-for="item in searchedGroupDirectItems"
+          :key="item.id"
+          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+          @click="openItem(item)"
+        >
+          <div class="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-3 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
+            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+            </svg>
+          </div>
+          <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate mb-1">{{ item.name }}</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">Estoque: {{ getTotalStock(item.id) }}</p>
+        </button>
       </div>
 
       <!-- No search results for categories -->
-      <div v-else-if="groupCategories.length && searchNorm" class="text-center py-10 text-gray-400 dark:text-gray-500">
-        <p class="text-sm">Nenhuma categoria encontrada para "{{ searchQuery }}".</p>
+      <div v-else-if="searchNorm" class="text-center py-10 text-gray-400 dark:text-gray-500">
+        <p class="text-sm">Nenhuma opção encontrada para "{{ searchQuery }}".</p>
       </div>
 
       <!-- No categories — show items directly -->
-      <template v-else-if="!groupCategories.length">
+      <template v-else>
         <div v-if="searchedGroupItems.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           <button
             v-for="item in searchedGroupItems"
@@ -819,37 +985,49 @@ defineExpose({ triggerSearchDrill })
 
       <!-- Count -->
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        {{ categorySubcategories.length ? (searchedSubcategories.length + ' ' + (searchedSubcategories.length === 1 ? 'subcategoria' : 'subcategorias')) : (searchedResults.length + ' ' + (searchedResults.length === 1 ? 'item' : 'itens')) }}
+        {{ searchedCategoryDirectItems.length + searchedSubcategories.length }} {{ (searchedCategoryDirectItems.length + searchedSubcategories.length) === 1 ? 'opção' : 'opções' }}
       </p>
 
-      <!-- Subcategory grid -->
-      <div v-if="categorySubcategories.length && searchedSubcategories.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <button
-          v-for="sub in searchedSubcategories"
-          :key="sub"
-          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
-          @click="setActiveSubcategory(sub)"
-        >
-          <div class="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-3 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
-            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-            </svg>
-          </div>
-          <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate mb-1">{{ sub }}</p>
-          <p class="text-xs text-gray-400 dark:text-gray-500">
-            {{ subcategoryCount(sub) }} {{ subcategoryCount(sub) === 1 ? 'item' : 'itens' }}
-            &middot; Estoque: {{ subcategoryStock(sub) }}
-          </p>
-        </button>
+      <!-- Options at this level -->
+      <div v-if="searchedCategoryDirectItems.length || searchedSubcategories.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          <button
+            v-for="item in searchedCategoryDirectItems"
+            :key="item.id"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            @click="openItem(item)"
+          >
+            <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-2 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
+              <svg class="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+              </svg>
+            </div>
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate mb-1">{{ item.name }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">Estoque: {{ getTotalStock(item.id) }}</p>
+          </button>
+
+          <button
+            v-for="sub in searchedSubcategories"
+            :key="sub"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            @click="setActiveSubcategory(sub)"
+          >
+            <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-2 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
+              <svg class="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+              </svg>
+            </div>
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate mb-1">{{ sub }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">Estoque: {{ subcategoryStock(sub) }}</p>
+          </button>
       </div>
 
-      <!-- No search results for subcategories -->
-      <div v-else-if="categorySubcategories.length && searchNorm" class="text-center py-10 text-gray-400 dark:text-gray-500">
-        <p class="text-sm">Nenhuma subcategoria encontrada para "{{ searchQuery }}".</p>
+      <!-- No search results at this category/subgroup level -->
+      <div v-if="searchNorm && !searchedCategoryDirectItems.length && !searchedSubcategories.length" class="text-center py-10 text-gray-400 dark:text-gray-500">
+        <p class="text-sm">Nenhuma opção encontrada para "{{ searchQuery }}".</p>
       </div>
 
-      <!-- No subcategories — show items directly -->
-      <template v-else-if="!categorySubcategories.length">
+      <!-- No subcategories and no direct-only split — show scoped items directly -->
+      <template v-else-if="!categorySubcategories.length && !searchedCategoryDirectItems.length">
         <div v-if="searchedResults.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           <button
             v-for="item in searchedResults"
@@ -1018,11 +1196,70 @@ defineExpose({ triggerSearchDrill })
           {{ varModalTitle }}
         </h3>
 
+        <div v-if="directVariationMode" class="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+          <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Modelo da variação</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Grupo</label>
+              <select
+                v-model="directVariationGroup"
+                class="direct-variation-select w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                @change="onDirectVariationGroupChange"
+              >
+                <option value="">Selecione...</option>
+                <option v-for="group in uniqueGroups" :key="group" :value="group">{{ group }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Família / subgrupo</label>
+              <select
+                v-model="directVariationCategory"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                :disabled="!directVariationGroup"
+                @change="onDirectVariationCategoryChange"
+              >
+                <option value="">Item direto no grupo</option>
+                <option v-for="category in directVariationCategories" :key="category" :value="category">{{ category }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Subnível opcional</label>
+              <select
+                v-model="directVariationSubcategory"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                :disabled="!directVariationCategory"
+                @change="onDirectVariationSubcategoryChange"
+              >
+                <option value="">Sem subnível</option>
+                <option v-for="subcategory in directVariationSubcategories" :key="subcategory" :value="subcategory">{{ subcategory }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Modelo de item</label>
+              <select
+                v-model="directVariationItemId"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                :disabled="!directVariationGroup"
+              >
+                <option value="">Selecione...</option>
+                <option v-for="item in directVariationItems" :key="item.id" :value="item.id">{{ item.name }}</option>
+              </select>
+            </div>
+          </div>
+          <p v-if="directVariationGroup && !directVariationItems.length" class="mt-3 text-xs text-amber-600 dark:text-amber-400">
+            Nenhum modelo encontrado nesse nível da hierarquia.
+          </p>
+          <p v-else-if="variationFormItem" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ [variationFormItem.group, variationFormItem.category, variationFormItem.subcategory, variationFormItem.name].filter(Boolean).join(' > ') }}
+          </p>
+        </div>
+
+        <template v-if="!directVariationMode || variationFormItem">
         <!-- Attributes -->
-        <div v-if="viewingItem?.attributes?.length" class="mb-4">
+        <div v-if="variationFormItem?.attributes?.length" class="mb-4">
           <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Atributos</label>
           <div class="grid grid-cols-2 gap-3">
-            <div v-for="attr in viewingItem.attributes" :key="attr">
+            <div v-for="attr in variationFormItem.attributes" :key="attr">
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ attr }}</label>
               <input
                 v-model="varForm.values[attr]"
@@ -1129,6 +1366,11 @@ defineExpose({ triggerSearchDrill })
             >+ Adicionar campo</button>
           </div>
         </div>
+        </template>
+
+        <div v-else class="mb-5 rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          Selecione o grupo e o modelo de item para preencher os atributos da variação.
+        </div>
 
         <!-- Actions -->
         <div class="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -1138,8 +1380,10 @@ defineExpose({ triggerSearchDrill })
           >Cancelar</button>
           <button
             class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
+            :disabled="directVariationMode && !variationFormItem"
+            :class="directVariationMode && !variationFormItem ? 'cursor-not-allowed opacity-60' : ''"
             @click="saveVariation"
-          >{{ editingVariationId ? 'Salvar' : 'Adicionar' }}</button>
+          >{{ editingVariationId ? 'Salvar' : directVariationMode ? 'Criar variação' : 'Adicionar' }}</button>
         </div>
       </div>
     </div>

@@ -349,7 +349,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Luvas
     // ═══════════════════════════════════════
-    { name: 'Luva de Latex', group: 'EPIs', category: 'Luvas', subcategory: 'Luva de Latex', unit: 'PAR', minStock: 10,
+    { name: 'Luva de Latex', group: 'EPIs', category: 'Luvas', unit: 'PAR', minStock: 10,
       attrs: ['Marca','Modelo','Tamanho','CA','Material'],
       vars: [
         { values: { Marca:'Volk', Modelo:'Verniz Silver', Tamanho:'P', CA:'15100', Material:'Latex' }, stock: 25 },
@@ -361,7 +361,7 @@ export function generateSeedData() {
         { values: { Marca:'SuperSafety', Modelo:'SS1009', Tamanho:'M', CA:'16200', Material:'Latex' }, stock: 0 },
         { values: { Marca:'SuperSafety', Modelo:'SS1009', Tamanho:'G', CA:'16200', Material:'Latex' }, stock: 8 },
       ]},
-    { name: 'Luva de Raspa', group: 'EPIs', category: 'Luvas', subcategory: 'Luva de Raspa', unit: 'PAR', minStock: 10,
+    { name: 'Luva de Raspa', group: 'EPIs', category: 'Luvas', unit: 'PAR', minStock: 10,
       attrs: ['Marca','Tipo','Tamanho','CA'],
       vars: [
         { values: { Marca:'Delta Plus', Tipo:'Cano Curto', Tamanho:'M', CA:'12440' }, stock: 15 },
@@ -370,7 +370,7 @@ export function generateSeedData() {
         { values: { Marca:'Delta Plus', Tipo:'Cano Longo', Tamanho:'G', CA:'12441' }, stock: 7 },
         { values: { Marca:'Volk', Tipo:'Cano Curto', Tamanho:'Único', CA:'13300' }, stock: 22 },
       ]},
-    { name: 'Luva Nitrílica', group: 'EPIs', category: 'Luvas', subcategory: 'Luva Nitrílica', unit: 'PAR', minStock: 10,
+    { name: 'Luva Nitrílica', group: 'EPIs', category: 'Luvas', unit: 'PAR', minStock: 10,
       attrs: ['Marca','Modelo','Tamanho','CA','Cor'],
       vars: [
         { values: { Marca:'Danny', Modelo:'DA-360', Tamanho:'P', CA:'21500', Cor:'Azul' }, stock: 50 },
@@ -379,7 +379,7 @@ export function generateSeedData() {
         { values: { Marca:'Volk', Modelo:'Nitriflex', Tamanho:'M', CA:'22100', Cor:'Preta' }, stock: 0 },
         { values: { Marca:'Volk', Modelo:'Nitriflex', Tamanho:'G', CA:'22100', Cor:'Preta' }, stock: 12 },
       ]},
-    { name: 'Luva de PVC', group: 'EPIs', category: 'Luvas', subcategory: 'Luva de PVC', unit: 'PAR', minStock: 10,
+    { name: 'Luva de PVC', group: 'EPIs', category: 'Luvas', unit: 'PAR', minStock: 10,
       attrs: ['Marca','Comprimento','Tamanho','CA'],
       vars: [
         { values: { Marca:'Volk', Comprimento:'26cm', Tamanho:'M', CA:'18700' }, stock: 14 },
@@ -387,7 +387,7 @@ export function generateSeedData() {
         { values: { Marca:'Volk', Comprimento:'36cm', Tamanho:'M', CA:'18701' }, stock: 6 },
         { values: { Marca:'Volk', Comprimento:'36cm', Tamanho:'G', CA:'18701' }, stock: 11 },
       ]},
-    { name: 'Luva Anticorte', group: 'EPIs', category: 'Luvas', subcategory: 'Luva Anticorte', unit: 'PAR', minStock: 5,
+    { name: 'Luva Anticorte', group: 'EPIs', category: 'Luvas', unit: 'PAR', minStock: 5,
       attrs: ['Marca','Nível','Tamanho','CA'],
       vars: [
         { values: { Marca:'3M', Nível:'A4', Tamanho:'M', CA:'33100' }, stock: 10 },
@@ -398,7 +398,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Óculos
     // ═══════════════════════════════════════
-    { name: 'Óculos de Proteção', group: 'EPIs', category: 'Óculos', subcategory: 'Óculos de Proteção', unit: 'UN', minStock: 8,
+    { name: 'Óculos de Proteção', group: 'EPIs', category: 'Óculos', unit: 'UN', minStock: 8,
       attrs: ['Marca','Modelo','Cor Lente','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'Virtua', 'Cor Lente':'Incolor', CA:'15649' }, stock: 30 },
@@ -408,7 +408,7 @@ export function generateSeedData() {
         { values: { Marca:'Kalipso', Modelo:'Jaguar', 'Cor Lente':'Amarela', CA:'11790' }, stock: 10 },
         { values: { Marca:'Honeywell', Modelo:'Uvex S3200', 'Cor Lente':'Incolor', CA:'18800' }, stock: 15 },
       ]},
-    { name: 'Óculos Ampla Visão', group: 'EPIs', category: 'Óculos', subcategory: 'Óculos Ampla Visão', unit: 'UN', minStock: 5,
+    { name: 'Óculos Ampla Visão', group: 'EPIs', category: 'Óculos', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','Ventilação','CA'],
       vars: [
         { values: { Marca:'Kalipso', Modelo:'Rã', Ventilação:'Direta', CA:'11285' }, stock: 18 },
@@ -419,7 +419,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Respiradores
     // ═══════════════════════════════════════
-    { name: 'Máscara PFF2', group: 'EPIs', category: 'Respiradores', subcategory: 'Máscara PFF2', unit: 'UN', minStock: 15,
+    { name: 'Máscara PFF2', group: 'EPIs', category: 'Respiradores', unit: 'UN', minStock: 15,
       attrs: ['Marca','Modelo','Válvula','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'Aura 9320+', Válvula:'Sem', CA:'30592' }, stock: 100 },
@@ -427,20 +427,20 @@ export function generateSeedData() {
         { values: { Marca:'Delta Plus', Modelo:'PFF2 VO', Válvula:'Com', CA:'38500' }, stock: 45 },
         { values: { Marca:'Delta Plus', Modelo:'PFF2 S', Válvula:'Sem', CA:'38501' }, stock: 80 },
       ]},
-    { name: 'Máscara PFF3', group: 'EPIs', category: 'Respiradores', subcategory: 'Máscara PFF3', unit: 'UN', minStock: 10,
+    { name: 'Máscara PFF3', group: 'EPIs', category: 'Respiradores', unit: 'UN', minStock: 10,
       attrs: ['Marca','Modelo','Válvula','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'Aura 9332+', Válvula:'Com', CA:'30594' }, stock: 20 },
         { values: { Marca:'Honeywell', Modelo:'SuperOne 3208', Válvula:'Com', CA:'41200' }, stock: 10 },
       ]},
-    { name: 'Respirador Semifacial', group: 'EPIs', category: 'Respiradores', subcategory: 'Respirador Semifacial', unit: 'UN', minStock: 3,
+    { name: 'Respirador Semifacial', group: 'EPIs', category: 'Respiradores', unit: 'UN', minStock: 3,
       attrs: ['Marca','Modelo','Tamanho','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'Série 6200', Tamanho:'M', CA:'46300' }, stock: 5 },
         { values: { Marca:'3M', Modelo:'Série 6200', Tamanho:'G', CA:'46300' }, stock: 3 },
         { values: { Marca:'3M', Modelo:'Série 7502', Tamanho:'M', CA:'46301' }, stock: 8 },
       ]},
-    { name: 'Filtro Químico', group: 'EPIs', category: 'Respiradores', subcategory: 'Filtro Químico', unit: 'UN', minStock: 5,
+    { name: 'Filtro Químico', group: 'EPIs', category: 'Respiradores', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','Tipo','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'6001', Tipo:'Vapores Orgânicos', CA:'4600' }, stock: 12 },
@@ -451,7 +451,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Calçados
     // ═══════════════════════════════════════
-    { name: 'Botina de Segurança', group: 'EPIs', category: 'Calçados', subcategory: 'Botina de Segurança', unit: 'PAR', minStock: 5,
+    { name: 'Botina de Segurança', group: 'EPIs', category: 'Calçados', unit: 'PAR', minStock: 5,
       attrs: ['Marca','Modelo','Biqueira','Tamanho','CA'],
       vars: [
         { values: { Marca:'Marluvas', Modelo:'Premier 75BPR26', Biqueira:'Composite', Tamanho:'38', CA:'32900'}, stock: 4 },
@@ -465,7 +465,7 @@ export function generateSeedData() {
         { values: { Marca:'Fujiwara', Modelo:'Onix', Biqueira:'Composite', Tamanho:'40', CA:'34500'}, stock: 0 },
         { values: { Marca:'Fujiwara', Modelo:'Onix', Biqueira:'Composite', Tamanho:'42', CA:'34500'}, stock: 3 },
       ]},
-    { name: 'Bota de PVC', group: 'EPIs', category: 'Calçados', subcategory: 'Bota de PVC', unit: 'PAR', minStock: 5,
+    { name: 'Bota de PVC', group: 'EPIs', category: 'Calçados', unit: 'PAR', minStock: 5,
       attrs: ['Marca','Cano','Tamanho','CA'],
       vars: [
         { values: { Marca:'Fujiwara', Cano:'Médio', Tamanho:'39/40', CA:'28300' }, stock: 6 },
@@ -473,7 +473,7 @@ export function generateSeedData() {
         { values: { Marca:'Fujiwara', Cano:'Longo', Tamanho:'39/40', CA:'28301' }, stock: 4 },
         { values: { Marca:'Fujiwara', Cano:'Longo', Tamanho:'41/42', CA:'28301' }, stock: 5 },
       ]},
-    { name: 'Sapato de Segurança', group: 'EPIs', category: 'Calçados', subcategory: 'Sapato de Segurança', unit: 'PAR', minStock: 3,
+    { name: 'Sapato de Segurança', group: 'EPIs', category: 'Calçados', unit: 'PAR', minStock: 3,
       attrs: ['Marca','Modelo','Tamanho','CA'],
       vars: [
         { values: { Marca:'Marluvas', Modelo:'50F61', Tamanho:'39', CA:'25300'}, stock: 2 },
@@ -484,14 +484,14 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Proteção Auditiva
     // ═══════════════════════════════════════
-    { name: 'Protetor Auricular Plug', group: 'EPIs', category: 'Proteção Auditiva', subcategory: 'Protetor Auricular Plug', unit: 'UN', minStock: 20,
+    { name: 'Protetor Auricular Plug', group: 'EPIs', category: 'Proteção Auditiva', unit: 'UN', minStock: 20,
       attrs: ['Marca','Modelo','NRRsf','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'1100', NRRsf:'14dB', CA:'5674' }, stock: 200 },
         { values: { Marca:'3M', Modelo:'1110', NRRsf:'14dB', CA:'5674' }, stock: 150 },
         { values: { Marca:'Honeywell', Modelo:'Max Lite', NRRsf:'16dB', CA:'17200' }, stock: 80 },
       ]},
-    { name: 'Abafador de Ruído', group: 'EPIs', category: 'Proteção Auditiva', subcategory: 'Abafador de Ruído', unit: 'UN', minStock: 5,
+    { name: 'Abafador de Ruído', group: 'EPIs', category: 'Proteção Auditiva', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','NRRsf','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'Muffler H9A', NRRsf:'24dB', CA:'16700' }, stock: 12 },
@@ -502,7 +502,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Capacetes
     // ═══════════════════════════════════════
-    { name: 'Capacete Classe A', group: 'EPIs', category: 'Capacetes', subcategory: 'Capacete Classe A', unit: 'UN', minStock: 5,
+    { name: 'Capacete Classe A', group: 'EPIs', category: 'Capacetes', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','Cor','CA'],
       vars: [
         { values: { Marca:'MSA', Modelo:'V-Gard', Cor:'Branco', CA:'498' }, stock: 20 },
@@ -512,7 +512,7 @@ export function generateSeedData() {
         { values: { Marca:'Honeywell', Modelo:'A79R', Cor:'Branco', CA:'15800' }, stock: 12 },
         { values: { Marca:'Honeywell', Modelo:'A79R', Cor:'Azul', CA:'15800' }, stock: 8 },
       ]},
-    { name: 'Capacete Classe B', group: 'EPIs', category: 'Capacetes', subcategory: 'Capacete Classe B', unit: 'UN', minStock: 3,
+    { name: 'Capacete Classe B', group: 'EPIs', category: 'Capacetes', unit: 'UN', minStock: 3,
       attrs: ['Marca','Modelo','Cor','CA'],
       vars: [
         { values: { Marca:'MSA', Modelo:'V-Gard 520', Cor:'Branco', CA:'14100' }, stock: 5 },
@@ -522,13 +522,13 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Vestimentas
     // ═══════════════════════════════════════
-    { name: 'Avental de Raspa', group: 'EPIs', category: 'Vestimentas', subcategory: 'Avental de Raspa', unit: 'UN', minStock: 5,
+    { name: 'Avental de Raspa', group: 'EPIs', category: 'Vestimentas', unit: 'UN', minStock: 5,
       attrs: ['Marca','Tipo','Tamanho','CA'],
       vars: [
         { values: { Marca:'Delta Plus', Tipo:'Barbeiro', Tamanho:'Único', CA:'14600' }, stock: 7 },
         { values: { Marca:'Volk', Tipo:'Comprido', Tamanho:'Único', CA:'14700' }, stock: 5 },
       ]},
-    { name: 'Jaleco Descartável', group: 'EPIs', category: 'Vestimentas', subcategory: 'Jaleco Descartável', unit: 'UN', minStock: 10,
+    { name: 'Jaleco Descartável', group: 'EPIs', category: 'Vestimentas', unit: 'UN', minStock: 10,
       attrs: ['Marca','Gramatura','Tamanho'],
       vars: [
         { values: { Marca:'Descarpack', Gramatura:'30g', Tamanho:'M' }, stock: 100 },
@@ -537,20 +537,20 @@ export function generateSeedData() {
         { values: { Marca:'Descarpack', Gramatura:'50g', Tamanho:'M' }, stock: 30 },
         { values: { Marca:'Descarpack', Gramatura:'50g', Tamanho:'G' }, stock: 40 },
       ]},
-    { name: 'Macacão de Segurança', group: 'EPIs', category: 'Vestimentas', subcategory: 'Macacão de Segurança', unit: 'UN', minStock: 5,
+    { name: 'Macacão de Segurança', group: 'EPIs', category: 'Vestimentas', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','Tamanho','CA'],
       vars: [
         { values: { Marca:'3M', Modelo:'4520', Tamanho:'M', CA:'29300' }, stock: 10 },
         { values: { Marca:'3M', Modelo:'4520', Tamanho:'G', CA:'29300' }, stock: 8 },
         { values: { Marca:'3M', Modelo:'4520', Tamanho:'GG', CA:'29300' }, stock: 4 },
       ]},
-    { name: 'Mangote de Raspa', group: 'EPIs', category: 'Vestimentas', subcategory: 'Mangote de Raspa', unit: 'PAR', minStock: 5,
+    { name: 'Mangote de Raspa', group: 'EPIs', category: 'Vestimentas', unit: 'PAR', minStock: 5,
       attrs: ['Marca','Comprimento','CA'],
       vars: [
         { values: { Marca:'Delta Plus', Comprimento:'40cm', CA:'11800' }, stock: 10 },
         { values: { Marca:'Volk', Comprimento:'50cm', CA:'11900' }, stock: 6 },
       ]},
-    { name: 'Perneira de Segurança', group: 'EPIs', category: 'Vestimentas', subcategory: 'Perneira de Segurança', unit: 'PAR', minStock: 3,
+    { name: 'Perneira de Segurança', group: 'EPIs', category: 'Vestimentas', unit: 'PAR', minStock: 3,
       attrs: ['Marca','Material','CA'],
       vars: [
         { values: { Marca:'Delta Plus', Material:'Raspa', CA:'12100' }, stock: 8 },
@@ -560,14 +560,14 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  EPIs > Proteção Facial
     // ═══════════════════════════════════════
-    { name: 'Protetor Facial', group: 'EPIs', category: 'Proteção Facial', subcategory: 'Protetor Facial', unit: 'UN', minStock: 5,
+    { name: 'Protetor Facial', group: 'EPIs', category: 'Proteção Facial', unit: 'UN', minStock: 5,
       attrs: ['Marca','Modelo','Visor','CA'],
       vars: [
         { values: { Marca:'Carbografite', Modelo:'CG 200', Visor:'Incolor', CA:'9400' }, stock: 10 },
         { values: { Marca:'Carbografite', Modelo:'CG 200', Visor:'Verde Ton.3', CA:'9401' }, stock: 5 },
         { values: { Marca:'MSA', Modelo:'V-Gard Frame', Visor:'Incolor', CA:'9500' }, stock: 8 },
       ]},
-    { name: 'Máscara de Solda', group: 'EPIs', category: 'Proteção Facial', subcategory: 'Máscara de Solda', unit: 'UN', minStock: 3,
+    { name: 'Máscara de Solda', group: 'EPIs', category: 'Proteção Facial', unit: 'UN', minStock: 3,
       attrs: ['Marca','Modelo','Tipo','Tonalidade'],
       vars: [
         { values: { Marca:'Esab', Modelo:'A20', Tipo:'Escurecimento Automático', Tonalidade:'9-13' }, stock: 4 },
@@ -578,7 +578,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  FERRAMENTAS > Manuais
     // ═══════════════════════════════════════
-    { name: 'Chave de Fenda', group: 'Ferramentas', category: 'Manuais', subcategory: 'Chave de Fenda', unit: 'UN', minStock: 3,
+    { name: 'Chave de Fenda', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Tamanho','Ponta'],
       vars: [
         { values: { Marca:'Tramontina PRO', Tamanho:'3/16x4"', Ponta:'Fenda' }, stock: 12 },
@@ -587,7 +587,7 @@ export function generateSeedData() {
         { values: { Marca:'Gedore', Tamanho:'3/16x4"', Ponta:'Fenda' }, stock: 4 },
         { values: { Marca:'Gedore', Tamanho:'1/4x6"', Ponta:'Fenda' }, stock: 3 },
       ]},
-    { name: 'Chave Phillips', group: 'Ferramentas', category: 'Manuais', subcategory: 'Chave Phillips', unit: 'UN', minStock: 3,
+    { name: 'Chave Phillips', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Tamanho','Ponta'],
       vars: [
         { values: { Marca:'Tramontina PRO', Tamanho:'PH1x4"', Ponta:'Phillips' }, stock: 10 },
@@ -595,26 +595,26 @@ export function generateSeedData() {
         { values: { Marca:'Tramontina PRO', Tamanho:'PH3x6"', Ponta:'Phillips' }, stock: 5 },
         { values: { Marca:'Gedore', Tamanho:'PH2x5"', Ponta:'Phillips' }, stock: 7 },
       ]},
-    { name: 'Alicate Universal', group: 'Ferramentas', category: 'Manuais', subcategory: 'Alicate Universal', unit: 'UN', minStock: 3,
+    { name: 'Alicate Universal', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Tamanho','Isolamento'],
       vars: [
         { values: { Marca:'Tramontina PRO', Tamanho:'8"', Isolamento:'1000V' }, stock: 6 },
         { values: { Marca:'Gedore', Tamanho:'8"', Isolamento:'1000V' }, stock: 4 },
         { values: { Marca:'Vonder', Tamanho:'8"', Isolamento:'Sem' }, stock: 10 },
       ]},
-    { name: 'Alicate de Corte', group: 'Ferramentas', category: 'Manuais', subcategory: 'Alicate de Corte', unit: 'UN', minStock: 3,
+    { name: 'Alicate de Corte', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Tamanho','Isolamento'],
       vars: [
         { values: { Marca:'Tramontina PRO', Tamanho:'6"', Isolamento:'1000V' }, stock: 5 },
         { values: { Marca:'Gedore', Tamanho:'6"', Isolamento:'1000V' }, stock: 3 },
       ]},
-    { name: 'Alicate de Bico', group: 'Ferramentas', category: 'Manuais', subcategory: 'Alicate de Bico', unit: 'UN', minStock: 3,
+    { name: 'Alicate de Bico', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Tamanho','Isolamento'],
       vars: [
         { values: { Marca:'Tramontina PRO', Tamanho:'6"', Isolamento:'1000V' }, stock: 4 },
         { values: { Marca:'Tramontina PRO', Tamanho:'8"', Isolamento:'Sem' }, stock: 7 },
       ]},
-    { name: 'Chave Combinada', group: 'Ferramentas', category: 'Manuais', subcategory: 'Chave Combinada', unit: 'UN', minStock: 2,
+    { name: 'Chave Combinada', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 2,
       attrs: ['Marca','Medida'],
       vars: [
         { values: { Marca:'Gedore', Medida:'8mm' }, stock: 6 },
@@ -626,14 +626,14 @@ export function generateSeedData() {
         { values: { Marca:'Gedore', Medida:'19mm' }, stock: 3 },
         { values: { Marca:'Gedore', Medida:'22mm' }, stock: 2 },
       ]},
-    { name: 'Martelo', group: 'Ferramentas', category: 'Manuais', subcategory: 'Martelo', unit: 'UN', minStock: 2,
+    { name: 'Martelo', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 2,
       attrs: ['Marca','Tipo','Peso'],
       vars: [
         { values: { Marca:'Tramontina', Tipo:'Unha', Peso:'25mm' }, stock: 8 },
         { values: { Marca:'Tramontina', Tipo:'Bola', Peso:'300g' }, stock: 4 },
         { values: { Marca:'Gedore', Tipo:'Unha', Peso:'27mm' }, stock: 3 },
       ]},
-    { name: 'Trena', group: 'Ferramentas', category: 'Manuais', subcategory: 'Trena', unit: 'UN', minStock: 3,
+    { name: 'Trena', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 3,
       attrs: ['Marca','Comprimento','Largura Fita'],
       vars: [
         { values: { Marca:'Stanley', Comprimento:'3m', 'Largura Fita':'13mm' }, stock: 15 },
@@ -641,7 +641,7 @@ export function generateSeedData() {
         { values: { Marca:'Stanley', Comprimento:'8m', 'Largura Fita':'25mm' }, stock: 10 },
         { values: { Marca:'Vonder', Comprimento:'5m', 'Largura Fita':'19mm' }, stock: 12 },
       ]},
-    { name: 'Chave Allen', group: 'Ferramentas', category: 'Manuais', subcategory: 'Chave Allen', unit: 'UN', minStock: 2,
+    { name: 'Chave Allen', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 2,
       attrs: ['Marca','Medida','Tipo'],
       vars: [
         { values: { Marca:'Gedore', Medida:'3mm', Tipo:'Curta' }, stock: 5 },
@@ -650,20 +650,20 @@ export function generateSeedData() {
         { values: { Marca:'Gedore', Medida:'6mm', Tipo:'Curta' }, stock: 4 },
         { values: { Marca:'Gedore', Medida:'8mm', Tipo:'Longa' }, stock: 3 },
       ]},
-    { name: 'Chave de Grifo', group: 'Ferramentas', category: 'Manuais', subcategory: 'Chave de Grifo', unit: 'UN', minStock: 1,
+    { name: 'Chave de Grifo', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 1,
       attrs: ['Marca','Tamanho'],
       vars: [
         { values: { Marca:'Gedore', Tamanho:'10"' }, stock: 3 },
         { values: { Marca:'Gedore', Tamanho:'14"' }, stock: 2 },
         { values: { Marca:'Gedore', Tamanho:'18"' }, stock: 1 },
       ]},
-    { name: 'Arco de Serra', group: 'Ferramentas', category: 'Manuais', subcategory: 'Arco de Serra', unit: 'UN', minStock: 2,
+    { name: 'Arco de Serra', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 2,
       attrs: ['Marca','Tamanho'],
       vars: [
         { values: { Marca:'Starrett', Tamanho:'12"' }, stock: 5 },
         { values: { Marca:'Tramontina', Tamanho:'12"' }, stock: 8 },
       ]},
-    { name: 'Lâmina de Serra', group: 'Ferramentas', category: 'Manuais', subcategory: 'Lâmina de Serra', unit: 'UN', minStock: 5,
+    { name: 'Lâmina de Serra', group: 'Ferramentas', category: 'Manuais', unit: 'UN', minStock: 5,
       attrs: ['Marca','Dentes/pol','Material'],
       vars: [
         { values: { Marca:'Starrett', 'Dentes/pol':'18', Material:'Bimetal' }, stock: 20 },
@@ -674,14 +674,14 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  FERRAMENTAS > Elétricas
     // ═══════════════════════════════════════
-    { name: 'Furadeira', group: 'Ferramentas', category: 'Elétricas', subcategory: 'Furadeira', unit: 'UN', minStock: 1,
+    { name: 'Furadeira', group: 'Ferramentas', category: 'Elétricas', unit: 'UN', minStock: 1,
       attrs: ['Marca','Modelo','Potência','Voltagem'],
       vars: [
         { values: { Marca:'Bosch', Modelo:'GSB 550 RE', Potência:'550W', Voltagem:'220V' }, stock: 3 },
         { values: { Marca:'DeWalt', Modelo:'DWD024', Potência:'700W', Voltagem:'220V' }, stock: 2 },
         { values: { Marca:'Makita', Modelo:'HP1640', Potência:'680W', Voltagem:'220V' }, stock: 2 },
       ]},
-    { name: 'Esmerilhadeira', group: 'Ferramentas', category: 'Elétricas', subcategory: 'Esmerilhadeira', unit: 'UN', minStock: 1,
+    { name: 'Esmerilhadeira', group: 'Ferramentas', category: 'Elétricas', unit: 'UN', minStock: 1,
       attrs: ['Marca','Modelo','Disco','Potência'],
       vars: [
         { values: { Marca:'Bosch', Modelo:'GWS 700', Disco:'4.1/2"', Potência:'710W' }, stock: 4 },
@@ -689,20 +689,20 @@ export function generateSeedData() {
         { values: { Marca:'Makita', Modelo:'GA4530', Disco:'4.1/2"', Potência:'720W' }, stock: 1 },
         { values: { Marca:'Bosch', Modelo:'GWS 22-180', Disco:'7"', Potência:'2200W' }, stock: 1 },
       ]},
-    { name: 'Parafusadeira', group: 'Ferramentas', category: 'Elétricas', subcategory: 'Parafusadeira', unit: 'UN', minStock: 1,
+    { name: 'Parafusadeira', group: 'Ferramentas', category: 'Elétricas', unit: 'UN', minStock: 1,
       attrs: ['Marca','Modelo','Voltagem','Torque'],
       vars: [
         { values: { Marca:'Bosch', Modelo:'GSR 120-LI', Voltagem:'12V', Torque:'30Nm' }, stock: 3 },
         { values: { Marca:'DeWalt', Modelo:'DCD700', Voltagem:'12V', Torque:'24Nm' }, stock: 2 },
         { values: { Marca:'Makita', Modelo:'DF333D', Voltagem:'12V', Torque:'30Nm' }, stock: 1 },
       ]},
-    { name: 'Serra Circular', group: 'Ferramentas', category: 'Elétricas', subcategory: 'Serra Circular', unit: 'UN', minStock: 1,
+    { name: 'Serra Circular', group: 'Ferramentas', category: 'Elétricas', unit: 'UN', minStock: 1,
       attrs: ['Marca','Modelo','Disco','Potência'],
       vars: [
         { values: { Marca:'Bosch', Modelo:'GKS 150', Disco:'7.1/4"', Potência:'1500W' }, stock: 1 },
         { values: { Marca:'DeWalt', Modelo:'DWE560', Disco:'7.1/4"', Potência:'1400W' }, stock: 1 },
       ]},
-    { name: 'Martelete', group: 'Ferramentas', category: 'Elétricas', subcategory: 'Martelete', unit: 'UN', minStock: 1,
+    { name: 'Martelete', group: 'Ferramentas', category: 'Elétricas', unit: 'UN', minStock: 1,
       attrs: ['Marca','Modelo','Potência','Encaixe'],
       vars: [
         { values: { Marca:'Bosch', Modelo:'GBH 2-24D', Potência:'820W', Encaixe:'SDS Plus' }, stock: 1 },
@@ -712,21 +712,21 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  FERRAMENTAS > Medição
     // ═══════════════════════════════════════
-    { name: 'Paquímetro', group: 'Ferramentas', category: 'Medição', subcategory: 'Paquímetro', unit: 'UN', minStock: 1,
+    { name: 'Paquímetro', group: 'Ferramentas', category: 'Medição', unit: 'UN', minStock: 1,
       attrs: ['Marca','Capacidade','Resolução','Tipo'],
       vars: [
         { values: { Marca:'Mitutoyo', Capacidade:'150mm', Resolução:'0.05mm', Tipo:'Analógico' }, stock: 3 },
         { values: { Marca:'Mitutoyo', Capacidade:'150mm', Resolução:'0.01mm', Tipo:'Digital' }, stock: 2 },
         { values: { Marca:'Starrett', Capacidade:'200mm', Resolução:'0.02mm', Tipo:'Analógico' }, stock: 1 },
       ]},
-    { name: 'Nível de Bolha', group: 'Ferramentas', category: 'Medição', subcategory: 'Nível de Bolha', unit: 'UN', minStock: 2,
+    { name: 'Nível de Bolha', group: 'Ferramentas', category: 'Medição', unit: 'UN', minStock: 2,
       attrs: ['Marca','Comprimento'],
       vars: [
         { values: { Marca:'Stanley', Comprimento:'30cm' }, stock: 5 },
         { values: { Marca:'Stanley', Comprimento:'60cm' }, stock: 4 },
         { values: { Marca:'Stanley', Comprimento:'100cm' }, stock: 2 },
       ]},
-    { name: 'Esquadro', group: 'Ferramentas', category: 'Medição', subcategory: 'Esquadro', unit: 'UN', minStock: 2,
+    { name: 'Esquadro', group: 'Ferramentas', category: 'Medição', unit: 'UN', minStock: 2,
       attrs: ['Marca','Tamanho','Tipo'],
       vars: [
         { values: { Marca:'Starrett', Tamanho:'8"', Tipo:'Combinado' }, stock: 3 },
@@ -736,7 +736,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ELÉTRICA > Fios e Cabos
     // ═══════════════════════════════════════
-    { name: 'Fio Flexível', group: 'Elétrica', category: 'Fios e Cabos', subcategory: 'Fio Flexível', unit: 'M', minStock: 50,
+    { name: 'Fio Flexível', group: 'Elétrica', category: 'Fios e Cabos', unit: 'M', minStock: 50,
       attrs: ['Marca','Seção','Cor'],
       vars: [
         { values: { Marca:'Prysmian', Seção:'1.5mm²', Cor:'Azul' }, stock: 500 },
@@ -751,7 +751,7 @@ export function generateSeedData() {
         { values: { Marca:'Prysmian', Seção:'6mm²', Cor:'Preto' }, stock: 100 },
         { values: { Marca:'Prysmian', Seção:'10mm²', Cor:'Preto' }, stock: 50 },
       ]},
-    { name: 'Cabo PP', group: 'Elétrica', category: 'Fios e Cabos', subcategory: 'Cabo PP', unit: 'M', minStock: 30,
+    { name: 'Cabo PP', group: 'Elétrica', category: 'Fios e Cabos', unit: 'M', minStock: 30,
       attrs: ['Marca','Condutores','Seção'],
       vars: [
         { values: { Marca:'Prysmian', Condutores:'2', Seção:'1.5mm²' }, stock: 200 },
@@ -760,7 +760,7 @@ export function generateSeedData() {
         { values: { Marca:'Prysmian', Condutores:'3', Seção:'2.5mm²' }, stock: 120 },
         { values: { Marca:'Prysmian', Condutores:'4', Seção:'2.5mm²' }, stock: 60 },
       ]},
-    { name: 'Cabo de Rede', group: 'Elétrica', category: 'Fios e Cabos', subcategory: 'Cabo de Rede', unit: 'M', minStock: 50,
+    { name: 'Cabo de Rede', group: 'Elétrica', category: 'Fios e Cabos', unit: 'M', minStock: 50,
       attrs: ['Marca','Categoria','Blindagem'],
       vars: [
         { values: { Marca:'Furukawa', Categoria:'Cat5e', Blindagem:'UTP' }, stock: 300 },
@@ -771,7 +771,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ELÉTRICA > Disjuntores
     // ═══════════════════════════════════════
-    { name: 'Disjuntor Monopolar', group: 'Elétrica', category: 'Disjuntores', subcategory: 'Disjuntor Monopolar', unit: 'UN', minStock: 5,
+    { name: 'Disjuntor Monopolar', group: 'Elétrica', category: 'Disjuntores', unit: 'UN', minStock: 5,
       attrs: ['Marca','Corrente','Curva'],
       vars: [
         { values: { Marca:'Schneider', Corrente:'10A', Curva:'C' }, stock: 30 },
@@ -782,14 +782,14 @@ export function generateSeedData() {
         { values: { Marca:'ABB', Corrente:'16A', Curva:'C' }, stock: 10 },
         { values: { Marca:'ABB', Corrente:'25A', Curva:'C' }, stock: 8 },
       ]},
-    { name: 'Disjuntor Bipolar', group: 'Elétrica', category: 'Disjuntores', subcategory: 'Disjuntor Bipolar', unit: 'UN', minStock: 3,
+    { name: 'Disjuntor Bipolar', group: 'Elétrica', category: 'Disjuntores', unit: 'UN', minStock: 3,
       attrs: ['Marca','Corrente','Curva'],
       vars: [
         { values: { Marca:'Schneider', Corrente:'20A', Curva:'C' }, stock: 12 },
         { values: { Marca:'Schneider', Corrente:'32A', Curva:'C' }, stock: 10 },
         { values: { Marca:'Schneider', Corrente:'40A', Curva:'C' }, stock: 6 },
       ]},
-    { name: 'Disjuntor Tripolar', group: 'Elétrica', category: 'Disjuntores', subcategory: 'Disjuntor Tripolar', unit: 'UN', minStock: 2,
+    { name: 'Disjuntor Tripolar', group: 'Elétrica', category: 'Disjuntores', unit: 'UN', minStock: 2,
       attrs: ['Marca','Corrente','Curva'],
       vars: [
         { values: { Marca:'Schneider', Corrente:'25A', Curva:'C' }, stock: 5 },
@@ -797,7 +797,7 @@ export function generateSeedData() {
         { values: { Marca:'Schneider', Corrente:'50A', Curva:'C' }, stock: 3 },
         { values: { Marca:'ABB', Corrente:'63A', Curva:'C' }, stock: 2 },
       ]},
-    { name: 'Disjuntor DR', group: 'Elétrica', category: 'Disjuntores', subcategory: 'Disjuntor DR', unit: 'UN', minStock: 2,
+    { name: 'Disjuntor DR', group: 'Elétrica', category: 'Disjuntores', unit: 'UN', minStock: 2,
       attrs: ['Marca','Corrente','Sensibilidade','Polos'],
       vars: [
         { values: { Marca:'Schneider', Corrente:'25A', Sensibilidade:'30mA', Polos:'2P' }, stock: 5 },
@@ -808,7 +808,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ELÉTRICA > Tomadas e Interruptores
     // ═══════════════════════════════════════
-    { name: 'Tomada 2P+T', group: 'Elétrica', category: 'Tomadas e Interruptores', subcategory: 'Tomada 2P+T', unit: 'UN', minStock: 10,
+    { name: 'Tomada 2P+T', group: 'Elétrica', category: 'Tomadas e Interruptores', unit: 'UN', minStock: 10,
       attrs: ['Marca','Corrente','Cor'],
       vars: [
         { values: { Marca:'Schneider', Corrente:'10A', Cor:'Branco' }, stock: 50 },
@@ -816,7 +816,7 @@ export function generateSeedData() {
         { values: { Marca:'Tramontina', Corrente:'10A', Cor:'Branco' }, stock: 60 },
         { values: { Marca:'Tramontina', Corrente:'20A', Cor:'Branco' }, stock: 35 },
       ]},
-    { name: 'Interruptor Simples', group: 'Elétrica', category: 'Tomadas e Interruptores', subcategory: 'Interruptor Simples', unit: 'UN', minStock: 10,
+    { name: 'Interruptor Simples', group: 'Elétrica', category: 'Tomadas e Interruptores', unit: 'UN', minStock: 10,
       attrs: ['Marca','Seções','Cor'],
       vars: [
         { values: { Marca:'Schneider', Seções:'1', Cor:'Branco' }, stock: 30 },
@@ -829,14 +829,14 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ELÉTRICA > Eletrodutos
     // ═══════════════════════════════════════
-    { name: 'Eletroduto PVC', group: 'Elétrica', category: 'Eletrodutos', subcategory: 'Eletroduto PVC', unit: 'UN', minStock: 10,
+    { name: 'Eletroduto PVC', group: 'Elétrica', category: 'Eletrodutos', unit: 'UN', minStock: 10,
       attrs: ['Marca','Diâmetro','Comprimento'],
       vars: [
         { values: { Marca:'Tigre', Diâmetro:'20mm', Comprimento:'3m' }, stock: 40 },
         { values: { Marca:'Tigre', Diâmetro:'25mm', Comprimento:'3m' }, stock: 30 },
         { values: { Marca:'Tigre', Diâmetro:'32mm', Comprimento:'3m' }, stock: 20 },
       ]},
-    { name: 'Curva Eletroduto', group: 'Elétrica', category: 'Eletrodutos', subcategory: 'Curva Eletroduto', unit: 'UN', minStock: 10,
+    { name: 'Curva Eletroduto', group: 'Elétrica', category: 'Eletrodutos', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro','Ângulo'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Ângulo:'90°' }, stock: 50 },
@@ -847,7 +847,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ELÉTRICA > Iluminação
     // ═══════════════════════════════════════
-    { name: 'Lâmpada LED Bulbo', group: 'Elétrica', category: 'Iluminação', subcategory: 'Lâmpada LED Bulbo', unit: 'UN', minStock: 10,
+    { name: 'Lâmpada LED Bulbo', group: 'Elétrica', category: 'Iluminação', unit: 'UN', minStock: 10,
       attrs: ['Marca','Potência','Temperatura','Base'],
       vars: [
         { values: { Marca:'Philips', Potência:'9W', Temperatura:'3000K', Base:'E27' }, stock: 40 },
@@ -856,14 +856,14 @@ export function generateSeedData() {
         { values: { Marca:'Osram', Potência:'9W', Temperatura:'6500K', Base:'E27' }, stock: 35 },
         { values: { Marca:'Osram', Potência:'15W', Temperatura:'6500K', Base:'E27' }, stock: 20 },
       ]},
-    { name: 'Lâmpada Tubular LED', group: 'Elétrica', category: 'Iluminação', subcategory: 'Lâmpada Tubular LED', unit: 'UN', minStock: 5,
+    { name: 'Lâmpada Tubular LED', group: 'Elétrica', category: 'Iluminação', unit: 'UN', minStock: 5,
       attrs: ['Marca','Potência','Comprimento','Temperatura'],
       vars: [
         { values: { Marca:'Philips', Potência:'18W', Comprimento:'120cm', Temperatura:'6500K' }, stock: 20 },
         { values: { Marca:'Osram', Potência:'18W', Comprimento:'120cm', Temperatura:'6500K' }, stock: 15 },
         { values: { Marca:'Philips', Potência:'9W', Comprimento:'60cm', Temperatura:'6500K' }, stock: 25 },
       ]},
-    { name: 'Luminária de Embutir', group: 'Elétrica', category: 'Iluminação', subcategory: 'Luminária de Embutir', unit: 'UN', minStock: 3,
+    { name: 'Luminária de Embutir', group: 'Elétrica', category: 'Iluminação', unit: 'UN', minStock: 3,
       attrs: ['Marca','Potência','Formato','Cor'],
       vars: [
         { values: { Marca:'Stellatech', Potência:'18W', Formato:'Quadrado', Cor:'Branco' }, stock: 15 },
@@ -874,7 +874,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  HIDRÁULICA > Conexões
     // ═══════════════════════════════════════
-    { name: 'Joelho 90°', group: 'Hidráulica', category: 'Conexões', subcategory: 'Joelho 90°', unit: 'UN', minStock: 10,
+    { name: 'Joelho 90°', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro','Tipo'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Tipo:'Soldável' }, stock: 80 },
@@ -885,14 +885,14 @@ export function generateSeedData() {
         { values: { Material:'CPVC', Diâmetro:'22mm', Tipo:'Soldável' }, stock: 20 },
         { values: { Material:'CPVC', Diâmetro:'28mm', Tipo:'Soldável' }, stock: 15 },
       ]},
-    { name: 'Joelho 45°', group: 'Hidráulica', category: 'Conexões', subcategory: 'Joelho 45°', unit: 'UN', minStock: 10,
+    { name: 'Joelho 45°', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro','Tipo'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Tipo:'Soldável' }, stock: 40 },
         { values: { Material:'PVC', Diâmetro:'25mm', Tipo:'Soldável' }, stock: 30 },
         { values: { Material:'PVC', Diâmetro:'50mm', Tipo:'Soldável' }, stock: 20 },
       ]},
-    { name: 'Tê', group: 'Hidráulica', category: 'Conexões', subcategory: 'Tê', unit: 'UN', minStock: 10,
+    { name: 'Tê', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro','Tipo'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Tipo:'Soldável' }, stock: 50 },
@@ -900,21 +900,21 @@ export function generateSeedData() {
         { values: { Material:'PVC', Diâmetro:'32mm', Tipo:'Soldável' }, stock: 30 },
         { values: { Material:'PVC', Diâmetro:'50mm', Tipo:'Soldável' }, stock: 20 },
       ]},
-    { name: 'Luva de Correr', group: 'Hidráulica', category: 'Conexões', subcategory: 'Luva de Correr', unit: 'UN', minStock: 10,
+    { name: 'Luva de Correr', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm' }, stock: 40 },
         { values: { Material:'PVC', Diâmetro:'25mm' }, stock: 35 },
         { values: { Material:'PVC', Diâmetro:'32mm' }, stock: 25 },
       ]},
-    { name: 'Cap', group: 'Hidráulica', category: 'Conexões', subcategory: 'Cap', unit: 'UN', minStock: 10,
+    { name: 'Cap', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm' }, stock: 30 },
         { values: { Material:'PVC', Diâmetro:'25mm' }, stock: 25 },
         { values: { Material:'PVC', Diâmetro:'50mm' }, stock: 15 },
       ]},
-    { name: 'Registro Esfera', group: 'Hidráulica', category: 'Conexões', subcategory: 'Registro Esfera', unit: 'UN', minStock: 5,
+    { name: 'Registro Esfera', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 5,
       attrs: ['Material','Diâmetro','Marca'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Marca:'Tigre' }, stock: 12 },
@@ -923,7 +923,7 @@ export function generateSeedData() {
         { values: { Material:'Latão', Diâmetro:'1/2"', Marca:'Deca' }, stock: 8 },
         { values: { Material:'Latão', Diâmetro:'3/4"', Marca:'Deca' }, stock: 5 },
       ]},
-    { name: 'Adaptador Soldável', group: 'Hidráulica', category: 'Conexões', subcategory: 'Adaptador Soldável', unit: 'UN', minStock: 10,
+    { name: 'Adaptador Soldável', group: 'Hidráulica', category: 'Conexões', unit: 'UN', minStock: 10,
       attrs: ['Material','Diâmetro','Rosca'],
       vars: [
         { values: { Material:'PVC', Diâmetro:'20mm', Rosca:'1/2"' }, stock: 40 },
@@ -934,7 +934,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  HIDRÁULICA > Tubos
     // ═══════════════════════════════════════
-    { name: 'Tubo PVC Soldável', group: 'Hidráulica', category: 'Tubos', subcategory: 'Tubo PVC Soldável', unit: 'UN', minStock: 5,
+    { name: 'Tubo PVC Soldável', group: 'Hidráulica', category: 'Tubos', unit: 'UN', minStock: 5,
       attrs: ['Marca','Diâmetro','Comprimento'],
       vars: [
         { values: { Marca:'Tigre', Diâmetro:'20mm', Comprimento:'3m' }, stock: 30 },
@@ -942,7 +942,7 @@ export function generateSeedData() {
         { values: { Marca:'Tigre', Diâmetro:'32mm', Comprimento:'3m' }, stock: 15 },
         { values: { Marca:'Tigre', Diâmetro:'50mm', Comprimento:'3m' }, stock: 10 },
       ]},
-    { name: 'Tubo PVC Esgoto', group: 'Hidráulica', category: 'Tubos', subcategory: 'Tubo PVC Esgoto', unit: 'UN', minStock: 3,
+    { name: 'Tubo PVC Esgoto', group: 'Hidráulica', category: 'Tubos', unit: 'UN', minStock: 3,
       attrs: ['Marca','Diâmetro','Comprimento'],
       vars: [
         { values: { Marca:'Tigre', Diâmetro:'40mm', Comprimento:'3m' }, stock: 12 },
@@ -954,14 +954,14 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  HIDRÁULICA > Adesivos
     // ═══════════════════════════════════════
-    { name: 'Adesivo PVC', group: 'Hidráulica', category: 'Adesivos e Vedação', subcategory: 'Adesivo PVC', unit: 'UN', minStock: 5,
+    { name: 'Adesivo PVC', group: 'Hidráulica', category: 'Adesivos e Vedação', unit: 'UN', minStock: 5,
       attrs: ['Marca','Volume'],
       vars: [
         { values: { Marca:'Tigre', Volume:'75g' }, stock: 15 },
         { values: { Marca:'Tigre', Volume:'175g' }, stock: 10 },
         { values: { Marca:'Amanco', Volume:'75g' }, stock: 8 },
       ]},
-    { name: 'Fita Veda Rosca', group: 'Hidráulica', category: 'Adesivos e Vedação', subcategory: 'Fita Veda Rosca', unit: 'UN', minStock: 10,
+    { name: 'Fita Veda Rosca', group: 'Hidráulica', category: 'Adesivos e Vedação', unit: 'UN', minStock: 10,
       attrs: ['Marca','Largura','Comprimento'],
       vars: [
         { values: { Marca:'Tigre', Largura:'18mm', Comprimento:'10m' }, stock: 30 },
@@ -1125,7 +1125,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  FIXAÇÃO > Parafusos e Acessórios
     // ═══════════════════════════════════════
-    { name: 'Parafuso Sextavado', group: 'Fixação', category: 'Parafusos', subcategory: 'Parafuso Sextavado', unit: 'UN', minStock: 50,
+    { name: 'Parafuso Sextavado', group: 'Fixação', category: 'Parafusos', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro','Comprimento'],
       vars: [
         { values: { Material:'Aço Zincado', Diâmetro:'M6', Comprimento:'20mm' }, stock: 200 },
@@ -1138,7 +1138,7 @@ export function generateSeedData() {
         { values: { Material:'Inox 304', Diâmetro:'M6', Comprimento:'20mm' }, stock: 50 },
         { values: { Material:'Inox 304', Diâmetro:'M8', Comprimento:'30mm' }, stock: 30 },
       ]},
-    { name: 'Porca Sextavada', group: 'Fixação', category: 'Parafusos', subcategory: 'Porca Sextavada', unit: 'UN', minStock: 50,
+    { name: 'Porca Sextavada', group: 'Fixação', category: 'Parafusos', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro'],
       vars: [
         { values: { Material:'Aço Zincado', Diâmetro:'M6' }, stock: 300 },
@@ -1148,7 +1148,7 @@ export function generateSeedData() {
         { values: { Material:'Inox 304', Diâmetro:'M6' }, stock: 80 },
         { values: { Material:'Inox 304', Diâmetro:'M8' }, stock: 60 },
       ]},
-    { name: 'Arruela Lisa', group: 'Fixação', category: 'Parafusos', subcategory: 'Arruela Lisa', unit: 'UN', minStock: 50,
+    { name: 'Arruela Lisa', group: 'Fixação', category: 'Parafusos', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro'],
       vars: [
         { values: { Material:'Aço Zincado', Diâmetro:'M6' }, stock: 400 },
@@ -1156,14 +1156,14 @@ export function generateSeedData() {
         { values: { Material:'Aço Zincado', Diâmetro:'M10' }, stock: 250 },
         { values: { Material:'Aço Zincado', Diâmetro:'M12' }, stock: 200 },
       ]},
-    { name: 'Arruela de Pressão', group: 'Fixação', category: 'Parafusos', subcategory: 'Arruela de Pressão', unit: 'UN', minStock: 50,
+    { name: 'Arruela de Pressão', group: 'Fixação', category: 'Parafusos', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro'],
       vars: [
         { values: { Material:'Aço Zincado', Diâmetro:'M6' }, stock: 350 },
         { values: { Material:'Aço Zincado', Diâmetro:'M8' }, stock: 300 },
         { values: { Material:'Aço Zincado', Diâmetro:'M10' }, stock: 200 },
       ]},
-    { name: 'Parafuso Phillips', group: 'Fixação', category: 'Parafusos', subcategory: 'Parafuso Phillips', unit: 'UN', minStock: 50,
+    { name: 'Parafuso Phillips', group: 'Fixação', category: 'Parafusos', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro','Comprimento','Rosca'],
       vars: [
         { values: { Material:'Aço Zincado', Diâmetro:'4.2mm', Comprimento:'13mm', Rosca:'Soberba' }, stock: 500 },
@@ -1172,7 +1172,7 @@ export function generateSeedData() {
         { values: { Material:'Aço Zincado', Diâmetro:'4.8mm', Comprimento:'25mm', Rosca:'Soberba' }, stock: 250 },
         { values: { Material:'Aço Zincado', Diâmetro:'4.8mm', Comprimento:'38mm', Rosca:'Soberba' }, stock: 200 },
       ]},
-    { name: 'Bucha Plástica', group: 'Fixação', category: 'Buchas e Chumbadores', subcategory: 'Bucha Plástica', unit: 'UN', minStock: 30,
+    { name: 'Bucha Plástica', group: 'Fixação', category: 'Buchas e Chumbadores', unit: 'UN', minStock: 30,
       attrs: ['Marca','Tamanho'],
       vars: [
         { values: { Marca:'Fischer', Tamanho:'S6' }, stock: 300 },
@@ -1180,14 +1180,14 @@ export function generateSeedData() {
         { values: { Marca:'Fischer', Tamanho:'S10' }, stock: 150 },
         { values: { Marca:'Fischer', Tamanho:'S12' }, stock: 80 },
       ]},
-    { name: 'Chumbador Mecânico', group: 'Fixação', category: 'Buchas e Chumbadores', subcategory: 'Chumbador Mecânico', unit: 'UN', minStock: 10,
+    { name: 'Chumbador Mecânico', group: 'Fixação', category: 'Buchas e Chumbadores', unit: 'UN', minStock: 10,
       attrs: ['Marca','Diâmetro','Comprimento'],
       vars: [
         { values: { Marca:'Fischer', Diâmetro:'3/8"', Comprimento:'75mm' }, stock: 40 },
         { values: { Marca:'Fischer', Diâmetro:'1/2"', Comprimento:'100mm' }, stock: 30 },
         { values: { Marca:'Walsywa', Diâmetro:'3/8"', Comprimento:'75mm' }, stock: 25 },
       ]},
-    { name: 'Rebite Pop', group: 'Fixação', category: 'Rebites', subcategory: 'Rebite Pop', unit: 'UN', minStock: 50,
+    { name: 'Rebite Pop', group: 'Fixação', category: 'Rebites', unit: 'UN', minStock: 50,
       attrs: ['Material','Diâmetro','Comprimento'],
       vars: [
         { values: { Material:'Alumínio', Diâmetro:'3.2mm', Comprimento:'8mm' }, stock: 500 },
@@ -1199,7 +1199,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  ABRASIVOS
     // ═══════════════════════════════════════
-    { name: 'Disco de Corte', group: 'Abrasivos', category: 'Discos', subcategory: 'Disco de Corte', unit: 'UN', minStock: 10,
+    { name: 'Disco de Corte', group: 'Abrasivos', category: 'Discos', unit: 'UN', minStock: 10,
       attrs: ['Marca','Diâmetro','Espessura','Material'],
       vars: [
         { values: { Marca:'Norton', Diâmetro:'4.1/2"', Espessura:'1.0mm', Material:'Aço' }, stock: 50 },
@@ -1208,14 +1208,14 @@ export function generateSeedData() {
         { values: { Marca:'3M', Diâmetro:'4.1/2"', Espessura:'1.0mm', Material:'Aço' }, stock: 30 },
         { values: { Marca:'3M', Diâmetro:'4.1/2"', Espessura:'1.0mm', Material:'Inox' }, stock: 25 },
       ]},
-    { name: 'Disco de Desbaste', group: 'Abrasivos', category: 'Discos', subcategory: 'Disco de Desbaste', unit: 'UN', minStock: 10,
+    { name: 'Disco de Desbaste', group: 'Abrasivos', category: 'Discos', unit: 'UN', minStock: 10,
       attrs: ['Marca','Diâmetro','Espessura'],
       vars: [
         { values: { Marca:'Norton', Diâmetro:'4.1/2"', Espessura:'6.4mm' }, stock: 30 },
         { values: { Marca:'Norton', Diâmetro:'7"', Espessura:'6.4mm' }, stock: 15 },
         { values: { Marca:'3M', Diâmetro:'4.1/2"', Espessura:'6.4mm' }, stock: 20 },
       ]},
-    { name: 'Disco Flap', group: 'Abrasivos', category: 'Discos', subcategory: 'Disco Flap', unit: 'UN', minStock: 10,
+    { name: 'Disco Flap', group: 'Abrasivos', category: 'Discos', unit: 'UN', minStock: 10,
       attrs: ['Marca','Diâmetro','Grão'],
       vars: [
         { values: { Marca:'Norton', Diâmetro:'4.1/2"', Grão:'40' }, stock: 20 },
@@ -1223,7 +1223,7 @@ export function generateSeedData() {
         { values: { Marca:'Norton', Diâmetro:'4.1/2"', Grão:'80' }, stock: 30 },
         { values: { Marca:'Norton', Diâmetro:'4.1/2"', Grão:'120' }, stock: 15 },
       ]},
-    { name: 'Lixa Ferro', group: 'Abrasivos', category: 'Lixas', subcategory: 'Lixa Ferro', unit: 'UN', minStock: 10,
+    { name: 'Lixa Ferro', group: 'Abrasivos', category: 'Lixas', unit: 'UN', minStock: 10,
       attrs: ['Marca','Grão','Tamanho'],
       vars: [
         { values: { Marca:'Norton', Grão:'60', Tamanho:'225x275mm' }, stock: 40 },
@@ -1231,14 +1231,14 @@ export function generateSeedData() {
         { values: { Marca:'Norton', Grão:'100', Tamanho:'225x275mm' }, stock: 60 },
         { values: { Marca:'Norton', Grão:'120', Tamanho:'225x275mm' }, stock: 45 },
       ]},
-    { name: 'Lixa Massa', group: 'Abrasivos', category: 'Lixas', subcategory: 'Lixa Massa', unit: 'UN', minStock: 10,
+    { name: 'Lixa Massa', group: 'Abrasivos', category: 'Lixas', unit: 'UN', minStock: 10,
       attrs: ['Marca','Grão','Tamanho'],
       vars: [
         { values: { Marca:'Norton', Grão:'100', Tamanho:'225x275mm' }, stock: 30 },
         { values: { Marca:'Norton', Grão:'150', Tamanho:'225x275mm' }, stock: 40 },
         { values: { Marca:'Norton', Grão:'220', Tamanho:'225x275mm' }, stock: 35 },
       ]},
-    { name: 'Lixa d\'Água', group: 'Abrasivos', category: 'Lixas', subcategory: 'Lixa d\'Água', unit: 'UN', minStock: 10,
+    { name: 'Lixa d\'Água', group: 'Abrasivos', category: 'Lixas', unit: 'UN', minStock: 10,
       attrs: ['Marca','Grão','Tamanho'],
       vars: [
         { values: { Marca:'Norton', Grão:'220', Tamanho:'225x275mm' }, stock: 25 },
@@ -1246,7 +1246,7 @@ export function generateSeedData() {
         { values: { Marca:'Norton', Grão:'600', Tamanho:'225x275mm' }, stock: 20 },
         { values: { Marca:'Norton', Grão:'1000', Tamanho:'225x275mm' }, stock: 15 },
       ]},
-    { name: 'Escova de Aço', group: 'Abrasivos', category: 'Escovas', subcategory: 'Escova de Aço', unit: 'UN', minStock: 5,
+    { name: 'Escova de Aço', group: 'Abrasivos', category: 'Escovas', unit: 'UN', minStock: 5,
       attrs: ['Marca','Tipo','Material'],
       vars: [
         { values: { Marca:'Osborn', Tipo:'Manual', Material:'Aço Carbono' }, stock: 10 },
@@ -1331,7 +1331,7 @@ export function generateSeedData() {
     // ═══════════════════════════════════════
     //  SOLDAGEM
     // ═══════════════════════════════════════
-    { name: 'Eletrodo Revestido', group: 'Soldagem', category: 'Consumíveis', subcategory: 'Eletrodo Revestido', unit: 'KG', minStock: 10,
+    { name: 'Eletrodo Revestido', group: 'Soldagem', category: 'Consumíveis', unit: 'KG', minStock: 10,
       attrs: ['Marca','Classificação','Diâmetro'],
       vars: [
         { values: { Marca:'Esab', Classificação:'E6013', Diâmetro:'2.5mm' }, stock: 30 },
@@ -1340,33 +1340,33 @@ export function generateSeedData() {
         { values: { Marca:'Esab', Classificação:'E7018', Diâmetro:'3.25mm' }, stock: 25 },
         { values: { Marca:'Lincoln', Classificação:'E6013', Diâmetro:'3.25mm' }, stock: 15 },
       ]},
-    { name: 'Arame MIG', group: 'Soldagem', category: 'Consumíveis', subcategory: 'Arame MIG', unit: 'KG', minStock: 5,
+    { name: 'Arame MIG', group: 'Soldagem', category: 'Consumíveis', unit: 'KG', minStock: 5,
       attrs: ['Marca','Classificação','Diâmetro','Peso'],
       vars: [
         { values: { Marca:'Esab', Classificação:'ER70S-6', Diâmetro:'0.8mm', Peso:'15kg' }, stock: 10 },
         { values: { Marca:'Esab', Classificação:'ER70S-6', Diâmetro:'1.0mm', Peso:'15kg' }, stock: 8 },
         { values: { Marca:'Lincoln', Classificação:'ER70S-6', Diâmetro:'0.8mm', Peso:'15kg' }, stock: 5 },
       ]},
-    { name: 'Gás CO2', group: 'Soldagem', category: 'Gases', subcategory: 'Gás CO2', unit: 'UN', minStock: 2,
+    { name: 'Gás CO2', group: 'Soldagem', category: 'Gases', unit: 'UN', minStock: 2,
       attrs: ['Fornecedor','Volume'],
       vars: [
         { values: { Fornecedor:'White Martins', Volume:'10kg' }, stock: 4 },
         { values: { Fornecedor:'White Martins', Volume:'25kg' }, stock: 2 },
       ]},
-    { name: 'Gás Argônio', group: 'Soldagem', category: 'Gases', subcategory: 'Gás Argônio', unit: 'UN', minStock: 1,
+    { name: 'Gás Argônio', group: 'Soldagem', category: 'Gases', unit: 'UN', minStock: 1,
       attrs: ['Fornecedor','Volume'],
       vars: [
         { values: { Fornecedor:'White Martins', Volume:'10m³' }, stock: 2 },
         { values: { Fornecedor:'Air Liquide', Volume:'10m³' }, stock: 1 },
       ]},
-    { name: 'Bico de Contato MIG', group: 'Soldagem', category: 'Acessórios Tocha', subcategory: 'Bico de Contato MIG', unit: 'UN', minStock: 10,
+    { name: 'Bico de Contato MIG', group: 'Soldagem', category: 'Acessórios Tocha', unit: 'UN', minStock: 10,
       attrs: ['Diâmetro','Rosca'],
       vars: [
         { values: { Diâmetro:'0.8mm', Rosca:'M6' }, stock: 30 },
         { values: { Diâmetro:'1.0mm', Rosca:'M6' }, stock: 25 },
         { values: { Diâmetro:'1.2mm', Rosca:'M8' }, stock: 15 },
       ]},
-    { name: 'Bocal MIG', group: 'Soldagem', category: 'Acessórios Tocha', subcategory: 'Bocal MIG', unit: 'UN', minStock: 5,
+    { name: 'Bocal MIG', group: 'Soldagem', category: 'Acessórios Tocha', unit: 'UN', minStock: 5,
       attrs: ['Tipo','Diâmetro'],
       vars: [
         { values: { Tipo:'Cônico', Diâmetro:'12mm' }, stock: 15 },
