@@ -40,6 +40,8 @@ const inventorySection = ref(inventorySections.includes(props.initialSection) ? 
 const columnMenuOpen = ref(false)
 const visibleColumns = ref({
   variation: true,
+  location: true,
+  destinations: true,
   current: true,
   min: true,
   status: true,
@@ -49,6 +51,8 @@ const visibleColumns = ref({
 
 const columnOptions = computed(() => [
   { key: 'variation', label: 'Variação' },
+  { key: 'location', label: 'Local' },
+  { key: 'destinations', label: 'Destinos' },
   { key: 'current', label: 'Qtd. atual' },
   { key: 'min', label: 'Mín.' },
   { key: 'status', label: 'Status' },
@@ -94,6 +98,11 @@ function toggleColumn(key) {
 // ===== Search =====
 const searchQuery = ref(props.initialSearch || '')
 const autoHierarchy = ref(null)
+const activeHeaderSearch = ref('')
+const locationHeaderSearch = ref('')
+const destinationsHeaderSearch = ref('')
+const locationHeaderSearchInput = ref(null)
+const destinationsHeaderSearchInput = ref(null)
 
 function normalizeSearchText(value) {
   return String(value || '')
@@ -123,6 +132,12 @@ function compareInventoryRows(a, b) {
     compareText(rowVariationText(a), rowVariationText(b))
 }
 
+function compareItemColumn(a, b) {
+  return compareText(a.item.name, b.item.name) ||
+    compareText(rowVariationText(a), rowVariationText(b)) ||
+    compareInventoryRows(a, b)
+}
+
 function compareNumber(a, b) {
   return Number(a || 0) - Number(b || 0)
 }
@@ -132,7 +147,40 @@ function compareStatus(a, b) {
   return (order[a] ?? 99) - (order[b] ?? 99)
 }
 
+function inventoryLocation(row) {
+  return row?.variation?.location || row?.item?.location || ''
+}
+
+function inventoryDestinations(row) {
+  return (row?.variation?.destinations || [])
+    .map(id => getDestFullName(id))
+    .filter(Boolean)
+}
+
+function inventoryDestinationsText(row) {
+  return inventoryDestinations(row).join(', ')
+}
+
 const searchNorm = computed(() => normalizeSearchText(searchQuery.value))
+const locationHeaderSearchNorm = computed(() => normalizeSearchText(locationHeaderSearch.value))
+const destinationsHeaderSearchNorm = computed(() => normalizeSearchText(destinationsHeaderSearch.value))
+
+function toggleHeaderSearch(key) {
+  activeHeaderSearch.value = activeHeaderSearch.value === key ? '' : key
+  if (activeHeaderSearch.value === key) {
+    nextTick(() => {
+      const input = key === 'location' ? locationHeaderSearchInput.value : destinationsHeaderSearchInput.value
+      input?.focus()
+      input?.select()
+    })
+  }
+}
+
+function clearHeaderSearch(key) {
+  if (key === 'location') locationHeaderSearch.value = ''
+  if (key === 'destinations') destinationsHeaderSearch.value = ''
+  if (activeHeaderSearch.value === key) activeHeaderSearch.value = ''
+}
 
 // ===== Pagination =====
 const currentPage = ref(1)
@@ -143,10 +191,12 @@ const sortDirection = ref('asc')
 
 function compareSortColumn(a, b) {
   if (sortKey.value === 'variation') return compareText(rowVariationText(a), rowVariationText(b)) || compareInventoryRows(a, b)
+  if (sortKey.value === 'location') return compareText(inventoryLocation(a), inventoryLocation(b)) || compareInventoryRows(a, b)
+  if (sortKey.value === 'destinations') return compareText(inventoryDestinationsText(a), inventoryDestinationsText(b)) || compareInventoryRows(a, b)
   if (sortKey.value === 'current') return compareNumber(a.variation.stock, b.variation.stock) || compareInventoryRows(a, b)
   if (sortKey.value === 'min') return compareNumber(a.variation.minStock, b.variation.minStock) || compareInventoryRows(a, b)
   if (sortKey.value === 'status') return compareStatus(a.status, b.status) || compareInventoryRows(a, b)
-  return compareInventoryRows(a, b)
+  return compareItemColumn(a, b)
 }
 
 function sortRows(list) {
@@ -228,6 +278,8 @@ const afterStatusSearch = computed(() => {
     rows = rows.filter(r =>
       normalizeSearchText(r.item.name).includes(q) ||
       normalizeSearchText([r.item.group, r.item.category, r.item.subcategory].filter(Boolean).join(' ')).includes(q) ||
+      normalizeSearchText(inventoryLocation(r)).includes(q) ||
+      normalizeSearchText(inventoryDestinationsText(r)).includes(q) ||
       Object.values(r.variation.values || {}).some(v => normalizeSearchText(v).includes(q)) ||
       Object.entries(r.variation.extras || {}).some(([k, v]) => normalizeSearchText(k).includes(q) || normalizeSearchText(v).includes(q))
     )
@@ -256,7 +308,18 @@ const afterHierarchy = computed(() => {
 })
 
 // Fully filtered rows (all active filters)
-const filteredRows = computed(() => applyAttrFilters(afterHierarchy.value))
+const filteredRows = computed(() => {
+  let rows = applyAttrFilters(afterHierarchy.value)
+  if (locationHeaderSearchNorm.value) {
+    const q = locationHeaderSearchNorm.value
+    rows = rows.filter(r => normalizeSearchText(inventoryLocation(r)).includes(q))
+  }
+  if (destinationsHeaderSearchNorm.value) {
+    const q = destinationsHeaderSearchNorm.value
+    rows = rows.filter(r => normalizeSearchText(inventoryDestinationsText(r)).includes(q))
+  }
+  return rows
+})
 const sortedFilteredRows = computed(() => sortRows(filteredRows.value))
 
 // ===== Paginated rows =====
@@ -267,7 +330,7 @@ const paginatedRows = computed(() => {
 })
 
 // Reset page when filters change
-watch([searchQuery, filterStatus, filterGroup, filterCategory, filterSubcategory, filterAttrValues, pageSize, sortKey, sortDirection], () => {
+watch([searchQuery, locationHeaderSearch, destinationsHeaderSearch, filterStatus, filterGroup, filterCategory, filterSubcategory, filterAttrValues, pageSize, sortKey, sortDirection], () => {
   currentPage.value = 1
 })
 
@@ -768,7 +831,7 @@ function exportCSV() {
 
   const STATUS_LABEL = { zero: 'Zero', critical: 'Crítico', alert: 'Alerta', ok: 'OK' }
   const sep = ';'
-  const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', `Saldo em ${cutoffLabel}`, 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local'].join(sep)
+  const header = ['Grupo', 'Categoria', 'Subcategoria', 'Item', 'Variação', 'Unidade', `Saldo em ${cutoffLabel}`, 'Estoque Atual', 'Estoque Mínimo', 'Status', `Entradas (${monthTag})`, `Saídas (${monthTag})`, 'Local', 'Destinos'].join(sep)
 
   const rows = sortedFilteredRows.value.map(row => {
     const attrs = []
@@ -794,7 +857,8 @@ function exportCSV() {
       STATUS_LABEL[row.status],
       vm.entradas,
       vm.saidas,
-      row.variation.location || '',
+      inventoryLocation(row),
+      inventoryDestinationsText(row),
     ].map(v => String(v).replace(/;/g, ',')).join(sep)
   })
 
@@ -1145,6 +1209,104 @@ function exportCSV() {
                     Variação <span class="text-[10px]">{{ sortArrow('variation') }}</span>
                   </button>
                 </th>
+                <th v-if="isColumnVisible('location')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-56">
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      v-if="activeHeaderSearch !== 'location'"
+                      type="button"
+                      class="inline-flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer"
+                      :title="locationHeaderSearch ? `Filtro de local: ${locationHeaderSearch}` : 'Ordenar por local'"
+                      @click="setSort('location')"
+                    >
+                      <span class="max-w-28 truncate">{{ locationHeaderSearch || 'Local' }}</span>
+                      <span class="text-[10px]">{{ sortArrow('location') }}</span>
+                    </button>
+                    <button
+                      v-if="activeHeaderSearch !== 'location'"
+                      type="button"
+                      class="inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors"
+                      :class="locationHeaderSearch
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-primary-300'"
+                      :title="locationHeaderSearch ? 'Limpar filtro de local' : 'Pesquisar local'"
+                      @click.stop="locationHeaderSearch ? clearHeaderSearch('location') : toggleHeaderSearch('location')"
+                    >
+                      <svg v-if="!locationHeaderSearch" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
+                      </svg>
+                      <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                    </button>
+                    <div v-if="activeHeaderSearch === 'location'" class="relative normal-case tracking-normal">
+                      <input
+                        ref="locationHeaderSearchInput"
+                        v-model="locationHeaderSearch"
+                        type="search"
+                        placeholder="Filtrar local..."
+                        class="w-32 rounded-md border border-gray-300 bg-white py-1 pl-2 pr-7 text-xs font-normal text-gray-800 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                        @click.stop
+                        @keydown.enter.stop.prevent="activeHeaderSearch = ''"
+                        @keydown.escape.stop="activeHeaderSearch = ''"
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-red-500"
+                        :title="locationHeaderSearch ? 'Limpar filtro de local' : 'Fechar busca'"
+                        @click.stop="locationHeaderSearch ? clearHeaderSearch('location') : activeHeaderSearch = ''"
+                      >
+                        <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                </th>
+                <th v-if="isColumnVisible('destinations')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-72">
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      v-if="activeHeaderSearch !== 'destinations'"
+                      type="button"
+                      class="inline-flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer"
+                      :title="destinationsHeaderSearch ? `Filtro de destinos: ${destinationsHeaderSearch}` : 'Ordenar por destinos'"
+                      @click="setSort('destinations')"
+                    >
+                      <span class="max-w-36 truncate">{{ destinationsHeaderSearch || 'Destinos' }}</span>
+                      <span class="text-[10px]">{{ sortArrow('destinations') }}</span>
+                    </button>
+                    <button
+                      v-if="activeHeaderSearch !== 'destinations'"
+                      type="button"
+                      class="inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors"
+                      :class="destinationsHeaderSearch
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-primary-300'"
+                      :title="destinationsHeaderSearch ? 'Limpar filtro de destinos' : 'Pesquisar destinos'"
+                      @click.stop="destinationsHeaderSearch ? clearHeaderSearch('destinations') : toggleHeaderSearch('destinations')"
+                    >
+                      <svg v-if="!destinationsHeaderSearch" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
+                      </svg>
+                      <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                    </button>
+                    <div v-if="activeHeaderSearch === 'destinations'" class="relative normal-case tracking-normal">
+                      <input
+                        ref="destinationsHeaderSearchInput"
+                        v-model="destinationsHeaderSearch"
+                        type="search"
+                        placeholder="Filtrar destino..."
+                        class="w-40 rounded-md border border-gray-300 bg-white py-1 pl-2 pr-7 text-xs font-normal text-gray-800 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                        @click.stop
+                        @keydown.enter.stop.prevent="activeHeaderSearch = ''"
+                        @keydown.escape.stop="activeHeaderSearch = ''"
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-red-500"
+                        :title="destinationsHeaderSearch ? 'Limpar filtro de destinos' : 'Fechar busca'"
+                        @click.stop="destinationsHeaderSearch ? clearHeaderSearch('destinations') : activeHeaderSearch = ''"
+                      >
+                        <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                </th>
                 <th v-if="isColumnVisible('current')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">
                   <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('current')">
                     Qtd. atual <span class="text-[10px]">{{ sortArrow('current') }}</span>
@@ -1206,6 +1368,34 @@ function exportCSV() {
                       class="text-gray-300 dark:text-gray-600 text-xs"
                     >—</span>
                   </div>
+                </td>
+
+                <!-- Local -->
+                <td v-if="isColumnVisible('location')" class="px-4 py-3">
+                  <span v-if="inventoryLocation(row)" class="text-sm text-gray-600 dark:text-gray-300">{{ inventoryLocation(row) }}</span>
+                  <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
+                </td>
+
+                <!-- Destinos -->
+                <td v-if="isColumnVisible('destinations')" class="px-4 py-3">
+                  <div v-if="inventoryDestinations(row).length" class="flex flex-wrap gap-1">
+                    <span
+                      v-for="dest in inventoryDestinations(row).slice(0, 2)"
+                      :key="dest"
+                      class="inline-flex max-w-[10rem] items-center rounded bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      :title="dest"
+                    >
+                      <span class="truncate">{{ dest }}</span>
+                    </span>
+                    <span
+                      v-if="inventoryDestinations(row).length > 2"
+                      class="inline-flex rounded bg-primary-50 px-2 py-0.5 text-[11px] text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                      :title="inventoryDestinationsText(row)"
+                    >
+                      +{{ inventoryDestinations(row).length - 2 }}
+                    </span>
+                  </div>
+                  <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
                 </td>
 
                 <!-- Qtd atual -->
