@@ -124,6 +124,33 @@ function rowVariationText(row) {
   return [...values, ...extras].filter(Boolean).join(' ')
 }
 
+function searchTokens(value) {
+  return normalizeSearchText(value).split(/\s+/).filter(Boolean)
+}
+
+function inventorySearchText(row) {
+  return normalizeSearchText([
+    row.item.name,
+    row.item.group,
+    row.item.category,
+    row.item.subcategory,
+    row.item.unit,
+    row.item.location,
+    inventoryLocation(row),
+    inventoryDestinationsText(row),
+    rowVariationText(row),
+    ...Object.values(row.variation.values || {}),
+    ...Object.entries(row.variation.extras || {}).flatMap(([key, value]) => [key, value]),
+  ].filter(Boolean).join(' '))
+}
+
+function rowMatchesSearch(row, query) {
+  const tokens = searchTokens(query)
+  if (!tokens.length) return true
+  const text = inventorySearchText(row)
+  return tokens.every(token => text.includes(token))
+}
+
 function compareInventoryRows(a, b) {
   return compareText(a.item.group, b.item.group) ||
     compareText(a.item.category, b.item.category) ||
@@ -275,14 +302,7 @@ const afterStatusSearch = computed(() => {
     rows = rows.filter(r => r.status === filterStatus.value)
   if (searchNorm.value) {
     const q = searchNorm.value
-    rows = rows.filter(r =>
-      normalizeSearchText(r.item.name).includes(q) ||
-      normalizeSearchText([r.item.group, r.item.category, r.item.subcategory].filter(Boolean).join(' ')).includes(q) ||
-      normalizeSearchText(inventoryLocation(r)).includes(q) ||
-      normalizeSearchText(inventoryDestinationsText(r)).includes(q) ||
-      Object.values(r.variation.values || {}).some(v => normalizeSearchText(v).includes(q)) ||
-      Object.entries(r.variation.extras || {}).some(([k, v]) => normalizeSearchText(k).includes(q) || normalizeSearchText(v).includes(q))
-    )
+    rows = rows.filter(r => rowMatchesSearch(r, q))
   }
   return rows
 })
@@ -363,29 +383,23 @@ function applyAutoHierarchy(next) {
 
 function findHierarchySearchMatch(q) {
   if (!q) return null
-  const rows = baseRows.value
+  const rows = afterStatusSearch.value
+  if (!rows.length) return null
 
-  const levels = [
-    { key: 'subcategory', fields: ['group', 'category', 'subcategory'] },
-    { key: 'category', fields: ['group', 'category'] },
-    { key: 'group', fields: ['group'] },
-  ]
+  const uniqueGroups = new Set(rows.map(r => r.item.group || '').filter(Boolean))
+  if (uniqueGroups.size !== 1) return null
 
-  for (const level of levels) {
-    const matches = rows.filter(r => normalizeSearchText(r.item[level.key]) === q)
-    const paths = new Map()
-    for (const row of matches) {
-      const path = {
-        group: row.item.group || '',
-        category: level.fields.includes('category') ? row.item.category || '' : '',
-        subcategory: level.fields.includes('subcategory') ? row.item.subcategory || '' : '',
-      }
-      paths.set(JSON.stringify(path), path)
-    }
-    if (paths.size === 1) return [...paths.values()][0]
-  }
+  const group = [...uniqueGroups][0]
+  const rowsInGroup = rows.filter(r => r.item.group === group)
+  const uniqueCategories = new Set(rowsInGroup.map(r => r.item.category || '').filter(Boolean))
+  const category = uniqueCategories.size === 1 ? [...uniqueCategories][0] : ''
+  const rowsInCategory = category
+    ? rowsInGroup.filter(r => r.item.category === category)
+    : rowsInGroup
+  const uniqueSubcategories = new Set(rowsInCategory.map(r => r.item.subcategory || '').filter(Boolean))
+  const subcategory = category && uniqueSubcategories.size === 1 ? [...uniqueSubcategories][0] : ''
 
-  return null
+  return { group, category, subcategory }
 }
 
 watch(searchNorm, q => {
