@@ -304,30 +304,79 @@ function normalizeText(value) {
 
 const searchNorm = computed(() => normalizeText(itemSearch.value))
 
+function searchTokens(value) {
+  return normalizeText(value).split(/\s+/).filter(Boolean)
+}
+
+function itemSearchText(item) {
+  return normalizeText([
+    item.name,
+    item.group,
+    item.category,
+    item.subcategory,
+    item.unit,
+    item.location,
+  ].filter(Boolean).join(' '))
+}
+
+function variationSearchText(item, variation) {
+  return normalizeText([
+    itemSearchText(item),
+    variation.location,
+    ...Object.values(variation.values || {}),
+    ...Object.entries(variation.values || {}).flatMap(([key, value]) => [key, value]),
+    ...Object.values(variation.extras || {}),
+    ...Object.entries(variation.extras || {}).flatMap(([key, value]) => [key, value]),
+  ].filter(Boolean).join(' '))
+}
+
+function matchesSearchTokens(text, tokens) {
+  return tokens.every(token => text.includes(token))
+}
+
+const variationResults = computed(() => {
+  const tokens = searchTokens(itemSearch.value)
+  if (!tokens.length) return []
+  const results = []
+  for (const item of items.value) {
+    for (const variation of getVariationsForItem(item.id)) {
+      if (matchesSearchTokens(variationSearchText(item, variation), tokens)) {
+        results.push({ item, variation })
+      }
+    }
+  }
+  return results
+    .sort((a, b) =>
+      a.item.name.localeCompare(b.item.name, 'pt-BR', { sensitivity: 'base', numeric: true }) ||
+      variationLabel(a.variation, a.item).localeCompare(variationLabel(b.variation, b.item), 'pt-BR', { sensitivity: 'base', numeric: true })
+    )
+    .slice(0, 50)
+})
+
 // When searching, search across all items; when browsing, use navigation
 const itemResults = computed(() => {
-  const q = searchNorm.value
-  if (!q) return []
+  const tokens = searchTokens(itemSearch.value)
+  if (!tokens.length) return []
   return items.value.filter(item => {
-    if (
-      normalizeText(item.name).includes(q) ||
-      normalizeText(item.group).includes(q) ||
-      normalizeText(item.category).includes(q) ||
-      normalizeText(item.subcategory).includes(q)
-    ) return true
+    if (matchesSearchTokens(itemSearchText(item), tokens)) return true
     const vars = getVariationsForItem(item.id)
-    return vars.some(v => {
-      if (Object.values(v.values || {}).some(val => normalizeText(val).includes(q))) return true
-      if (Object.values(v.extras || {}).some(val => normalizeText(val).includes(q))) return true
-      if (normalizeText(v.location).includes(q)) return true
-      return false
-    })
+    return vars.some(v => matchesSearchTokens(variationSearchText(item, v), tokens))
   }).slice(0, 50)
 })
 
 function selectItem(item) {
   selectedItem.value = item
   step.value = 2
+}
+
+function selectVariationResult(result) {
+  if (activeSubTab.value === 'saida' && result.variation.stock <= 0) {
+    error('Esta variacao esta sem estoque para saida.')
+    return
+  }
+  selectedItem.value = result.item
+  itemSearch.value = ''
+  selectVariation(result.variation)
 }
 
 function findSingleHierarchySearchMatch(q) {
@@ -355,6 +404,10 @@ function findSingleHierarchySearchMatch(q) {
 function handleItemSearchEnter() {
   const q = searchNorm.value
   if (!q) return
+  if (variationResults.value.length === 1) {
+    selectVariationResult(variationResults.value[0])
+    return
+  }
   if (itemResults.value.length === 1) {
     selectItem(itemResults.value[0])
     return
@@ -1058,9 +1111,50 @@ defineExpose({
 
         <!-- SEARCH MODE: show flat results when searching -->
         <template v-else-if="searchNorm">
-          <div v-if="itemResults.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
+          <div v-if="variationResults.length === 0 && itemResults.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
             Nenhum item encontrado para "<span class="italic">{{ itemSearch }}</span>".
           </div>
+          <div v-else-if="variationResults.length" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700/50 overflow-hidden">
+            <button
+              v-for="result in variationResults"
+              :key="result.variation.id"
+              type="button"
+              class="group w-full text-left px-4 py-3 transition-colors"
+              :class="activeSubTab === 'saida' && result.variation.stock <= 0
+                ? 'opacity-45 cursor-not-allowed'
+                : 'hover:bg-primary-50 dark:hover:bg-primary-900/20 cursor-pointer'"
+              :disabled="activeSubTab === 'saida' && result.variation.stock <= 0"
+              @click="selectVariationResult(result)"
+            >
+              <div class="flex items-center gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">{{ result.item.name }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ hierarchyLabel(result.item) }}</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300 line-clamp-2">{{ variationLabel(result.variation, result.item) }}</p>
+                </div>
+                <div class="hidden min-w-32 text-right text-xs text-gray-400 dark:text-gray-500 sm:block">
+                  <p>{{ result.variation.location || result.item.location || 'Sem local' }}</p>
+                  <p v-if="result.variation.destinations?.length" class="truncate">
+                    {{ result.variation.destinations.map(id => getDestinationName(id)).filter(Boolean).join(', ') }}
+                  </p>
+                </div>
+                <div class="w-24 flex-shrink-0 text-right">
+                  <p class="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Estoque</p>
+                  <p
+                    class="text-sm font-bold tabular-nums"
+                    :class="result.variation.stock <= 0
+                      ? 'text-red-500 dark:text-red-400'
+                      : result.variation.minStock > 0 && result.variation.stock <= result.variation.minStock
+                        ? 'text-amber-500 dark:text-amber-400'
+                        : 'text-gray-800 dark:text-gray-100'"
+                  >
+                    {{ result.variation.stock }} {{ result.item.unit }}
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+
           <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             <button
               v-for="item in itemResults"
