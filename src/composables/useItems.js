@@ -580,9 +580,20 @@ export function useItems() {
     await api.saveDisplayOrder(orderData.value)
   }
 
+  async function sortGroupsAlphabetically() {
+    orderData.value = { ...orderData.value, groups: [...uniqueGroups.value].sort(compareText) }
+    await api.saveDisplayOrder(orderData.value)
+  }
+
   async function reorderCategories(group, from, to) {
     const list = getCategoriesForGroup(group)
     orderData.value = { ...orderData.value, categories: { ...orderData.value.categories, [group]: _splice(list, from, to) } }
+    await api.saveDisplayOrder(orderData.value)
+  }
+
+  async function sortCategoriesAlphabetically(group) {
+    const list = getCategoriesForGroup(group)
+    orderData.value = { ...orderData.value, categories: { ...orderData.value.categories, [group]: [...list].sort(compareText) } }
     await api.saveDisplayOrder(orderData.value)
   }
 
@@ -590,6 +601,13 @@ export function useItems() {
     const key = `${group}|||${category}`
     const list = getSubcategoriesForCategory(group, category)
     orderData.value = { ...orderData.value, subcategories: { ...orderData.value.subcategories, [key]: _splice(list, from, to) } }
+    await api.saveDisplayOrder(orderData.value)
+  }
+
+  async function sortSubcategoriesAlphabetically(group, category) {
+    const key = `${group}|||${category}`
+    const list = getSubcategoriesForCategory(group, category)
+    orderData.value = { ...orderData.value, subcategories: { ...orderData.value.subcategories, [key]: [...list].sort(compareText) } }
     await api.saveDisplayOrder(orderData.value)
   }
 
@@ -814,6 +832,7 @@ export function useItems() {
     toggleFilter, clearFilters,
     // Reorder
     reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes,
+    sortGroupsAlphabetically, sortCategoriesAlphabetically, sortSubcategoriesAlphabetically,
     resetAll,
     // Dev / seed
     seedDatabase

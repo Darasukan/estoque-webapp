@@ -61,6 +61,7 @@ function buildClosingData(year, month) {
     const monthTotals = monthTotalsByVariation.get(variation.id) || { entradas: 0, saidas: 0 }
     const currentStock = variation.stock || 0
     const stockAtClose = currentStock - (laterNetByVariation.get(variation.id) || 0)
+    const stockMonthStart = stockAtClose - monthTotals.entradas + monthTotals.saidas
     return {
       variationId: variation.id,
       itemId: variation.item_id,
@@ -74,6 +75,7 @@ function buildClosingData(year, month) {
       location: variation.location || '',
       destinations: JSON.parse(variation.destinations || '[]'),
       minStock: variation.min_stock || 0,
+      stockMonthStart,
       stockAtClose,
       currentStock,
       monthEntradas: monthTotals.entradas,

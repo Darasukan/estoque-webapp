@@ -15,7 +15,8 @@ const {
   getItemsForSubcategory, renameAttribute, addAttribute, removeAttribute,
   getVariationsForItem, addItem, editItem, deleteItem,
   addVariation, editVariation, deleteVariation,
-  reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes
+  reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes,
+  sortGroupsAlphabetically, sortCategoriesAlphabetically, sortSubcategoriesAlphabetically
 } = useItems()
 
 const { success, error } = useToast()
@@ -868,6 +869,24 @@ function onDragEnd() {
 function isDraggingType(type) { return dragCtx.value?.type === type }
 function isDragFrom(type, idx) { return dragCtx.value?.type === type && dragCtx.value.from === idx }
 function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragToIdx.value === idx && dragCtx.value.from !== idx }
+
+async function organizeGroupsAlphabetically() {
+  await sortGroupsAlphabetically()
+  success('Grupos organizados em ordem alfabetica.')
+}
+
+async function organizeCategoriesAlphabetically() {
+  if (!selectedGroup.value) return
+  await sortCategoriesAlphabetically(selectedGroup.value)
+  success('Subgrupos organizados em ordem alfabetica.')
+}
+
+async function organizeSubcategoriesAlphabetically() {
+  if (!selectedGroup.value || !selectedCategory.value) return
+  await sortSubcategoriesAlphabetically(selectedGroup.value, selectedCategory.value)
+  success('Subniveis organizados em ordem alfabetica.')
+}
+
   return {
     units,
     activeLocais,
@@ -1020,5 +1039,8 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     isDraggingType,
     isDragFrom,
     isDragTarget,
+    organizeGroupsAlphabetically,
+    organizeCategoriesAlphabetically,
+    organizeSubcategoriesAlphabetically,
   }
 }

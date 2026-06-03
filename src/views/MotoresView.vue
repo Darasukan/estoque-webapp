@@ -52,7 +52,7 @@ const osFocusOrderId = ref('')
 const confirmDeleteMotorId = ref(null)
 const confirmCreateMotor = ref(false)
 const locationTrailOpen = ref(false)
-const selectedEventCountType = ref('rebobinado')
+const eventSummaryOpen = ref(false)
 const motorMaterialSearch = ref('')
 const motorMaterialVariationId = ref('')
 const motorMaterialNote = ref('')
@@ -381,8 +381,6 @@ const selectedMotorMaterials = computed(() => {
     .filter(row => row.variation && row.item)
 })
 
-const motorEventCountOptions = computed(() => MOTOR_EVENT_TYPES)
-
 const selectedMotorEventCounts = computed(() => {
   const counts = {}
   if (!selectedMotor.value) return counts
@@ -396,13 +394,36 @@ const selectedMotorEventCounts = computed(() => {
   return counts
 })
 
-const selectedEventCountLabel = computed(() => motorEventLabel(selectedEventCountType.value))
+const selectedMotorEventSummary = computed(() => {
+  const counts = selectedMotorEventCounts.value
+  return MOTOR_EVENT_TYPES.map(type => {
+    if (type.id === 'enrolado') return null
+    const isWinding = type.id === 'rebobinado'
+    return {
+      id: type.id,
+      label: isWinding ? 'Rebobinado / Enrolado' : type.label,
+      count: isWinding
+        ? (counts.enrolado || 0) + (counts.rebobinado || 0)
+        : counts[type.id] || 0,
+      grouped: isWinding,
+    }
+  }).filter(Boolean)
+})
 
-const selectedEventCount = computed(() => {
-  if (['enrolado', 'rebobinado'].includes(selectedEventCountType.value)) {
-    return (selectedMotorEventCounts.value.enrolado || 0) + (selectedMotorEventCounts.value.rebobinado || 0)
-  }
-  return selectedMotorEventCounts.value[selectedEventCountType.value] || 0
+const selectedMotorEventTotal = computed(() =>
+  selectedMotorEventSummary.value.reduce((sum, row) => sum + row.count, 0)
+)
+
+const workOrderById = computed(() => new Map(workOrders.value.map(order => [order.id, order])))
+
+const selectedMotorEventRows = computed(() => {
+  if (!selectedMotor.value) return []
+  return (motorEvents.value[selectedMotor.value.id] || [])
+    .map(event => ({
+      event,
+      order: event.workOrderId ? workOrderById.value.get(event.workOrderId) : null,
+    }))
+    .sort((a, b) => (b.event.eventDate || b.event.createdAt || '').localeCompare(a.event.eventDate || a.event.createdAt || ''))
 })
 
 const selectedMotorLocationTrail = computed(() => {
@@ -609,6 +630,39 @@ function openMotorFromOrder(order) {
   const motor = motors.value.find(m => m.id === order.motorId)
   if (!motor) return
   selectMotor(motor)
+}
+
+function csvCell(value) {
+  if (value === null || value === undefined) return ''
+  const text = String(value).replace(/\r?\n/g, ' ').trim()
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function exportSelectedMotorEventsCsv() {
+  if (!selectedMotor.value) return
+  const rows = [
+    ['Data', 'Motor', 'Tipo', 'Origem', 'Destino', 'Executado por', 'OS', 'Observacoes'],
+    ...selectedMotorEventRows.value.map(({ event, order }) => [
+      formatDate(event.eventDate || event.createdAt),
+      selectedMotor.value.tag,
+      motorEventLabel(event.eventType),
+      event.fromDestination || '',
+      event.toDestination || '',
+      event.performedBy || '',
+      order?.number ? `OS #${order.number}` : '',
+      event.notes || '',
+    ]),
+  ]
+  const csv = rows.map(row => row.map(csvCell).join(';')).join('\n')
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `eventos-motor-${selectedMotor.value.tag}-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 function workOrderSortKey(order) {
@@ -1241,18 +1295,20 @@ function workOrderEndLabel(order) {
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div class="ds-surface p-3">
-                <div class="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                class="ds-surface p-3 text-left hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
+                @click="eventSummaryOpen = true"
+              >
+                <p class="text-xs text-gray-400">Eventos</p>
+                <div class="mt-2 flex items-end justify-between gap-3">
                   <div>
-                    <p class="text-xs text-gray-400">Eventos</p>
-                    <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedEventCount }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ selectedEventCountLabel }}</p>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ selectedMotorEventTotal }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">eventos contabilizados</p>
                   </div>
-                  <select v-model="selectedEventCountType" class="ds-input w-44 max-w-[55%] text-xs">
-                    <option v-for="type in motorEventCountOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
-                  </select>
+                  <span class="text-xs font-semibold text-primary-600 dark:text-primary-400">Ver todos</span>
                 </div>
-              </div>
+              </button>
               <button
                 type="button"
                 class="ds-surface p-3 text-left hover:border-primary-400 dark:hover:border-primary-500 transition-colors"
@@ -1358,6 +1414,38 @@ function workOrderEndLabel(order) {
     </section>
     </div>
 
+  </div>
+
+  <div
+    v-if="selectedMotor && eventSummaryOpen"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+    @click.self="eventSummaryOpen = false"
+  >
+    <div class="ds-panel w-full max-w-3xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+        <div>
+          <p class="ds-page-kicker">Motor {{ selectedMotor.tag }}</p>
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Eventos contabilizados</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ selectedMotorEventTotal }} evento{{ selectedMotorEventTotal === 1 ? '' : 's' }} no histórico deste motor.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <AppButton variant="secondary" size="sm" :disabled="!selectedMotorEventRows.length" @click="exportSelectedMotorEventsCsv">Exportar CSV</AppButton>
+          <AppButton variant="ghost" size="sm" @click="eventSummaryOpen = false">Fechar</AppButton>
+        </div>
+      </div>
+      <div class="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          v-for="row in selectedMotorEventSummary"
+          :key="row.id"
+          class="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700"
+          :class="row.count ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/70 opacity-70 dark:bg-gray-800/40'"
+        >
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ row.label }}</p>
+          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ row.count }}</p>
+          <p v-if="row.grouped" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Conta Enrolado junto.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div

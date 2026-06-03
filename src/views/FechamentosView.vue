@@ -137,6 +137,11 @@ function closingStatus(row) {
   return 'OK'
 }
 
+function stockMonthStart(row) {
+  if (row.stockMonthStart !== null && row.stockMonthStart !== undefined) return row.stockMonthStart
+  return Number(row.stockAtClose || 0) - Number(row.monthEntradas || 0) + Number(row.monthSaidas || 0)
+}
+
 function csvCell(value) {
   if (value === null || value === undefined) return ''
   const text = String(value).replace(/\r?\n/g, ' ').trim()
@@ -154,6 +159,7 @@ function rowsToCsv(rows) {
     'Variacao',
     'Extras',
     'Unidade',
+    'Estoque inicio do mes',
     'Saldo fechado',
     'Entradas no mes',
     'Saidas no mes',
@@ -161,7 +167,6 @@ function rowsToCsv(rows) {
     'Status',
     'Local',
     'Destinos vinculados',
-    'Estoque atual',
   ]
   const lines = rows.map(row => [
     selectedClosing.value?.year || '',
@@ -173,6 +178,7 @@ function rowsToCsv(rows) {
     variationText(row),
     extrasText(row),
     row.unit || '',
+    stockMonthStart(row),
     row.stockAtClose || 0,
     row.monthEntradas || 0,
     row.monthSaidas || 0,
@@ -180,7 +186,6 @@ function rowsToCsv(rows) {
     closingStatus(row),
     row.location || '',
     destinationsText(row),
-    row.currentStock || 0,
   ])
   return [headers, ...lines]
     .map(line => line.map(csvCell).join(';'))
