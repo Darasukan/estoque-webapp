@@ -423,7 +423,7 @@ function isEditingAttr(itemId, attrName) {
   return editingAttr.value?.itemId === itemId && editingAttr.value?.oldName === attrName
 }
 
-// ===== Inline add item =====
+// ===== Add item modal =====
 const groupDirectKey = '__group_direct__'
 const categoryDirectKey = '__category_direct__'
 const addingItemForSub = ref(null)
@@ -523,6 +523,28 @@ function getItemDefaultsForAdd(sub) {
     location: subItems[0]?.location || scopedItems[0]?.location || '',
   }
 }
+
+const newItemContextLabel = computed(() => {
+  const sub = addingItemForSub.value
+  if (!sub) return ''
+  if (sub === groupDirectKey) return selectedGroup.value || ''
+  if (sub === categoryDirectKey) return selectedCategory.value || selectedGroup.value || ''
+  return sub
+})
+
+const newItemHelpText = computed(() => {
+  const sub = addingItemForSub.value
+  if (sub === groupDirectKey) return 'Modelo cadastrado direto no grupo, sem subgrupo.'
+  if (sub === categoryDirectKey) return 'Modelo cadastrado neste subgrupo, sem subnivel opcional.'
+  return 'Modelo cadastrado dentro deste subnivel opcional.'
+})
+
+const newItemPlaceholder = computed(() => {
+  const label = newItemContextLabel.value
+  if (!label) return 'Nome do modelo'
+  if (addingItemForSub.value === groupDirectKey) return `Nome do modelo sem subgrupo em ${label}`
+  return `Nome do modelo em ${label}`
+})
 
 function startAddItem(sub) {
   const defaults = getItemDefaultsForAdd(sub)
@@ -904,6 +926,7 @@ async function organizeSubcategoriesAlphabetically() {
     selectedCategory,
     selectedSubcategory,
     groupSearch,
+    searchQ,
     filteredGroupList,
     editing,
     editValue,
@@ -974,6 +997,9 @@ async function organizeSubcategoriesAlphabetically() {
     newItemLocation,
     newItemAttrs,
     newItemAttrInput,
+    newItemContextLabel,
+    newItemHelpText,
+    newItemPlaceholder,
     startAddItem,
     cancelAddItem,
     addNewItemAttr,

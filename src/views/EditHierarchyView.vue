@@ -17,6 +17,7 @@ const {
   selectedCategory,
   selectedSubcategory,
   groupSearch,
+  searchQ,
   filteredGroupList,
   editing,
   editValue,
@@ -86,6 +87,9 @@ const {
   newItemLocation,
   newItemAttrs,
   newItemAttrInput,
+  newItemContextLabel,
+  newItemHelpText,
+  newItemPlaceholder,
   startAddItem,
   cancelAddItem,
   addNewItemAttr,
@@ -151,6 +155,9 @@ const {
   isDraggingType,
   isDragFrom,
   isDragTarget,
+  organizeGroupsAlphabetically,
+  organizeCategoriesAlphabetically,
+  organizeSubcategoriesAlphabetically,
 } = useEditHierarchyState()
 </script>
 
@@ -161,7 +168,17 @@ const {
     <!-- LEFT: Groups list -->
     <div class="w-56 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
-        <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Grupos</p>
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Grupos</p>
+          <button
+            v-if="uniqueGroups.length && !searchQ"
+            class="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-500 transition-colors hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+            title="Organizar grupos em ordem alfabetica"
+            @click="organizeGroupsAlphabetically"
+          >
+            A-Z
+          </button>
+        </div>
         <div class="relative">
           <svg class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 dark:text-gray-600 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" /></svg>
           <input
@@ -336,7 +353,8 @@ const {
           <div class="order-2 mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white/70 dark:border-gray-700 dark:bg-gray-800/70">
             <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700/50 flex items-center justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Modelos diretos do grupo</p>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Modelos sem subgrupo</p>
+                <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Use so quando o produto nao precisa ser separado em subgrupo.</p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span
                     v-for="attr in getGroupModelAttrs(selectedGroup)"
@@ -352,7 +370,7 @@ const {
                 @click="startAddItem(groupDirectKey)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                Novo modelo
+                Novo modelo sem subgrupo
               </button>
             </div>
 
@@ -372,43 +390,23 @@ const {
               </div>
             </div>
 
-            <div v-else-if="addingItemForSub !== groupDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">Nenhum modelo direto neste grupo.</div>
+            <div v-else-if="addingItemForSub !== groupDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">Nenhum modelo sem subgrupo neste grupo.</div>
 
-            <div v-if="addingItemForSub === groupDirectKey" class="px-4 py-3 bg-primary-50/40 dark:bg-primary-900/10">
-              <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
-                <input v-model="newItemName" :placeholder="`Nome do modelo em ${selectedGroup}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <select v-model="newItemUnit" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 outline-none dark:bg-gray-700 dark:text-gray-300">
-                    <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
-                  </select>
-                  <label class="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                    min.
-                    <input v-model="newItemMinStock" type="number" min="0" step="1" class="w-16 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 outline-none dark:bg-gray-700 dark:text-gray-300" />
-                  </label>
-                </div>
-                <select v-model="newItemLocation" class="mt-3 w-full max-w-sm rounded bg-transparent text-[11px] text-gray-400 outline-none hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400">
-                  <option value="">Definir local...</option>
-                  <template v-for="g in groupedLocais" :key="g.parent.id">
-                    <option :value="g.parent.name">{{ g.parent.name }}</option>
-                    <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;{{ c.name }}</option>
-                  </template>
-                </select>
-                <div class="mt-4">
-                  <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Atributos</p>
-                  <div class="flex flex-wrap gap-1">
-                    <span v-for="(attr, i) in newItemAttrs" :key="attr" class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
-                      {{ attr }}
-                      <button class="text-primary-400 hover:text-red-500" @click.stop="newItemAttrs.splice(i, 1)"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
-                    </span>
-                    <input v-model="newItemAttrInput" placeholder="+ atributo" class="min-w-[90px] rounded border border-dashed border-gray-300 bg-transparent px-1.5 py-0.5 text-[11px] text-gray-700 placeholder-gray-400 outline-none focus:border-primary-400 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-500" @keydown="onNewItemAttrKeydown" />
-                  </div>
-                </div>
-                <div class="mt-4 flex gap-2">
-                  <button class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-700" @click="saveAddItem(groupDirectKey)">Salvar</button>
-                  <button class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click="cancelAddItem">Cancelar</button>
-                </div>
-              </div>
+          </div>
+
+          <div class="order-1 mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Subgrupos de {{ selectedGroup }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">Organize os blocos principais antes de cadastrar os modelos.</p>
             </div>
+            <button
+              v-if="filteredCategoryList.length && !searchQ"
+              class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+              title="Organizar subgrupos em ordem alfabetica"
+              @click="organizeCategoriesAlphabetically"
+            >
+              A-Z
+            </button>
           </div>
 
           <div class="order-1 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -559,9 +557,10 @@ const {
             <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-700/40">
               <div>
                 <div class="flex items-center gap-2">
-                  <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Modelos diretos no subgrupo</p>
+                  <p class="text-sm font-semibold text-gray-700 dark:text-gray-200">Modelos deste subgrupo</p>
                   <span class="rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">{{ categoryDirectItems.length }}</span>
                 </div>
+                <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Use aqui quando o produto nao precisa de subnivel opcional.</p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span
                     v-for="attr in getCategoryModelAttrs(selectedGroup, selectedCategory)"
@@ -598,44 +597,24 @@ const {
             </div>
 
             <div v-else-if="addingItemForSub !== categoryDirectKey" class="px-4 py-4 text-sm text-gray-400 dark:text-gray-500 italic">
-              Nenhum modelo direto neste subgrupo.
+              Nenhum modelo cadastrado neste subgrupo.
             </div>
 
-            <div v-if="addingItemForSub === categoryDirectKey" class="px-4 py-3 bg-primary-50/40 dark:bg-primary-900/10">
-              <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
-                <input v-model="newItemName" :placeholder="`Nome do modelo em ${selectedCategory}`" class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none" @keydown="onNewItemKeydown" autofocus />
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <select v-model="newItemUnit" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 outline-none dark:bg-gray-700 dark:text-gray-300">
-                    <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
-                  </select>
-                  <label class="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                    min.
-                    <input v-model="newItemMinStock" type="number" min="0" step="1" class="w-16 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 outline-none dark:bg-gray-700 dark:text-gray-300" />
-                  </label>
-                </div>
-                <select v-model="newItemLocation" class="mt-3 w-full max-w-sm rounded bg-transparent text-[11px] text-gray-400 outline-none hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400">
-                  <option value="">Definir local...</option>
-                  <template v-for="g in groupedLocais" :key="g.parent.id">
-                    <option :value="g.parent.name">{{ g.parent.name }}</option>
-                    <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;{{ c.name }}</option>
-                  </template>
-                </select>
-                <div class="mt-4">
-                  <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Atributos</p>
-                  <div class="flex flex-wrap gap-1">
-                    <span v-for="(attr, i) in newItemAttrs" :key="attr" class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
-                      {{ attr }}
-                      <button class="text-primary-400 hover:text-red-500" @click.stop="newItemAttrs.splice(i, 1)"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
-                    </span>
-                    <input v-model="newItemAttrInput" placeholder="+ atributo" class="min-w-[90px] rounded border border-dashed border-gray-300 bg-transparent px-1.5 py-0.5 text-[11px] text-gray-700 placeholder-gray-400 outline-none focus:border-primary-400 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-500" @keydown="onNewItemAttrKeydown" />
-                  </div>
-                </div>
-                <div class="mt-4 flex gap-2">
-                  <button class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-700" @click="saveAddItem(categoryDirectKey)">Salvar</button>
-                  <button class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click="cancelAddItem">Cancelar</button>
-                </div>
-              </div>
+          </div>
+
+          <div class="order-1 mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Subniveis opcionais de {{ selectedCategory }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">Use so quando este subgrupo ainda precisa de outra divisao.</p>
             </div>
+            <button
+              v-if="filteredSubcategoryList.length && !searchQ"
+              class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+              title="Organizar subniveis em ordem alfabetica"
+              @click="organizeSubcategoriesAlphabetically"
+            >
+              A-Z
+            </button>
           </div>
 
           <div v-if="filteredSubcategoryList.length" class="order-1">
@@ -712,7 +691,7 @@ const {
                     </template>
                     <template v-else>
                       <div class="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                        <button class="p-1 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 rounded" title="Novo modelo" @click="selectedSubcategory = sub; startAddItem(sub)">
+                        <button class="p-1 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 rounded" title="Novo modelo" @click="startAddItem(sub)">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                         </button>
                         <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 rounded" title="Renomear" @click="startEdit('subcategory', sub, selectedGroup, selectedCategory)">
@@ -730,7 +709,7 @@ const {
                 </tr>
 
                 <!-- Inline add-item form -->
-                <tr v-if="addingItemForSub === sub" class="bg-primary-50/40 dark:bg-primary-900/10">
+                <tr v-if="false" class="bg-primary-50/40 dark:bg-primary-900/10">
                   <td colspan="4" class="px-4 py-3">
                     <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4">
                       <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
@@ -1056,7 +1035,7 @@ const {
             </div>
 
             <!-- Add item card -->
-            <template v-if="addingItemForSub === selectedSubcategory">
+            <template v-if="false">
               <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4 shadow-sm">
                 <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Novo modelo</p>
                 <input
@@ -1129,11 +1108,98 @@ const {
           </div>
 
           <!-- Empty state -->
-          <div v-if="!getVisibleItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory).length && addingItemForSub !== selectedSubcategory" class="mt-8 text-center text-gray-400 dark:text-gray-500 text-sm italic">
+          <div v-if="!getVisibleItemsForSubcategory(selectedGroup, selectedCategory, selectedSubcategory).length" class="mt-8 text-center text-gray-400 dark:text-gray-500 text-sm italic">
             Nenhum modelo neste subnível ainda.
           </div>
         </div>
       </template>
+    </div>
+  </div>
+
+  <div
+    v-if="addingItemForSub"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+    @click.self="cancelAddItem"
+  >
+    <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Novo modelo</p>
+          <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ newItemContextLabel }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ newItemHelpText }}</p>
+        </div>
+        <button class="rounded-lg px-3 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" @click="cancelAddItem">
+          Fechar
+        </button>
+      </div>
+
+      <div class="space-y-4 px-5 py-4">
+        <label class="block">
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome do modelo</span>
+          <input
+            v-model="newItemName"
+            :placeholder="newItemPlaceholder"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+            @keydown="onNewItemKeydown"
+            autofocus
+          />
+        </label>
+
+        <div class="grid gap-3 md:grid-cols-[180px_120px_1fr]">
+          <label class="block">
+            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Unidade</span>
+            <select v-model="newItemUnit" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+              <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Minimo</span>
+            <input v-model="newItemMinStock" type="number" min="0" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Local</span>
+            <select v-model="newItemLocation" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+              <option value="">Definir local...</option>
+              <template v-for="g in groupedLocais" :key="g.parent.id">
+                <option :value="g.parent.name">{{ g.parent.name }}</option>
+                <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;{{ c.name }}</option>
+              </template>
+            </select>
+          </label>
+        </div>
+
+        <div>
+          <p class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos</p>
+          <div class="flex min-h-[42px] flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-2 focus-within:border-primary-400 dark:border-gray-700 dark:bg-gray-800">
+            <span
+              v-for="(attr, i) in newItemAttrs"
+              :key="attr"
+              class="inline-flex items-center gap-1 rounded bg-primary-50 px-1.5 py-0.5 text-[11px] text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+            >
+              {{ attr }}
+              <button class="text-primary-400 hover:text-red-500" @click.stop="newItemAttrs.splice(i, 1)">
+                <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </span>
+            <input
+              v-model="newItemAttrInput"
+              placeholder="+ atributo"
+              class="min-w-[110px] flex-1 bg-transparent px-1.5 py-0.5 text-sm text-gray-700 outline-none placeholder-gray-400 dark:text-gray-200 dark:placeholder-gray-500"
+              @keydown="onNewItemAttrKeydown"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+        <button class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelAddItem">
+          Cancelar
+        </button>
+        <button class="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700" @click="saveAddItem(addingItemForSub)">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+          Criar modelo
+        </button>
+      </div>
     </div>
   </div>
 
