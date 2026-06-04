@@ -131,7 +131,7 @@ function toggleSection(facet) {
         </section>
 
         <section class="order-10 px-3 py-3 space-y-1.5 border-b border-gray-100 dark:border-gray-700/50">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Periodo</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Período</p>
           <div class="grid grid-cols-2 gap-1.5">
             <div>
               <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">De</label>

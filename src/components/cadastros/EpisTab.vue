@@ -505,7 +505,7 @@ function quickMovement(record) {
             @click="openSelector('rule')"
           >
             <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'EPI' }}</span>
-            <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget?.targetLabel || 'Selecionar por blocos do catalogo' }}</span>
+            <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget?.targetLabel || 'Selecionar por blocos do catálogo' }}</span>
           </button>
           <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
         </div>
@@ -544,7 +544,7 @@ function quickMovement(record) {
           @click="openSelector('period')"
         >
           <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedPeriodTarget ? targetTypeLabels[selectedPeriodTarget.targetType] : 'EPI' }}</span>
-          <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedPeriodTarget?.targetLabel || 'Selecionar por blocos do catalogo' }}</span>
+          <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedPeriodTarget?.targetLabel || 'Selecionar por blocos do catálogo' }}</span>
         </button>
         <label class="mb-1 mt-4 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dias para troca</label>
         <input v-model.number="newPeriodDays" type="number" min="1" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />

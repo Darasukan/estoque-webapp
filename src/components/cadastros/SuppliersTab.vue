@@ -142,7 +142,7 @@ async function onDelete(supplier) {
         <input
           v-model="newDescription"
           type="text"
-          placeholder="Observacao opcional"
+          placeholder="Observação opcional"
           class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           @keydown.enter="confirmAdd"
           @keydown.escape="cancelAdd"
@@ -169,7 +169,7 @@ async function onDelete(supplier) {
         <thead>
           <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
             <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome</th>
-            <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Observacao</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Observação</th>
             <th class="w-24 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
             <th class="w-28 px-4 py-2.5"></th>
           </tr>
