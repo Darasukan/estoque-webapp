@@ -212,14 +212,71 @@ function adaptFormForSubTab(tab) {
   }
 }
 
+function applyRequestedByPrefill(prefill, tab) {
+  if (tab !== 'saida' || (!prefill.requestedBy && !prefill.requestedByPersonId)) return
+  const person = activePeople.value.find(p =>
+    (prefill.requestedByPersonId && p.id === prefill.requestedByPersonId) ||
+    normalizeText(p.name) === normalizeText(prefill.requestedBy)
+  )
+  personSelectVal.value = person?.name || prefill.requestedBy || ''
+  form.value.requestedBy = person?.name || prefill.requestedBy || ''
+  form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
+}
+
+function hierarchyFromPrefillTarget(prefill) {
+  if (!prefill?.targetType || !prefill?.targetKey) return null
+  if (prefill.targetType === 'grupo') return { group: prefill.targetKey, category: null, subcategory: null }
+  if (prefill.targetType === 'categoria') {
+    const [group, category] = String(prefill.targetKey).split('|')
+    return { group: group || null, category: category || null, subcategory: null }
+  }
+  if (prefill.targetType === 'subcategoria') {
+    const [group, category, subcategory] = String(prefill.targetKey).split('|')
+    return { group: group || null, category: category || null, subcategory: subcategory || null }
+  }
+  if (prefill.targetType === 'item') {
+    const item = items.value.find(i => i.id === prefill.targetKey)
+    if (!item) return null
+    return { item, group: item.group || null, category: item.category || null, subcategory: item.subcategory || null }
+  }
+  return null
+}
+
+function applyTargetPrefill(prefill, tab) {
+  const target = hierarchyFromPrefillTarget(prefill)
+  if (!target) return false
+  appliedPrefillKey.value = prefill.nonce || `${tab}:${prefill.targetType}:${prefill.targetKey}`
+  suppressFlowReset.value = true
+  activeSubTab.value = tab
+  resetFlow()
+  setActiveGroup(target.group)
+  setActiveCategory(target.category)
+  setActiveSubcategory(target.subcategory)
+  itemSearch.value = ''
+  applyRequestedByPrefill(prefill, tab)
+  if (target.item) {
+    selectedItem.value = target.item
+    step.value = 2
+    setViewingItem(target.item.id)
+  } else {
+    step.value = 1
+  }
+  nextTick(() => {
+    suppressFlowReset.value = false
+    if (!target.item) focusRef(searchInputEl)
+  })
+  return true
+}
+
 function applyMovementPrefill(prefill) {
   if (!prefill || !isLoggedIn.value) return
   const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
-  const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}`
+  const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}:${prefill.targetType || ''}:${prefill.targetKey || ''}`
   if (appliedPrefillKey.value === prefillKey) return
   const item = items.value.find(i => i.id === prefill.itemId)
   const variation = variations.value.find(v => v.id === prefill.variationId)
   if (!item || !variation) {
+    if (applyTargetPrefill(prefill, tab)) return
     if (!items.value.length || !variations.value.length) return
     appliedPrefillKey.value = prefillKey
     error('Item ou variação não encontrada para movimentação rápida.')
@@ -233,15 +290,7 @@ function applyMovementPrefill(prefill) {
   selectedItem.value = item
   selectedVariation.value = variation
   step.value = 3
-  if (tab === 'saida' && (prefill.requestedBy || prefill.requestedByPersonId)) {
-    const person = activePeople.value.find(p =>
-      (prefill.requestedByPersonId && p.id === prefill.requestedByPersonId) ||
-      normalizeText(p.name) === normalizeText(prefill.requestedBy)
-    )
-    personSelectVal.value = person?.name || prefill.requestedBy || ''
-    form.value.requestedBy = person?.name || prefill.requestedBy || ''
-    form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
-  }
+  applyRequestedByPrefill(prefill, tab)
   setViewingItem(item.id)
   nextTick(() => {
     suppressFlowReset.value = false

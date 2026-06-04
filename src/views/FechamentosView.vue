@@ -67,6 +67,11 @@ function formatDate(value) {
   return new Date(value).toLocaleString('pt-BR')
 }
 
+function formatDateOnly(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleDateString('pt-BR')
+}
+
 async function selectClosing(closing) {
   selectedClosingId.value = closing.id
   if (!closingDetails.value[closing.id]) {
@@ -160,7 +165,7 @@ function rowsToCsv(rows) {
     'Extras',
     'Unidade',
     'Estoque inicio do mes',
-    'Saldo fechado',
+    'Estoque fim do mes',
     'Entradas no mes',
     'Saidas no mes',
     'Estoque minimo',
@@ -223,7 +228,7 @@ async function handleExportDetails() {
       <div>
         <p class="ds-page-kicker">Estoque</p>
         <h1 class="ds-page-title">Fechamentos mensais</h1>
-        <p class="ds-page-subtitle">Salve uma foto oficial do estoque no fim de cada mes, calculada a partir das movimentacoes.</p>
+        <p class="ds-page-subtitle">Salve uma foto oficial do estoque no fim do mês selecionado, calculada a partir das movimentações.</p>
       </div>
     </header>
 
@@ -294,9 +299,13 @@ async function handleExportDetails() {
               <p class="ds-page-kicker">Fechamento selecionado</p>
               <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ formatMonth(selectedClosing) }}</h2>
               <p class="text-sm ds-muted">Salvo em {{ formatDate(selectedClosing.closedAt) }}</p>
+              <p class="mt-1 text-xs ds-subtle">
+                O estoque deste fechamento representa o saldo no fim do mês selecionado
+                <span v-if="selectedClosing.summary?.closedThrough">({{ formatDateOnly(selectedClosing.summary.closedThrough) }})</span>,
+                reconstruído pelas movimentações.
+              </p>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-2">
-              <span class="ds-chip">{{ selectedClosing.summary?.variations || 0 }} variações</span>
               <button
                 class="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
                 title="Baixar detalhamento do fechamento em CSV"
@@ -315,10 +324,6 @@ async function handleExportDetails() {
 
         <div class="ds-metric-grid">
           <div class="ds-metric">
-            <p class="ds-metric-label">Saldo fechado</p>
-            <p class="ds-metric-value">{{ selectedClosing.summary?.totalStockAtClose || 0 }}</p>
-          </div>
-          <div class="ds-metric">
             <p class="ds-metric-label">Entradas no mês</p>
             <p class="ds-metric-value text-green-500">{{ selectedClosing.summary?.monthEntradas || 0 }}</p>
           </div>
@@ -327,41 +332,18 @@ async function handleExportDetails() {
             <p class="ds-metric-value text-red-500">{{ selectedClosing.summary?.monthSaidas || 0 }}</p>
           </div>
           <div class="ds-metric">
-            <p class="ds-metric-label">Sem estoque</p>
+            <p class="ds-metric-label">Sem estoque no fim</p>
             <p class="ds-metric-value text-red-500">{{ selectedClosing.summary?.zeroStock || 0 }}</p>
           </div>
           <div class="ds-metric">
-            <p class="ds-metric-label">Abaixo do mínimo</p>
+            <p class="ds-metric-label">Abaixo do mínimo no fim</p>
             <p class="ds-metric-value text-amber-500">{{ selectedClosing.summary?.belowMin || 0 }}</p>
           </div>
         </div>
 
-        <div class="ds-table-wrap">
-          <table class="ds-table">
-            <thead>
-              <tr>
-                <th>Grupo</th>
-                <th>Variações</th>
-                <th>Saldo</th>
-                <th>Entradas</th>
-                <th>Saídas</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="group in (selectedClosing.summary?.groups || [])" :key="group.group">
-                <td class="font-medium text-gray-900 dark:text-gray-100">{{ group.group }}</td>
-                <td>{{ group.variations }}</td>
-                <td>{{ group.stockAtClose }}</td>
-                <td class="text-green-500">{{ group.monthEntradas }}</td>
-                <td class="text-red-500">{{ group.monthSaidas }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
         <section class="ds-list-panel">
           <div class="p-4 border-b border-gray-200 dark:border-gray-800">
-            <h2 class="ds-section-heading">Itens em atencao no fechamento</h2>
+            <h2 class="ds-section-heading">Itens em atenção no fim do mês</h2>
           </div>
           <div v-if="!attentionRows.length" class="p-4 text-sm ds-muted">Nenhum item critico neste fechamento.</div>
           <div v-for="row in attentionRows" :key="row.variationId" class="ds-list-row p-4">

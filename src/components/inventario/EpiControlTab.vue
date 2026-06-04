@@ -19,7 +19,6 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const historyRecord = ref(null)
 
-const targetTypeRank = { grupo: 1, categoria: 2, subcategoria: 3, item: 4, variacao: 5 }
 const targetTypeLabels = {
   grupo: 'Grupo',
   categoria: 'Categoria',
@@ -91,13 +90,9 @@ function movementPersonMatches(movement, person) {
   return normalize(movement.requestedBy) === normalize(person.name)
 }
 
-function periodForMovement(movement) {
-  return activePeriodicities.value
-    .filter(period => targetMatchesMovement(period, movement))
-    .sort((a, b) => targetTypeRank[b.targetType] - targetTypeRank[a.targetType])[0] || null
-}
-
 function periodForRule(rule) {
+  const days = Number(rule?.days || 0)
+  if (Number.isInteger(days) && days > 0) return { days }
   return activePeriodicities.value.find(period =>
     period.targetType === rule.targetType && period.targetKey === rule.targetKey
   ) || null
@@ -169,7 +164,7 @@ const records = computed(() => {
         .filter(movement => movementPersonMatches(movement, person) && targetMatchesMovement(target, movement))
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null
-      const period = movement ? periodForMovement(movement) : periodForRule(rule)
+      const period = periodForRule(rule)
       const dueDate = movement && period ? addDays(movement.date, period.days) : null
       const record = { person, rule, movement, period, dueDate }
       rows.push({ ...record, status: epiStatus(record) })
@@ -264,6 +259,9 @@ function quickMovement(record) {
     type: 'saida',
     itemId: exact?.item?.id,
     variationId: exact?.variation?.id,
+    targetType: record.rule.targetType,
+    targetKey: record.rule.targetKey,
+    targetLabel: record.rule.targetLabel,
     requestedBy: record.person.name,
     requestedByPersonId: record.person.id,
     nonce: `epi:${record.person.id}:${record.rule.id}:${Date.now()}`,
@@ -352,7 +350,7 @@ function quickMovement(record) {
                   <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
                 </template>
                 <p v-else class="mt-1 font-medium text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
-                <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Troca a cada {{ record.period.days }} dias</p>
+                <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Periodicidade: {{ record.period.days }} dias</p>
               </td>
               <td class="px-4 py-3">
                 <p class="font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.movement?.date) }}</p>

@@ -302,6 +302,10 @@ function runNavigationShortcut(shortcut) {
 
 function openInventoryQuickMovement(payload) {
   if (!payload?.variationId || !payload?.itemId) {
+    if (payload?.targetType && payload?.targetKey) {
+      openMovementTab(payload?.type || 'saida', payload)
+      return
+    }
     openMovementTab(payload?.type || 'saida')
     return
   }
@@ -310,6 +314,10 @@ function openInventoryQuickMovement(payload) {
 
 function openCadastroQuickMovement(payload) {
   if (!payload?.variationId || !payload?.itemId) {
+    if (payload?.targetType && payload?.targetKey) {
+      openMovementTab(payload?.type || 'saida', payload)
+      return
+    }
     openMovementTab(payload?.type || 'saida')
     return
   }
