@@ -12,16 +12,27 @@ function sortByName(list) {
   )
 }
 
+export const PERSON_STATUSES = [
+  { id: 'ativo', label: 'Ativo' },
+  { id: 'inativo', label: 'Inativo' },
+  { id: 'demitido', label: 'Demitido' },
+  { id: 'afastado', label: 'Afastado' },
+]
+
+export function personStatusLabel(status) {
+  return PERSON_STATUSES.find(row => row.id === status)?.label || 'Inativo'
+}
+
 export function usePeople() {
   async function loadData() {
     people.value = sortByName(await api.getPeople())
   }
 
   const activePeople = computed(() =>
-    sortByName(people.value.filter(p => p.active))
+    sortByName(people.value.filter(p => p.active && (p.status || 'ativo') === 'ativo'))
   )
 
-  async function addPerson(name, role = '') {
+  async function addPerson(name, role = '', status = 'ativo') {
     const trimmed = name.trim()
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (people.value.some(p => p.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -30,7 +41,8 @@ export function usePeople() {
     const created = await api.createPerson({
       name: trimmed,
       role: role.trim(),
-      active: true,
+      status,
+      active: status === 'ativo',
     })
     people.value.push(created)
     people.value = sortByName(people.value)
@@ -56,7 +68,8 @@ export function usePeople() {
   async function togglePersonActive(id) {
     const p = people.value.find(p => p.id === id)
     if (!p) return
-    const updated = await api.updatePerson(id, { ...p, active: !p.active })
+    const status = p.active ? 'inativo' : 'ativo'
+    const updated = await api.updatePerson(id, { ...p, active: status === 'ativo', status })
     Object.assign(p, updated)
   }
 
@@ -77,6 +90,7 @@ export function usePeople() {
     people,
     loadData,
     activePeople,
+    personStatusLabel,
     addPerson,
     editPerson,
     togglePersonActive,

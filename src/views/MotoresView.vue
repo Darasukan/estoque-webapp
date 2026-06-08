@@ -53,6 +53,7 @@ const confirmDeleteMotorId = ref(null)
 const confirmCreateMotor = ref(false)
 const locationTrailOpen = ref(false)
 const eventSummaryOpen = ref(false)
+const selectedEventSummaryType = ref('rebobinado')
 const motorMaterialSearch = ref('')
 const motorMaterialVariationId = ref('')
 const motorMaterialNote = ref('')
@@ -424,6 +425,26 @@ const selectedMotorEventRows = computed(() => {
       order: event.workOrderId ? workOrderById.value.get(event.workOrderId) : null,
     }))
     .sort((a, b) => (b.event.eventDate || b.event.createdAt || '').localeCompare(a.event.eventDate || a.event.createdAt || ''))
+})
+
+function eventMatchesSummary(eventType, summaryType) {
+  const normalized = eventType === 'enrolar' ? 'enrolado' : eventType
+  if (summaryType === 'rebobinado') return normalized === 'rebobinado' || normalized === 'enrolado'
+  return normalized === summaryType
+}
+
+const selectedEventSummary = computed(() =>
+  selectedMotorEventSummary.value.find(row => row.id === selectedEventSummaryType.value) ||
+  selectedMotorEventSummary.value[0] ||
+  null
+)
+
+const selectedEventDateRows = computed(() => {
+  const summary = selectedEventSummary.value
+  if (!summary) return []
+  return selectedMotorEventRows.value.filter(({ event }) =>
+    eventMatchesSummary(event.eventType, summary.id)
+  )
 })
 
 const selectedMotorLocationTrail = computed(() => {
@@ -1477,16 +1498,50 @@ function workOrderEndLabel(order) {
           <AppButton variant="ghost" size="sm" @click="eventSummaryOpen = false">Fechar</AppButton>
         </div>
       </div>
-      <div class="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div
-          v-for="row in selectedMotorEventSummary"
-          :key="row.id"
-          class="rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-700"
-          :class="row.count ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/70 opacity-70 dark:bg-gray-800/40'"
-        >
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ row.label }}</p>
-          <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ row.count }}</p>
-          <p v-if="row.grouped" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Conta Enrolado junto.</p>
+      <div class="grid gap-4 p-5 lg:grid-cols-[1fr_1.1fr]">
+        <div class="grid gap-2 sm:grid-cols-2">
+          <button
+            v-for="row in selectedMotorEventSummary"
+            :key="row.id"
+            type="button"
+            class="rounded-lg border px-4 py-3 text-left transition-colors"
+            :class="[
+              row.count ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/70 opacity-70 dark:bg-gray-800/40',
+              selectedEventSummaryType === row.id
+                ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/20'
+                : 'border-gray-200 dark:border-gray-700'
+            ]"
+            @click="selectedEventSummaryType = row.id"
+          >
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ row.label }}</p>
+            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ row.count }}</p>
+            <p v-if="row.grouped" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Conta Enrolado junto.</p>
+          </button>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Datas do evento</p>
+            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ selectedEventSummary?.label || 'Evento' }}</p>
+          </div>
+          <div v-if="selectedEventDateRows.length" class="max-h-80 divide-y divide-gray-100 overflow-auto dark:divide-gray-800">
+            <div
+              v-for="{ event, order } in selectedEventDateRows"
+              :key="event.id"
+              class="px-4 py-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formatDate(event.eventDate || event.createdAt) }}</p>
+                <span v-if="order?.number" class="text-xs font-semibold px-2 py-0.5 rounded bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">OS #{{ order.number }}</span>
+              </div>
+              <p v-if="event.toDestination || event.fromDestination" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ [event.fromDestination, event.toDestination].filter(Boolean).join(' -> ') }}
+              </p>
+              <p v-if="event.performedBy" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Por: {{ event.performedBy }}</p>
+              <p v-if="event.notes" class="mt-1 text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{{ event.notes }}</p>
+            </div>
+          </div>
+          <p v-else class="p-4 text-sm text-gray-500 dark:text-gray-400">Nenhuma data registrada para este evento.</p>
         </div>
       </div>
     </div>

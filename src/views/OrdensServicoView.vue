@@ -425,6 +425,62 @@ function updateNormalOsEquipmentFromDestination() {
   osForm.value.equipment = selectedDestinationLabel(osForm.value.destinationId)
 }
 
+function quickOptionsForField(field) {
+  if (field.type === 'person') return activePeople.value.map(person => person.name)
+  if (field.type === 'destination') return destinationOptions.value.map(destination => destination.name)
+  return []
+}
+
+function findQuickAutocompleteMatch(field, value, uniqueOnly = false) {
+  const q = normalizeText(value)
+  if (!q) return ''
+  const options = quickOptionsForField(field)
+  const exact = options.find(option => normalizeText(option) === q)
+  if (exact) return exact
+  const matches = options.filter(option => normalizeText(option).includes(q))
+  return uniqueOnly && matches.length === 1 ? matches[0] : ''
+}
+
+function quickInlineCompletion(field) {
+  if (!['person', 'destination'].includes(field.type)) return ''
+  const value = String(osForm.value[field.key] || '')
+  const q = normalizeText(value)
+  if (!q) return ''
+  const match = quickOptionsForField(field).map(option => {
+    const normalized = normalizeText(option)
+    const index = normalized.indexOf(q)
+    const startsAtWord = index === 0 || /[\s/>._-]/.test(normalized[index - 1] || '')
+    return { option, index, normalized, startsAtWord }
+  }).find(result => result.index >= 0 && result.startsAtWord && result.normalized !== q)
+  return match ? match.option.slice(match.index + value.length) : ''
+}
+
+function syncQuickDestinationFromText(uniqueOnly = false) {
+  if (isMotorMode.value) return false
+  const match = findQuickAutocompleteMatch({ type: 'destination' }, osForm.value.equipment, uniqueOnly)
+  if (!match) return false
+  osForm.value.equipment = match
+  osForm.value.destinationId = findDestinationIdByEquipment(match)
+  return Boolean(osForm.value.destinationId)
+}
+
+function handleQuickAutocompleteInput(field) {
+  if (field.type !== 'destination') return
+  if (!osForm.value.equipment.trim()) {
+    osForm.value.destinationId = ''
+    return
+  }
+  const exactId = findDestinationIdByEquipment(osForm.value.equipment)
+  if (exactId) osForm.value.destinationId = exactId
+}
+
+function commitQuickAutocomplete(field, index) {
+  const match = findQuickAutocompleteMatch(field, osForm.value[field.key], true)
+  if (match) osForm.value[field.key] = match
+  if (field.type === 'destination') syncQuickDestinationFromText(true)
+  focusNextQuickOsField(index)
+}
+
 const quickOsFields = [
   { key: 'number', label: 'Nº da Ordem', type: 'number', placeholder: 'Automático' },
   { key: 'requestDate', label: 'Data', type: 'date', required: true },
@@ -459,11 +515,6 @@ function focusPreviousQuickOsField(index) {
 }
 
 function handleQuickOsMove(field, index) {
-  focusNextQuickOsField(index)
-}
-
-function handleQuickDestinationSelect(payload, index) {
-  handleNormalOsDestinationSelect(payload)
   focusNextQuickOsField(index)
 }
 
@@ -964,6 +1015,7 @@ watch(() => motorEventForm.value.eventType, (eventType) => {
 })
 
 function validateOsForm() {
+  if (!isMotorMode.value) syncQuickDestinationFromText(false)
   const numberText = String(osForm.value.number || '').trim()
   if (numberText && (!Number.isInteger(Number(numberText)) || Number(numberText) <= 0)) { showError('Número da ordem inválido'); return false }
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
@@ -1603,24 +1655,32 @@ function matBackToStep2() {
               >
                 <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
               </select>
-              <PersonPicker
-                v-else-if="field.type === 'person'"
-                :ref="el => setQuickOsFieldRef(el, index)"
-                v-model="osForm[field.key]"
-                :placeholder="field.placeholder"
-                compact
-                :invalid="Boolean(osForm[field.key]) && !isRegisteredRequester(osForm[field.key])"
-                @select="focusNextQuickOsField(index)"
-                @commit="focusNextQuickOsField(index)"
-              />
-              <div v-else-if="field.type === 'destination'" class="px-0 py-0">
-                <DestinationTreePicker
+              <div
+                v-else-if="field.type === 'person' || field.type === 'destination'"
+                class="relative min-h-10 bg-white dark:bg-gray-900"
+              >
+                <div
+                  v-if="quickInlineCompletion(field)"
+                  class="pointer-events-none absolute inset-0 flex items-center px-3 py-2 text-sm text-gray-400/70 dark:text-gray-500/70"
+                  aria-hidden="true"
+                >
+                  <span class="invisible whitespace-pre">{{ osForm[field.key] }}</span>
+                  <span>{{ quickInlineCompletion(field) }}</span>
+                </div>
+                <input
                   :ref="el => setQuickOsFieldRef(el, index)"
-                  v-model="osForm.destinationId"
+                  v-model="osForm[field.key]"
+                  type="text"
+                  autocomplete="off"
                   :placeholder="field.placeholder"
-                  compact
-                  @select="payload => handleQuickDestinationSelect(payload, index)"
-                  @clear="clearNormalOsDestination"
+                  class="relative z-10 min-h-10 w-full border-0 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 dark:text-gray-100"
+                  :class="(field.type === 'person' && osForm[field.key] && !isRegisteredRequester(osForm[field.key])) || (field.type === 'destination' && osForm.equipment && !osForm.destinationId)
+                    ? 'focus:ring-amber-500 text-amber-700 dark:text-amber-300'
+                    : 'focus:ring-primary-500'"
+                  @input="handleQuickAutocompleteInput(field)"
+                  @change="field.type === 'destination' && syncQuickDestinationFromText(false)"
+                  @blur="field.type === 'destination' && syncQuickDestinationFromText(false)"
+                  @keydown.enter.prevent="commitQuickAutocomplete(field, index)"
                 />
               </div>
               <input
@@ -1798,7 +1858,7 @@ function matBackToStep2() {
             <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">2</span>
             <div>
               <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Execução externa</h4>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Para onde o motor foi enviado e quando retornou.</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ isMotorMode ? 'Para onde o motor foi enviado e quando retornou.' : 'Quem executou fora, quando saiu e quando retornou.' }}</p>
             </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">

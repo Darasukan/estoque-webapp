@@ -9,28 +9,48 @@ function clean(value) {
   return String(value ?? '').trim()
 }
 
+const PERSON_STATUSES = new Set(['ativo', 'inativo', 'demitido', 'afastado'])
+
+function normalizeStatus(value, fallbackActive = true) {
+  const status = clean(value).toLowerCase()
+  if (PERSON_STATUSES.has(status)) return status
+  return fallbackActive ? 'ativo' : 'inativo'
+}
+
+function presentPerson(row) {
+  const status = normalizeStatus(row.status, !!row.active)
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role_text,
+    active: status === 'ativo',
+    status,
+  }
+}
+
 // GET /api/people
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM people ORDER BY name').all()
-  res.json(rows.map(r => ({ id: r.id, name: r.name, role: r.role_text, active: !!r.active })))
+  res.json(rows.map(presentPerson))
 })
 
 // POST /api/people
 router.post('/', requireAuth, (req, res) => {
   const name = clean(req.body.name)
   const role = clean(req.body.role)
-  const active = req.body.active !== false
+  const status = normalizeStatus(req.body.status, req.body.active !== false)
+  const active = status === 'ativo'
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
 
   const dup = db.prepare('SELECT id FROM people WHERE lower(name) = lower(?)').get(name)
   if (dup) return res.status(409).json({ error: 'Nome ja existe' })
 
   const id = 'person_' + crypto.randomBytes(6).toString('hex')
-  db.prepare('INSERT INTO people (id, name, role_text, active) VALUES (?, ?, ?, ?)').run(
-    id, name, role, active ? 1 : 0
+  db.prepare('INSERT INTO people (id, name, role_text, active, status) VALUES (?, ?, ?, ?, ?)').run(
+    id, name, role, active ? 1 : 0, status
   )
 
-  res.json({ id, name, role, active })
+  res.json({ id, name, role, active, status })
 })
 
 // PUT /api/people/:id
@@ -40,16 +60,20 @@ router.put('/:id', requireAuth, (req, res) => {
 
   const name = clean(req.body.name ?? current.name)
   const role = clean(req.body.role ?? current.role_text)
-  const active = req.body.active !== undefined ? req.body.active !== false : !!current.active
+  const status = normalizeStatus(
+    req.body.status,
+    req.body.active !== undefined ? req.body.active !== false : !!current.active
+  )
+  const active = status === 'ativo'
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
 
   const dup = db.prepare('SELECT id FROM people WHERE lower(name) = lower(?) AND id != ?').get(name, req.params.id)
   if (dup) return res.status(409).json({ error: 'Nome ja existe' })
 
-  db.prepare('UPDATE people SET name=?, role_text=?, active=? WHERE id=?').run(
-    name, role, active ? 1 : 0, req.params.id
+  db.prepare('UPDATE people SET name=?, role_text=?, active=?, status=? WHERE id=?').run(
+    name, role, active ? 1 : 0, status, req.params.id
   )
-  res.json({ id: req.params.id, name, role, active })
+  res.json({ id: req.params.id, name, role, active, status })
 })
 
 // DELETE /api/people/:id

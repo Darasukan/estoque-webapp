@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { usePeople } from '../../composables/usePeople.js'
+import { PERSON_STATUSES, personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useRoles } from '../../composables/useRoles.js'
 import { useToast } from '../../composables/useToast.js'
 
@@ -10,22 +10,24 @@ const { success, error } = useToast()
 
 const newPersonName = ref('')
 const newPersonRole = ref('')
+const newPersonStatus = ref('ativo')
 const addingPerson = ref(false)
 const editingPersonId = ref(null)
 const editPersonName = ref('')
 const editPersonRole = ref('')
+const editPersonStatus = ref('ativo')
 const personSaving = ref(false)
 
 const canAddPerson = computed(() => newPersonName.value.trim().length > 0 && !personSaving.value)
 const canEditPerson = computed(() => editPersonName.value.trim().length > 0 && !personSaving.value)
 
-function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = '' }
+function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = ''; newPersonStatus.value = 'ativo' }
 function cancelAddPerson() { addingPerson.value = false }
 async function confirmAddPerson() {
   if (!canAddPerson.value) return
   personSaving.value = true
   try {
-    const r = await addPerson(newPersonName.value, newPersonRole.value)
+    const r = await addPerson(newPersonName.value, newPersonRole.value, newPersonStatus.value)
     if (!r.ok) { error(r.error); return }
     success('Pessoa adicionada.')
     addingPerson.value = false
@@ -37,13 +39,19 @@ function startEditPerson(p) {
   editingPersonId.value = p.id
   editPersonName.value = p.name
   editPersonRole.value = p.role || ''
+  editPersonStatus.value = p.status || (p.active ? 'ativo' : 'inativo')
 }
 function cancelEditPerson() { editingPersonId.value = null }
 async function confirmEditPerson() {
   if (!canEditPerson.value) return
   personSaving.value = true
   try {
-    const r = await editPerson(editingPersonId.value, { name: editPersonName.value, role: editPersonRole.value })
+    const r = await editPerson(editingPersonId.value, {
+      name: editPersonName.value,
+      role: editPersonRole.value,
+      status: editPersonStatus.value,
+      active: editPersonStatus.value === 'ativo',
+    })
     if (!r.ok) { error(r.error); return }
     success('Pessoa atualizada.')
     editingPersonId.value = null
@@ -55,6 +63,14 @@ function onDeletePerson(p) {
   if (!confirm(`Excluir "${p.name}"?`)) return
   deletePerson(p.id)
   success('Pessoa removida.')
+}
+
+function personStatusClass(person) {
+  const status = person.status || (person.active ? 'ativo' : 'inativo')
+  if (status === 'ativo') return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+  if (status === 'afastado') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+  if (status === 'demitido') return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+  return 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
 }
 </script>
 <template>
@@ -99,6 +115,12 @@ function onDeletePerson(p) {
         <div v-else class="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
           Nenhum cargo cadastrado. Adicione na aba <strong>Cargos</strong> para vincular.
         </div>
+        <select
+          v-model="newPersonStatus"
+          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
+        >
+          <option v-for="status in PERSON_STATUSES" :key="status.id" :value="status.id">{{ status.label }}</option>
+        </select>
         <p v-if="!newPersonName.trim()" class="text-xs text-amber-600 dark:text-amber-400">Informe o nome da pessoa.</p>
         <div class="flex gap-2">
           <button
@@ -143,8 +165,13 @@ function onDeletePerson(p) {
                   </select>
                   <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Sem cargos cadastrados</span>
                 </td>
-                <td colspan="2" class="px-4 py-2">
-                  <div class="flex items-center gap-1">
+                <td class="px-4 py-2">
+                  <select v-model="editPersonStatus" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none">
+                    <option v-for="status in PERSON_STATUSES" :key="status.id" :value="status.id">{{ status.label }}</option>
+                  </select>
+                </td>
+                <td class="px-4 py-2">
+                  <div class="flex items-center justify-center gap-1">
                     <button class="p-1 text-green-500 hover:text-green-600 disabled:opacity-40 disabled:cursor-not-allowed" title="Salvar" :disabled="!canEditPerson" @click="confirmEditPerson">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                     </button>
@@ -161,11 +188,9 @@ function onDeletePerson(p) {
                 <td class="px-4 py-3 text-center">
                   <button
                     class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
-                    :class="p.active
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                    :class="personStatusClass(p)"
                     @click="togglePersonActive(p.id)"
-                  >{{ p.active ? 'Ativo' : 'Inativo' }}</button>
+                  >{{ personStatusLabel(p.status || (p.active ? 'ativo' : 'inativo')) }}</button>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center justify-center gap-0.5">

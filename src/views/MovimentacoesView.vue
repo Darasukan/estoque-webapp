@@ -1942,10 +1942,21 @@ defineExpose({
       </div>
 
       <!-- ===== STEP 3: Form ===== -->
-      <div v-else-if="step === 3" class="rounded-xl border border-gray-200 dark:border-gray-700">
+      <div
+        v-else-if="step === 3"
+        class="rounded-xl border shadow-sm"
+        :class="activeSubTab === 'entrada'
+          ? 'border-green-400/70 dark:border-green-700/80'
+          : 'border-red-400/70 dark:border-red-700/80'"
+      >
 
         <!-- Header -->
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
+        <div
+          class="flex items-center gap-3 px-4 py-3 border-b rounded-t-xl"
+          :class="activeSubTab === 'entrada'
+            ? 'border-green-200 bg-green-50/80 dark:border-green-900/60 dark:bg-green-950/20'
+            : 'border-red-200 bg-red-50/80 dark:border-red-900/60 dark:bg-red-950/20'"
+        >
           <button
             class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
             title="Voltar para variações"
@@ -1964,7 +1975,8 @@ defineExpose({
             {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saída' }}
           </span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Movimentando agora</p>
+            <p class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
             <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">
               {{ hierarchyLabel(selectedItem) }} · {{ variationLabel(selectedVariation, selectedItem) }}
             </p>

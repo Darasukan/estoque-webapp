@@ -6,15 +6,15 @@ const { toasts } = useToast()
 
 <template>
   <Teleport to="body">
-    <div class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2">
+    <div class="fixed bottom-5 right-5 z-[9999] flex max-w-[min(36rem,calc(100vw-2.5rem))] flex-col gap-2">
       <TransitionGroup name="toast">
         <div
           v-for="toast in toasts"
           :key="toast.id"
-          class="px-4 py-3 rounded-lg text-sm shadow-lg transition-all duration-300 border"
+          class="rounded-lg border px-4 py-3 text-sm font-medium shadow-lg transition-all duration-300"
           :class="{
-            'border-emerald-500/25 bg-emerald-600 text-white dark:bg-emerald-500/15 dark:text-emerald-200': toast.type === 'success',
-            'border-red-500/25 bg-red-600 text-white dark:bg-red-500/15 dark:text-red-200': toast.type === 'error'
+            'border-emerald-500/25 bg-emerald-600 text-white dark:border-emerald-500/40 dark:bg-emerald-950 dark:text-emerald-100': toast.type === 'success',
+            'border-red-500/25 bg-red-600 text-white dark:border-red-500/40 dark:bg-red-950 dark:text-red-100': toast.type === 'error'
           }"
         >
           {{ toast.message }}
