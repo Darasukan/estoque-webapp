@@ -478,7 +478,7 @@ export function useItems() {
 
   async function moveItem(itemId, newGroup, newCategory = null, newSubcategory = null) {
     const item = items.value.find(i => i.id === itemId)
-    if (!item) return { ok: false, error: 'Item nÃ£o encontrado.' }
+    if (!item) return { ok: false, error: 'Item não encontrado.' }
     item.group = newGroup
     item.category = newCategory || null
     item.subcategory = newSubcategory || null

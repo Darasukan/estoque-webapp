@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick, inject } from 'vue'
+import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useItems } from '../composables/useItems.js'
 import { useDestinations } from '../composables/useDestinations.js'
@@ -108,6 +108,9 @@ const showNewForm = ref(false)
 const editingOrderId = ref(null)
 const confirmDeleteId = ref(null)
 const quickOsFieldRefs = ref([])
+const quickSuggestionIndex = ref(0)
+const quickSuggestionFieldKey = ref('')
+const quickInvalidFieldKey = ref('')
 const osEntryMode = ref('form')
 
 function pad(n) {
@@ -243,6 +246,7 @@ function resetOsForm() {
 
 function resetQuickOsEntry() {
   quickOsFieldRefs.value = []
+  closeQuickSuggestions()
 }
 
 // ===== "Add Material" flow inside an OS =====
@@ -400,8 +404,72 @@ function applyScopedMotorToOsForm() {
 function normalizeText(value) {
   return String(value || '')
     .replace(/[›»]/g, '>')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
     .trim()
     .toLowerCase()
+}
+
+function textTokens(value) {
+  return normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+function isNumericToken(value) {
+  return /^\d+$/.test(value)
+}
+
+function tokenSequenceScore(queryTokens, optionTokens) {
+  let score = 0
+  let startIndex = 0
+  for (const queryToken of queryTokens) {
+    let foundIndex = -1
+    let tokenScore = 0
+    for (let i = startIndex; i < optionTokens.length; i += 1) {
+      const optionToken = optionTokens[i]
+      if (isNumericToken(queryToken)) {
+        if (optionToken !== queryToken) continue
+        foundIndex = i
+        tokenScore = 120
+        break
+      }
+      if (optionToken === queryToken) {
+        foundIndex = i
+        tokenScore = 100
+        break
+      }
+      if (optionToken.startsWith(queryToken)) {
+        foundIndex = i
+        tokenScore = 80 - Math.min(optionToken.length - queryToken.length, 20)
+        break
+      }
+    }
+    if (foundIndex < 0) return 0
+    score += tokenScore - foundIndex
+    startIndex = foundIndex + 1
+  }
+  return score
+}
+
+function quickAutocompleteCandidates(field, value) {
+  const q = normalizeText(value)
+  if (!q) return []
+  const queryTokens = textTokens(value)
+  return quickOptionsForField(field)
+    .map(option => {
+      const normalized = normalizeText(option)
+      let score = 0
+      if (normalized === q) score = 10000
+      else if (normalized.startsWith(q)) score = 9000 - normalized.length
+      else {
+        const index = normalized.indexOf(q)
+        const startsAtWord = index === 0 || /[\s/>._-]/.test(normalized[index - 1] || '')
+        if (index >= 0 && startsAtWord) score = 8000 - index - normalized.length
+        else score = tokenSequenceScore(queryTokens, textTokens(option))
+      }
+      return { option, normalized, score }
+    })
+    .filter(result => result.score > 0)
+    .sort((a, b) => b.score - a.score || a.option.length - b.option.length || a.option.localeCompare(b.option))
 }
 
 function findDestinationIdByEquipment(equipment) {
@@ -432,13 +500,11 @@ function quickOptionsForField(field) {
 }
 
 function findQuickAutocompleteMatch(field, value, uniqueOnly = false) {
-  const q = normalizeText(value)
-  if (!q) return ''
-  const options = quickOptionsForField(field)
-  const exact = options.find(option => normalizeText(option) === q)
-  if (exact) return exact
-  const matches = options.filter(option => normalizeText(option).includes(q))
-  return uniqueOnly && matches.length === 1 ? matches[0] : ''
+  const matches = quickAutocompleteCandidates(field, value)
+  if (!matches.length) return ''
+  if (!uniqueOnly) return matches[0].option
+  if (matches.length === 1 || matches[0].score > matches[1].score) return matches[0].option
+  return ''
 }
 
 function quickInlineCompletion(field) {
@@ -446,13 +512,99 @@ function quickInlineCompletion(field) {
   const value = String(osForm.value[field.key] || '')
   const q = normalizeText(value)
   if (!q) return ''
-  const match = quickOptionsForField(field).map(option => {
-    const normalized = normalizeText(option)
-    const index = normalized.indexOf(q)
-    const startsAtWord = index === 0 || /[\s/>._-]/.test(normalized[index - 1] || '')
-    return { option, index, normalized, startsAtWord }
-  }).find(result => result.index >= 0 && result.startsAtWord && result.normalized !== q)
-  return match ? match.option.slice(match.index + value.length) : ''
+  const match = quickAutocompleteCandidates(field, value).find(result => result.normalized.startsWith(q) && result.normalized !== q)
+  return match ? match.option.slice(value.length) : ''
+}
+
+function quickAutocompleteStatus(field) {
+  if (!['person', 'destination'].includes(field.type)) return null
+  const value = String(osForm.value[field.key] || '').trim()
+  if (!value) return null
+  const exact = field.type === 'person'
+    ? isRegisteredRequester(value)
+    : Boolean(findDestinationIdByEquipment(value))
+  if (exact) return null
+  const matches = quickAutocompleteCandidates(field, value)
+  const label = field.type === 'person' ? 'Pessoa' : 'Destino'
+  if (!matches.length) return { type: 'error', text: `${label} não encontrado` }
+  if (matches.length > 1 && matches[0].score === matches[1].score) {
+    return { type: 'warn', text: 'Mais de uma opção. Digite mais um detalhe.' }
+  }
+  return { type: 'hint', text: `Enter para usar: ${matches[0].option}` }
+}
+
+function quickSuggestionOptions(field) {
+  if (!['person', 'destination'].includes(field.type)) return []
+  if (quickSuggestionFieldKey.value !== field.key) return []
+  const value = String(osForm.value[field.key] || '').trim()
+  if (!value) return []
+  const exact = field.type === 'person'
+    ? isRegisteredRequester(value)
+    : Boolean(findDestinationIdByEquipment(value))
+  if (exact) return []
+  return quickAutocompleteCandidates(field, value).slice(0, 6)
+}
+
+function openQuickSuggestions(field) {
+  if (!['person', 'destination'].includes(field.type)) return
+  quickSuggestionFieldKey.value = field.key
+  quickSuggestionIndex.value = 0
+}
+
+function closeQuickSuggestions({ blur = false } = {}) {
+  quickSuggestionFieldKey.value = ''
+  quickSuggestionIndex.value = 0
+  if (blur && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
+function handleQuickSuggestionDocumentMouseDown(event) {
+  if (!quickSuggestionFieldKey.value) return
+  const target = event.target
+  if (target instanceof Element && target.closest('[data-quick-suggestion-root]')) return
+  closeQuickSuggestions()
+}
+
+function handleQuickSuggestionDocumentKeydown(event) {
+  if (event.key !== 'Escape') return
+  if (!quickSuggestionFieldKey.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  closeQuickSuggestions({ blur: true })
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleQuickSuggestionDocumentMouseDown, true)
+  document.addEventListener('keydown', handleQuickSuggestionDocumentKeydown, true)
+  document.addEventListener('keyup', handleQuickSuggestionDocumentKeydown, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleQuickSuggestionDocumentMouseDown, true)
+  document.removeEventListener('keydown', handleQuickSuggestionDocumentKeydown, true)
+  document.removeEventListener('keyup', handleQuickSuggestionDocumentKeydown, true)
+})
+
+function applyQuickSuggestion(field, option, index) {
+  if (!option) return
+  osForm.value[field.key] = option
+  closeQuickSuggestions()
+  if (field.type === 'destination') {
+    osForm.value.destinationId = findDestinationIdByEquipment(option)
+  }
+}
+
+function chooseQuickSuggestion(field, option, index) {
+  applyQuickSuggestion(field, option, index)
+  focusNextQuickOsField(index)
+}
+
+function moveQuickSuggestion(field, direction) {
+  const options = quickSuggestionOptions(field)
+  if (!options.length) return
+  const next = quickSuggestionIndex.value + direction
+  quickSuggestionIndex.value = Math.max(0, Math.min(next, options.length - 1))
 }
 
 function syncQuickDestinationFromText(uniqueOnly = false) {
@@ -465,24 +617,67 @@ function syncQuickDestinationFromText(uniqueOnly = false) {
 }
 
 function handleQuickAutocompleteInput(field) {
+  openQuickSuggestions(field)
+  quickSuggestionIndex.value = 0
   if (field.type !== 'destination') return
   if (!osForm.value.equipment.trim()) {
     osForm.value.destinationId = ''
     return
   }
   const exactId = findDestinationIdByEquipment(osForm.value.equipment)
-  if (exactId) osForm.value.destinationId = exactId
+  osForm.value.destinationId = exactId || ''
 }
 
 function commitQuickAutocomplete(field, index) {
-  const match = findQuickAutocompleteMatch(field, osForm.value[field.key], true)
-  if (match) osForm.value[field.key] = match
-  if (field.type === 'destination') syncQuickDestinationFromText(true)
+  openQuickSuggestions(field)
+  const value = String(osForm.value[field.key] || '').trim()
+  if (value) {
+    const suggestions = quickSuggestionOptions(field)
+    if (suggestions.length) {
+      chooseQuickSuggestion(field, (suggestions[quickSuggestionIndex.value] || suggestions[0]).option, index)
+      return
+    }
+    const matches = quickAutocompleteCandidates(field, value)
+    const exact = field.type === 'person'
+      ? isRegisteredRequester(value)
+      : Boolean(findDestinationIdByEquipment(value))
+    const match = findQuickAutocompleteMatch(field, value, true)
+    if (!exact && !match) {
+      showError(matches.length ? 'Mais de uma opção encontrada. Digite mais um detalhe.' : `${field.type === 'person' ? 'Pessoa' : 'Destino'} não encontrado.`)
+      focusQuickOsField(index)
+      return
+    }
+    if (match) osForm.value[field.key] = match
+  }
+  if (field.type === 'destination' && osForm.value.equipment.trim()) {
+    const ok = syncQuickDestinationFromText(true) || Boolean(findDestinationIdByEquipment(osForm.value.equipment))
+    if (!ok) {
+      showError('Destino não encontrado.')
+      focusQuickOsField(index)
+      return
+    }
+  }
   focusNextQuickOsField(index)
 }
 
+function handleQuickAutocompleteDown(field) {
+  openQuickSuggestions(field)
+  if (quickSuggestionOptions(field).length) {
+    moveQuickSuggestion(field, 1)
+    return
+  }
+}
+
+function handleQuickAutocompleteUp(field, index) {
+  openQuickSuggestions(field)
+  if (quickSuggestionOptions(field).length && quickSuggestionIndex.value > 0) {
+    moveQuickSuggestion(field, -1)
+    return
+  }
+  handleQuickOsBack(field, index)
+}
+
 const quickOsFields = [
-  { key: 'number', label: 'Nº da Ordem', type: 'number', placeholder: 'Automático' },
   { key: 'requestDate', label: 'Data', type: 'date', required: true },
   { key: 'requestTime', label: 'Horário', type: 'time', required: true },
   { key: 'requestedBy', label: 'Solicitante', type: 'person', required: true, placeholder: 'Pessoa cadastrada' },
@@ -503,7 +698,18 @@ function setQuickOsFieldRef(el, index) {
 }
 
 function focusQuickOsField(index) {
-  nextTick(() => quickOsFieldRefs.value[index]?.focus?.())
+  nextTick(() => {
+    const el = quickOsFieldRefs.value[index]
+    const field = quickOsFields[index]
+    if (!el) return
+    if (field?.type === 'date') {
+      osForm.value[field.key] = formatQuickDateForInput(osForm.value[field.key])
+    }
+    el.focus?.()
+    if (['date', 'time', 'text'].includes(field?.type)) {
+      nextTick(() => el.select?.())
+    }
+  })
 }
 
 function focusNextQuickOsField(index) {
@@ -514,9 +720,157 @@ function focusPreviousQuickOsField(index) {
   focusQuickOsField(Math.max(index - 1, 0))
 }
 
-function handleQuickOsMove(field, index) {
+async function handleQuickOsMove(field, index) {
+  if (!validateQuickField(field, index)) return
+  if (index === quickOsFields.length - 1) {
+    await handleSubmitOS()
+    return
+  }
   focusNextQuickOsField(index)
 }
+
+function handleQuickOsBack(field, index) {
+  normalizeQuickField(field)
+  focusPreviousQuickOsField(index)
+}
+
+function isQuickFieldInvalid(field) {
+  return quickInvalidFieldKey.value === field.key
+}
+
+function quickInputType(field) {
+  return ['date', 'time'].includes(field.type) ? 'text' : field.type
+}
+
+function quickPlaceholder(field) {
+  if (field.type === 'date') return 'dd/mm/aaaa'
+  if (field.type === 'time') return 'hh:mm'
+  return field.placeholder
+}
+
+function formatQuickDateForInput(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : text
+}
+
+function normalizeQuickDate(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return formatQuickDateForInput(text)
+  const slash = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/)
+  if (slash) {
+    const year = slash[3].length === 2 ? `20${slash[3]}` : slash[3]
+    return `${pad(slash[1])}/${pad(slash[2])}/${year}`
+  }
+  if (/^\d{4,8}$/.test(text)) return normalizeCompactQuickDate(text)
+  return text
+}
+
+function compactDateCandidate(day, month, year) {
+  const fullYear = year.length === 2 ? `20${year}` : year
+  const candidate = `${pad(day)}/${pad(month)}/${fullYear}`
+  return isValidOrderDate(candidate) ? candidate : ''
+}
+
+function normalizeCompactQuickDate(text) {
+  const candidatesByLength = {
+    4: [[1, 1, 2]],
+    5: [[1, 2, 2], [2, 1, 2]],
+    6: [[2, 2, 2], [1, 1, 4]],
+    7: [[1, 2, 4], [2, 1, 4]],
+    8: [[2, 2, 4]],
+  }
+  const candidates = candidatesByLength[text.length] || []
+  for (const [dayLength, monthLength, yearLength] of candidates) {
+    const day = text.slice(0, dayLength)
+    const month = text.slice(dayLength, dayLength + monthLength)
+    const year = text.slice(dayLength + monthLength, dayLength + monthLength + yearLength)
+    const formatted = compactDateCandidate(day, month, year)
+    if (formatted) return formatted
+  }
+  return text
+}
+
+function normalizeQuickTime(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const colon = text.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (colon) return `${pad(colon[1])}:${pad(colon[2])}`
+  const compact = text.match(/^(\d{1,2})(\d{2})$/)
+  if (compact) return `${pad(compact[1])}:${compact[2]}`
+  return text
+}
+
+function normalizeQuickField(field) {
+  if (field.type === 'date') {
+    osForm.value[field.key] = formatQuickDateForInput(normalizeQuickDate(osForm.value[field.key]))
+  }
+  if (field.type === 'time') osForm.value[field.key] = normalizeQuickTime(osForm.value[field.key])
+}
+
+function validateQuickField(field, index) {
+  normalizeQuickField(field)
+  if (field.type === 'date' && osForm.value[field.key] && !isValidOrderDate(osForm.value[field.key])) {
+    quickInvalidFieldKey.value = field.key
+    osForm.value[field.key] = ''
+    focusQuickOsField(index)
+    return false
+  }
+  if (field.type === 'time' && osForm.value[field.key] && !isValidTime(osForm.value[field.key])) {
+    quickInvalidFieldKey.value = field.key
+    osForm.value[field.key] = ''
+    focusQuickOsField(index)
+    return false
+  }
+  if (quickInvalidFieldKey.value === field.key) quickInvalidFieldKey.value = ''
+  return true
+}
+
+function normalizeQuickOsFields() {
+  quickOsFields.forEach(normalizeQuickField)
+}
+
+function dateParts(value) {
+  const text = String(value || '').trim()
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (iso) return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+  const br = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (br) return { year: Number(br[3]), month: Number(br[2]), day: Number(br[1]) }
+  return null
+}
+
+function isValidOrderDate(value) {
+  const parts = dateParts(value)
+  if (!parts) return false
+  const date = new Date(parts.year, parts.month - 1, parts.day)
+  return !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === parts.year &&
+    date.getMonth() + 1 === parts.month &&
+    date.getDate() === parts.day
+}
+
+function orderDateTime(value, time = '00:00') {
+  const parts = dateParts(value)
+  if (!parts) return null
+  const [hours = '0', minutes = '0'] = String(time || '00:00').split(':')
+  const date = new Date(parts.year, parts.month - 1, parts.day, Number(hours), Number(minutes))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function isValidTime(value) {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})$/)
+  if (!match) return false
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+}
+
+watch([osEntryMode, showNewForm, activeSubTab], () => {
+  if (isMotorMode.value || editingOrderId.value || osEntryMode.value !== 'quick') return
+  if (!showNewForm.value || (!props.createOnly && activeSubTab.value !== 'nova')) return
+  focusQuickOsField(0)
+})
 
 function handleNormalOsDestinationSelect({ fullName }) {
   if (isMotorMode.value) return
@@ -873,7 +1227,7 @@ const historyOrders = computed(() => {
 
   return visibleOrdersBase.value
     .filter(o => {
-      const requestDate = o.requestDate ? new Date(`${o.requestDate}T00:00:00`) : null
+      const requestDate = o.requestDate ? orderDateTime(o.requestDate) : null
       if (from && requestDate && requestDate < from) return false
       if (to && requestDate && requestDate > to) return false
 
@@ -1023,6 +1377,8 @@ function validateOsForm() {
   if (osForm.value.maintenanceLocationType === 'interna' && osForm.value.maintenanceProfessional.trim() && !isRegisteredRequester(osForm.value.maintenanceProfessional)) { showError('Profissional deve ser uma pessoa cadastrada ativa'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
+  if (!isValidOrderDate(osForm.value.requestDate)) { showError('Data inválida'); return false }
+  if (!isValidTime(osForm.value.requestTime)) { showError('Horário inválido'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
   if (!isMotorMode.value && !osForm.value.destinationId) { showError('Selecione um equipamento em destinos'); return false }
   if (!isMotorMode.value && !destinationOptions.value.some(d => d.id === osForm.value.destinationId)) { showError('Equipamento deve ser um destino ativo'); return false }
@@ -1038,10 +1394,14 @@ function validateOsForm() {
   const hasEndTime = !!osForm.value.maintenanceEndTime
   if (hasStartDate !== hasStartTime) { showError('Informe data e horário de início da manutenção'); return false }
   if (hasEndDate !== hasEndTime) { showError('Informe data e horário de término da manutenção'); return false }
+  if (hasStartDate && !isValidOrderDate(osForm.value.maintenanceStartDate)) { showError('Data de início inválida'); return false }
+  if (hasStartTime && !isValidTime(osForm.value.maintenanceStartTime)) { showError('Horário de início inválido'); return false }
+  if (hasEndDate && !isValidOrderDate(osForm.value.maintenanceEndDate)) { showError('Data de término inválida'); return false }
+  if (hasEndTime && !isValidTime(osForm.value.maintenanceEndTime)) { showError('Horário de término inválido'); return false }
   if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime)) { showError('Informe início/envio antes do término/retorno da manutenção'); return false }
   if (hasStartDate && hasEndDate) {
-    const start = new Date(`${osForm.value.maintenanceStartDate}T${osForm.value.maintenanceStartTime}`)
-    const end = new Date(`${osForm.value.maintenanceEndDate}T${osForm.value.maintenanceEndTime}`)
+    const start = orderDateTime(osForm.value.maintenanceStartDate, osForm.value.maintenanceStartTime)
+    const end = orderDateTime(osForm.value.maintenanceEndDate, osForm.value.maintenanceEndTime)
     if (end < start) { showError('Término não pode ser antes do início da manutenção'); return false }
   }
   return true
@@ -1110,7 +1470,9 @@ function buildOsPayload() {
 // ===== Actions =====
 async function handleCreateOS() {
   if (!canManageOs.value) return
+  if (!isMotorMode.value && osEntryMode.value === 'quick') normalizeQuickOsFields()
   if (!validateOsForm()) return
+  const continueQuickEntry = !isMotorMode.value && osEntryMode.value === 'quick'
   try {
     await addWorkOrder(buildOsPayload())
     if (isMotorMode.value) await loadMotorData().catch(() => {})
@@ -1118,6 +1480,15 @@ async function handleCreateOS() {
     if (props.createOnly) {
       resetOsForm()
       emit('created')
+      return
+    }
+    if (continueQuickEntry) {
+      resetOsForm()
+      activeSubTab.value = 'nova'
+      showNewForm.value = true
+      osEntryMode.value = 'quick'
+      await nextTick()
+      focusQuickOsField(0)
       return
     }
     showNewForm.value = false
@@ -1373,6 +1744,7 @@ function formatDate(iso) {
 
 function formatDateOnly(value) {
   if (!value) return '-'
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-')
     return `${day}/${month}/${year}`
@@ -1636,13 +2008,22 @@ function matBackToStep2() {
               </p>
             </div>
           </div>
-          <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div class="grid grid-cols-1 border-b border-gray-100 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]">
+              <label class="flex min-h-10 items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                Nº da Ordem
+              </label>
+              <div class="min-h-10 w-full bg-gray-50 px-3 py-2 text-sm text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                Automático ao criar
+              </div>
+            </div>
             <div
               v-for="(field, index) in quickOsFields"
               :key="field.key"
-              class="grid grid-cols-1 border-b border-gray-100 last:border-b-0 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]"
+              class="relative grid grid-cols-1 border-b border-gray-100 last:border-b-0 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]"
+              :class="quickSuggestionOptions(field).length ? 'z-50' : 'z-0'"
             >
-              <label class="flex items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              <label class="flex min-h-10 items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                 {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
               </label>
               <select
@@ -1650,23 +2031,19 @@ function matBackToStep2() {
                 :ref="el => setQuickOsFieldRef(el, index)"
                 v-model="osForm[field.key]"
                 class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                @focus="closeQuickSuggestions()"
                 @keydown.enter.prevent="handleQuickOsMove(field, index)"
-                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+                @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
+                @keydown.up.prevent="handleQuickOsBack(field, index)"
               >
                 <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
               </select>
               <div
                 v-else-if="field.type === 'person' || field.type === 'destination'"
+                data-quick-suggestion-root
                 class="relative min-h-10 bg-white dark:bg-gray-900"
               >
-                <div
-                  v-if="quickInlineCompletion(field)"
-                  class="pointer-events-none absolute inset-0 flex items-center px-3 py-2 text-sm text-gray-400/70 dark:text-gray-500/70"
-                  aria-hidden="true"
-                >
-                  <span class="invisible whitespace-pre">{{ osForm[field.key] }}</span>
-                  <span>{{ quickInlineCompletion(field) }}</span>
-                </div>
                 <input
                   :ref="el => setQuickOsFieldRef(el, index)"
                   v-model="osForm[field.key]"
@@ -1677,23 +2054,62 @@ function matBackToStep2() {
                   :class="(field.type === 'person' && osForm[field.key] && !isRegisteredRequester(osForm[field.key])) || (field.type === 'destination' && osForm.equipment && !osForm.destinationId)
                     ? 'focus:ring-amber-500 text-amber-700 dark:text-amber-300'
                     : 'focus:ring-primary-500'"
+                  @focus="$event.target.select(); openQuickSuggestions(field)"
                   @input="handleQuickAutocompleteInput(field)"
                   @change="field.type === 'destination' && syncQuickDestinationFromText(false)"
-                  @blur="field.type === 'destination' && syncQuickDestinationFromText(false)"
+                  @blur="field.type === 'destination' && syncQuickDestinationFromText(false); setTimeout(closeQuickSuggestions, 120)"
                   @keydown.enter.prevent="commitQuickAutocomplete(field, index)"
+                  @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                  @keydown.down.prevent="handleQuickAutocompleteDown(field)"
+                  @keydown.up.prevent="handleQuickAutocompleteUp(field, index)"
+                  @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
                 />
+                <div
+                  v-if="quickSuggestionOptions(field).length"
+                  class="absolute left-0 right-0 top-full z-[200] max-h-56 overflow-auto border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <button
+                    v-for="(suggestion, suggestionIndex) in quickSuggestionOptions(field)"
+                    :key="suggestion.option"
+                    type="button"
+                    class="block w-full truncate px-3 py-2 text-left text-gray-700 dark:text-gray-200"
+                    :class="suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+                    @mousedown.prevent="chooseQuickSuggestion(field, suggestion.option, index)"
+                  >
+                    {{ suggestion.option }}
+                  </button>
+                </div>
+                <p
+                  v-else-if="quickAutocompleteStatus(field)"
+                  class="pointer-events-none absolute bottom-0 left-3 right-3 translate-y-[-2px] truncate text-[10px]"
+                  :class="quickAutocompleteStatus(field).type === 'error'
+                    ? 'text-red-500 dark:text-red-400'
+                    : quickAutocompleteStatus(field).type === 'warn'
+                      ? 'text-amber-600 dark:text-amber-300'
+                      : 'text-gray-400 dark:text-gray-500'"
+                >
+                  {{ quickAutocompleteStatus(field).text }}
+                </p>
               </div>
               <input
                 v-else
                 :ref="el => setQuickOsFieldRef(el, index)"
                 v-model="osForm[field.key]"
-                :type="field.type"
+                :type="quickInputType(field)"
                 :list="field.list"
-                :placeholder="field.placeholder"
-                class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                :placeholder="quickPlaceholder(field)"
+                class="min-h-10 w-full border-0 px-3 py-2 text-sm outline-none focus:ring-2 dark:text-gray-100"
+                :class="isQuickFieldInvalid(field)
+                  ? 'bg-red-50 text-red-700 ring-2 ring-red-500 placeholder-red-300 focus:ring-red-500 dark:bg-red-950/30 dark:text-red-200 dark:placeholder-red-400'
+                  : 'bg-white text-gray-900 focus:ring-primary-500 dark:bg-gray-900'"
+                @focus="closeQuickSuggestions(); field.type === 'date' && (osForm[field.key] = formatQuickDateForInput(osForm[field.key])); $event.target.select()"
+                @input="quickInvalidFieldKey === field.key && (quickInvalidFieldKey = '')"
+                @blur="normalizeQuickField(field)"
                 @keydown.enter.prevent="handleQuickOsMove(field, index)"
+                @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
                 @keydown.down.prevent="handleQuickOsMove(field, index)"
-                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+                @keydown.up.prevent="handleQuickOsBack(field, index)"
               />
             </div>
           </div>

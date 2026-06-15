@@ -484,7 +484,7 @@ function quickMovement(record) {
     </div>
 
     <section v-if="activeTab === 'cargo'" class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo</label>
         <select v-model="selectedRoleName" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
           <option value="">Selecione um cargo</option>
@@ -506,7 +506,7 @@ function quickMovement(record) {
       </aside>
 
       <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">EPIs obrigatorios de {{ selectedRoleName || 'cargo' }}</h3>
         </div>
         <div v-if="rulesForRole.length" class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -547,7 +547,7 @@ function quickMovement(record) {
     </section>
 
     <section v-else class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pessoa</label>
         <select v-model="selectedPersonId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
           <option value="">Selecione uma pessoa</option>
@@ -560,7 +560,7 @@ function quickMovement(record) {
       </aside>
 
       <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Controle de EPI de {{ selectedPerson?.name || 'pessoa' }}</h3>
         </div>
         <div v-if="personEpiRecords.length" class="divide-y divide-gray-100 dark:divide-gray-700">

@@ -22,7 +22,7 @@ function toggleSection(key) {
 
 <template>
   <aside
-    class="fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="catalog-sidebar fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
     :class="collapsed ? 'w-12' : 'w-60'"
   >
     <!-- Header: collapse toggle -->
@@ -266,4 +266,5 @@ function toggleSection(key) {
 :is(.dark) .sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(107, 114, 128, 0.6);
 }
+
 </style>

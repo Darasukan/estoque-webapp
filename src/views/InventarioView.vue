@@ -894,17 +894,17 @@ function exportCSV() {
   <div class="space-y-4">
 
     <!-- Header -->
-    <div class="flex items-center justify-between gap-4">
+    <div class="ds-page-header">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Inventário</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        <h1 class="ds-page-title">Inventário</h1>
+        <p class="ds-page-subtitle">
           <template v-if="filterStatus === 'all'">
             Todas as variações cadastradas
-            <span v-if="counts.all" class="ml-1 font-medium text-gray-700 dark:text-gray-300">({{ counts.all }})</span>
+            <span v-if="counts.all" class="ml-1 font-medium">({{ counts.all }})</span>
           </template>
           <template v-else>
             Variações que precisam de atenção
-            <span v-if="alertRows.length" class="ml-1 font-medium text-gray-700 dark:text-gray-300">({{ alertRows.length }})</span>
+            <span v-if="alertRows.length" class="ml-1 font-medium">({{ alertRows.length }})</span>
           </template>
         </p>
       </div>
@@ -1041,7 +1041,7 @@ function exportCSV() {
     <div v-if="showBody" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-start">
 
       <!-- ===== Facet sidebar ===== -->
-      <div class="w-44 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 space-y-2 self-stretch">
+      <div class="inventory-filter-sidebar w-44 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 space-y-2 self-stretch">
 
         <!-- Search -->
         <div class="relative">

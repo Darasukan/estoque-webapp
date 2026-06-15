@@ -56,7 +56,7 @@ function toggleSection(facet) {
 
 <template>
   <aside
-    class="fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="history-filter-sidebar fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
     :class="collapsed ? 'w-12' : 'w-60'"
   >
     <div class="border-b border-gray-200 dark:border-gray-700">

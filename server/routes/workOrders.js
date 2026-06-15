@@ -80,6 +80,25 @@ function parseOrderNumber(value) {
   return Number.isInteger(n) && n > 0 ? n : NaN
 }
 
+function parseOrderDateTime(dateValue, timeValue = '00:00') {
+  const dateText = clean(dateValue)
+  const timeText = clean(timeValue) || '00:00'
+  const iso = dateText.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const br = dateText.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  const parts = iso
+    ? { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+    : br
+      ? { year: Number(br[3]), month: Number(br[2]), day: Number(br[1]) }
+      : null
+  if (!parts) return null
+  const time = timeText.match(/^(\d{2}):(\d{2})$/)
+  if (!time) return null
+  const date = new Date(parts.year, parts.month - 1, parts.day, Number(time[1]), Number(time[2]))
+  if (Number.isNaN(date.getTime())) return null
+  if (date.getFullYear() !== parts.year || date.getMonth() + 1 !== parts.month || date.getDate() !== parts.day) return null
+  return date
+}
+
 function validateMaintenanceDates({
   maintenanceStartDate,
   maintenanceStartTime,
@@ -95,9 +114,9 @@ function validateMaintenanceDates({
   if (hasEndDate !== hasEndTime) return 'Informe data e horário de término da manutenção'
   if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime) && !allowEndWithoutStart) return 'Informe início/envio antes do término/retorno da manutenção'
   if (hasStartDate && hasEndDate) {
-    const start = new Date(`${clean(maintenanceStartDate)}T${clean(maintenanceStartTime)}`)
-    const end = new Date(`${clean(maintenanceEndDate)}T${clean(maintenanceEndTime)}`)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Datas de manutenção inválidas'
+    const start = parseOrderDateTime(maintenanceStartDate, maintenanceStartTime)
+    const end = parseOrderDateTime(maintenanceEndDate, maintenanceEndTime)
+    if (!start || !end) return 'Datas de manutenção inválidas'
     if (end < start) return 'Término não pode ser antes do início da manutenção'
   }
   return ''
@@ -415,6 +434,7 @@ router.post('/', requireAuth, (req, res) => {
   if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
   if (!clean(requestDate)) return res.status(400).json({ error: 'Data é obrigatória' })
   if (!clean(requestTime)) return res.status(400).json({ error: 'Horário é obrigatório' })
+  if (!parseOrderDateTime(requestDate, requestTime)) return res.status(400).json({ error: 'Data ou horário inválido' })
 
   const parsedNumber = parseOrderNumber(rawNumber)
   if (Number.isNaN(parsedNumber)) return res.status(400).json({ error: 'Número da ordem inválido' })
@@ -605,6 +625,12 @@ router.put('/:id', requireAuth, (req, res) => {
   const numberExists = db.prepare('SELECT id FROM work_orders WHERE number = ? AND id != ?').get(nextNumber, req.params.id)
   if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
+  const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
+  const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
+  if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
+  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
+  if (!parseOrderDateTime(requestDateValue, requestTimeValue)) return res.status(400).json({ error: 'Data ou horário inválido' })
+
   const maintenanceLocation = buildMaintenanceLocation({
     maintenanceLocationType,
     maintenanceDestinationId,
@@ -629,13 +655,9 @@ router.put('/:id', requireAuth, (req, res) => {
     : destinationName
 
   const serviceTypeValue = serviceType !== undefined ? normalizeServiceType(serviceType) : (o.service_type || 'Outros')
-  const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
-  const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
   const requestedByValue = requestedBy !== undefined ? clean(requestedBy) : o.requested_by
 
   if (!requestedByValue) return res.status(400).json({ error: 'Solicitante é obrigatório' })
-  if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
-  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
   if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
   const internalMaintenance = maintenanceLocation.maintenanceLocationType === 'interna'
   const maintenanceStartDateValue = maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || '')

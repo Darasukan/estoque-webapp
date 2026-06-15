@@ -166,7 +166,7 @@ const {
   <div class="flex gap-0 min-h-[520px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
 
     <!-- LEFT: Groups list -->
-    <div class="w-56 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div class="hierarchy-group-sidebar w-56 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">
           <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Grupos</p>

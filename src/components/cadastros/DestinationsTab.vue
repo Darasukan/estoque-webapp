@@ -644,7 +644,7 @@ async function removeMaterialFromDestination(variation) {
 <template>
   <div class="flex gap-0 min-h-[560px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
     <!-- Left panel -->
-    <aside class="w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <aside class="destination-management-sidebar w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Destinos</p>
         <div class="relative">

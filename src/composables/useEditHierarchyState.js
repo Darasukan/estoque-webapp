@@ -278,7 +278,7 @@ async function saveMove() {
         targetSubcategory || null
       )
       if (!result?.ok) {
-        error(result?.error || 'NÃ£o foi possÃ­vel mover o item.')
+        error(result?.error || 'Não foi possível mover o item.')
         return
       }
       selectedGroup.value = targetGroup
@@ -290,7 +290,7 @@ async function saveMove() {
     }
     cancelMove()
   } catch (err) {
-    error(err?.message || 'NÃ£o foi possÃ­vel mover.')
+    error(err?.message || 'Não foi possível mover.')
   }
 }
 
