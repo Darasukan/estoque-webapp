@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick, inject } from 'vue'
+import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useItems } from '../composables/useItems.js'
 import { useDestinations } from '../composables/useDestinations.js'
@@ -82,7 +82,7 @@ const visibleSubTabs = computed(() => [
   },
   ...(canManageOs.value ? [{
     id: 'nova',
-    label: 'Nova OS',
+    label: editingOrderId.value ? 'Editar OS' : 'Nova OS',
     icon: 'M12 4.5v15m7.5-7.5h-15',
   }] : []),
   {
@@ -99,6 +99,7 @@ const visibleSubTabs = computed(() => [
 
 // ===== OS List =====
 const searchQuery = ref('')
+const ordersStatusTab = ref('open')
 const historySearch = ref('')
 const historyDateFrom = ref('')
 const historyDateTo = ref('')
@@ -107,6 +108,9 @@ const showNewForm = ref(false)
 const editingOrderId = ref(null)
 const confirmDeleteId = ref(null)
 const quickOsFieldRefs = ref([])
+const quickSuggestionIndex = ref(0)
+const quickSuggestionFieldKey = ref('')
+const quickInvalidFieldKey = ref('')
 const osEntryMode = ref('form')
 
 function pad(n) {
@@ -171,7 +175,7 @@ function createEmptyOsForm(order = null) {
       destinationId: valueFromOrder(order, 'destinationId', 'destination_id') || findDestinationIdByEquipment(equipment),
       motorOriginDestinationId: valueFromOrder(order, 'motorOriginDestinationId', 'motor_origin_destination_id'),
       motorOriginDestinationName: valueFromOrder(order, 'motorOriginDestinationName', 'motor_origin_destination_name'),
-      maintenanceLocationType: valueFromOrder(order, 'maintenanceLocationType', 'maintenance_location_type') || (valueFromOrder(order, 'maintenanceDestinationId', 'maintenance_destination_id') ? 'interna' : 'externa'),
+      maintenanceLocationType: valueFromOrder(order, 'maintenanceLocationType', 'maintenance_location_type') || (valueFromOrder(order, 'motorId', 'motor_id') ? (valueFromOrder(order, 'maintenanceDestinationId', 'maintenance_destination_id') ? 'interna' : 'externa') : 'interna'),
       maintenanceDestinationId: valueFromOrder(order, 'maintenanceDestinationId', 'maintenance_destination_id'),
       maintenanceExternalLocation: valueFromOrder(order, 'maintenanceExternalLocation', 'maintenance_external_location') || (valueFromOrder(order, 'motorId', 'motor_id') ? valueFromOrder(order, 'destinationName', 'destination_name') : ''),
       initialMotorEventType: 'nenhum',
@@ -242,6 +246,7 @@ function resetOsForm() {
 
 function resetQuickOsEntry() {
   quickOsFieldRefs.value = []
+  closeQuickSuggestions()
 }
 
 // ===== "Add Material" flow inside an OS =====
@@ -399,8 +404,72 @@ function applyScopedMotorToOsForm() {
 function normalizeText(value) {
   return String(value || '')
     .replace(/[›»]/g, '>')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
     .trim()
     .toLowerCase()
+}
+
+function textTokens(value) {
+  return normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+function isNumericToken(value) {
+  return /^\d+$/.test(value)
+}
+
+function tokenSequenceScore(queryTokens, optionTokens) {
+  let score = 0
+  let startIndex = 0
+  for (const queryToken of queryTokens) {
+    let foundIndex = -1
+    let tokenScore = 0
+    for (let i = startIndex; i < optionTokens.length; i += 1) {
+      const optionToken = optionTokens[i]
+      if (isNumericToken(queryToken)) {
+        if (optionToken !== queryToken) continue
+        foundIndex = i
+        tokenScore = 120
+        break
+      }
+      if (optionToken === queryToken) {
+        foundIndex = i
+        tokenScore = 100
+        break
+      }
+      if (optionToken.startsWith(queryToken)) {
+        foundIndex = i
+        tokenScore = 80 - Math.min(optionToken.length - queryToken.length, 20)
+        break
+      }
+    }
+    if (foundIndex < 0) return 0
+    score += tokenScore - foundIndex
+    startIndex = foundIndex + 1
+  }
+  return score
+}
+
+function quickAutocompleteCandidates(field, value) {
+  const q = normalizeText(value)
+  if (!q) return []
+  const queryTokens = textTokens(value)
+  return quickOptionsForField(field)
+    .map(option => {
+      const normalized = normalizeText(option)
+      let score = 0
+      if (normalized === q) score = 10000
+      else if (normalized.startsWith(q)) score = 9000 - normalized.length
+      else {
+        const index = normalized.indexOf(q)
+        const startsAtWord = index === 0 || /[\s/>._-]/.test(normalized[index - 1] || '')
+        if (index >= 0 && startsAtWord) score = 8000 - index - normalized.length
+        else score = tokenSequenceScore(queryTokens, textTokens(option))
+      }
+      return { option, normalized, score }
+    })
+    .filter(result => result.score > 0)
+    .sort((a, b) => b.score - a.score || a.option.length - b.option.length || a.option.localeCompare(b.option))
 }
 
 function findDestinationIdByEquipment(equipment) {
@@ -424,8 +493,191 @@ function updateNormalOsEquipmentFromDestination() {
   osForm.value.equipment = selectedDestinationLabel(osForm.value.destinationId)
 }
 
+function quickOptionsForField(field) {
+  if (field.type === 'person') return activePeople.value.map(person => person.name)
+  if (field.type === 'destination') return destinationOptions.value.map(destination => destination.name)
+  return []
+}
+
+function findQuickAutocompleteMatch(field, value, uniqueOnly = false) {
+  const matches = quickAutocompleteCandidates(field, value)
+  if (!matches.length) return ''
+  if (!uniqueOnly) return matches[0].option
+  if (matches.length === 1 || matches[0].score > matches[1].score) return matches[0].option
+  return ''
+}
+
+function quickInlineCompletion(field) {
+  if (!['person', 'destination'].includes(field.type)) return ''
+  const value = String(osForm.value[field.key] || '')
+  const q = normalizeText(value)
+  if (!q) return ''
+  const match = quickAutocompleteCandidates(field, value).find(result => result.normalized.startsWith(q) && result.normalized !== q)
+  return match ? match.option.slice(value.length) : ''
+}
+
+function quickAutocompleteStatus(field) {
+  if (!['person', 'destination'].includes(field.type)) return null
+  const value = String(osForm.value[field.key] || '').trim()
+  if (!value) return null
+  const exact = field.type === 'person'
+    ? isRegisteredRequester(value)
+    : Boolean(findDestinationIdByEquipment(value))
+  if (exact) return null
+  const matches = quickAutocompleteCandidates(field, value)
+  const label = field.type === 'person' ? 'Pessoa' : 'Destino'
+  if (!matches.length) return { type: 'error', text: `${label} não encontrado` }
+  if (matches.length > 1 && matches[0].score === matches[1].score) {
+    return { type: 'warn', text: 'Mais de uma opção. Digite mais um detalhe.' }
+  }
+  return { type: 'hint', text: `Enter para usar: ${matches[0].option}` }
+}
+
+function quickSuggestionOptions(field) {
+  if (!['person', 'destination'].includes(field.type)) return []
+  if (quickSuggestionFieldKey.value !== field.key) return []
+  const value = String(osForm.value[field.key] || '').trim()
+  if (!value) return []
+  const exact = field.type === 'person'
+    ? isRegisteredRequester(value)
+    : Boolean(findDestinationIdByEquipment(value))
+  if (exact) return []
+  return quickAutocompleteCandidates(field, value).slice(0, 6)
+}
+
+function openQuickSuggestions(field) {
+  if (!['person', 'destination'].includes(field.type)) return
+  quickSuggestionFieldKey.value = field.key
+  quickSuggestionIndex.value = 0
+}
+
+function closeQuickSuggestions({ blur = false } = {}) {
+  quickSuggestionFieldKey.value = ''
+  quickSuggestionIndex.value = 0
+  if (blur && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
+function handleQuickSuggestionDocumentMouseDown(event) {
+  if (!quickSuggestionFieldKey.value) return
+  const target = event.target
+  if (target instanceof Element && target.closest('[data-quick-suggestion-root]')) return
+  closeQuickSuggestions()
+}
+
+function handleQuickSuggestionDocumentKeydown(event) {
+  if (event.key !== 'Escape') return
+  if (!quickSuggestionFieldKey.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  closeQuickSuggestions({ blur: true })
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleQuickSuggestionDocumentMouseDown, true)
+  document.addEventListener('keydown', handleQuickSuggestionDocumentKeydown, true)
+  document.addEventListener('keyup', handleQuickSuggestionDocumentKeydown, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleQuickSuggestionDocumentMouseDown, true)
+  document.removeEventListener('keydown', handleQuickSuggestionDocumentKeydown, true)
+  document.removeEventListener('keyup', handleQuickSuggestionDocumentKeydown, true)
+})
+
+function applyQuickSuggestion(field, option, index) {
+  if (!option) return
+  osForm.value[field.key] = option
+  closeQuickSuggestions()
+  if (field.type === 'destination') {
+    osForm.value.destinationId = findDestinationIdByEquipment(option)
+  }
+}
+
+function chooseQuickSuggestion(field, option, index) {
+  applyQuickSuggestion(field, option, index)
+  focusNextQuickOsField(index)
+}
+
+function moveQuickSuggestion(field, direction) {
+  const options = quickSuggestionOptions(field)
+  if (!options.length) return
+  const next = quickSuggestionIndex.value + direction
+  quickSuggestionIndex.value = Math.max(0, Math.min(next, options.length - 1))
+}
+
+function syncQuickDestinationFromText(uniqueOnly = false) {
+  if (isMotorMode.value) return false
+  const match = findQuickAutocompleteMatch({ type: 'destination' }, osForm.value.equipment, uniqueOnly)
+  if (!match) return false
+  osForm.value.equipment = match
+  osForm.value.destinationId = findDestinationIdByEquipment(match)
+  return Boolean(osForm.value.destinationId)
+}
+
+function handleQuickAutocompleteInput(field) {
+  openQuickSuggestions(field)
+  quickSuggestionIndex.value = 0
+  if (field.type !== 'destination') return
+  if (!osForm.value.equipment.trim()) {
+    osForm.value.destinationId = ''
+    return
+  }
+  const exactId = findDestinationIdByEquipment(osForm.value.equipment)
+  osForm.value.destinationId = exactId || ''
+}
+
+function commitQuickAutocomplete(field, index) {
+  openQuickSuggestions(field)
+  const value = String(osForm.value[field.key] || '').trim()
+  if (value) {
+    const suggestions = quickSuggestionOptions(field)
+    if (suggestions.length) {
+      chooseQuickSuggestion(field, (suggestions[quickSuggestionIndex.value] || suggestions[0]).option, index)
+      return
+    }
+    const matches = quickAutocompleteCandidates(field, value)
+    const exact = field.type === 'person'
+      ? isRegisteredRequester(value)
+      : Boolean(findDestinationIdByEquipment(value))
+    const match = findQuickAutocompleteMatch(field, value, true)
+    if (!exact && !match) {
+      showError(matches.length ? 'Mais de uma opção encontrada. Digite mais um detalhe.' : `${field.type === 'person' ? 'Pessoa' : 'Destino'} não encontrado.`)
+      focusQuickOsField(index)
+      return
+    }
+    if (match) osForm.value[field.key] = match
+  }
+  if (field.type === 'destination' && osForm.value.equipment.trim()) {
+    const ok = syncQuickDestinationFromText(true) || Boolean(findDestinationIdByEquipment(osForm.value.equipment))
+    if (!ok) {
+      showError('Destino não encontrado.')
+      focusQuickOsField(index)
+      return
+    }
+  }
+  focusNextQuickOsField(index)
+}
+
+function handleQuickAutocompleteDown(field) {
+  openQuickSuggestions(field)
+  if (quickSuggestionOptions(field).length) {
+    moveQuickSuggestion(field, 1)
+    return
+  }
+}
+
+function handleQuickAutocompleteUp(field, index) {
+  openQuickSuggestions(field)
+  if (quickSuggestionOptions(field).length && quickSuggestionIndex.value > 0) {
+    moveQuickSuggestion(field, -1)
+    return
+  }
+  handleQuickOsBack(field, index)
+}
+
 const quickOsFields = [
-  { key: 'number', label: 'Nº da Ordem', type: 'number', placeholder: 'Automático' },
   { key: 'requestDate', label: 'Data', type: 'date', required: true },
   { key: 'requestTime', label: 'Horário', type: 'time', required: true },
   { key: 'requestedBy', label: 'Solicitante', type: 'person', required: true, placeholder: 'Pessoa cadastrada' },
@@ -446,7 +698,18 @@ function setQuickOsFieldRef(el, index) {
 }
 
 function focusQuickOsField(index) {
-  nextTick(() => quickOsFieldRefs.value[index]?.focus?.())
+  nextTick(() => {
+    const el = quickOsFieldRefs.value[index]
+    const field = quickOsFields[index]
+    if (!el) return
+    if (field?.type === 'date') {
+      osForm.value[field.key] = formatQuickDateForInput(osForm.value[field.key])
+    }
+    el.focus?.()
+    if (['date', 'time', 'text'].includes(field?.type)) {
+      nextTick(() => el.select?.())
+    }
+  })
 }
 
 function focusNextQuickOsField(index) {
@@ -457,14 +720,157 @@ function focusPreviousQuickOsField(index) {
   focusQuickOsField(Math.max(index - 1, 0))
 }
 
-function handleQuickOsMove(field, index) {
+async function handleQuickOsMove(field, index) {
+  if (!validateQuickField(field, index)) return
+  if (index === quickOsFields.length - 1) {
+    await handleSubmitOS()
+    return
+  }
   focusNextQuickOsField(index)
 }
 
-function handleQuickDestinationSelect(payload, index) {
-  handleNormalOsDestinationSelect(payload)
-  focusNextQuickOsField(index)
+function handleQuickOsBack(field, index) {
+  normalizeQuickField(field)
+  focusPreviousQuickOsField(index)
 }
+
+function isQuickFieldInvalid(field) {
+  return quickInvalidFieldKey.value === field.key
+}
+
+function quickInputType(field) {
+  return ['date', 'time'].includes(field.type) ? 'text' : field.type
+}
+
+function quickPlaceholder(field) {
+  if (field.type === 'date') return 'dd/mm/aaaa'
+  if (field.type === 'time') return 'hh:mm'
+  return field.placeholder
+}
+
+function formatQuickDateForInput(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : text
+}
+
+function normalizeQuickDate(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return formatQuickDateForInput(text)
+  const slash = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/)
+  if (slash) {
+    const year = slash[3].length === 2 ? `20${slash[3]}` : slash[3]
+    return `${pad(slash[1])}/${pad(slash[2])}/${year}`
+  }
+  if (/^\d{4,8}$/.test(text)) return normalizeCompactQuickDate(text)
+  return text
+}
+
+function compactDateCandidate(day, month, year) {
+  const fullYear = year.length === 2 ? `20${year}` : year
+  const candidate = `${pad(day)}/${pad(month)}/${fullYear}`
+  return isValidOrderDate(candidate) ? candidate : ''
+}
+
+function normalizeCompactQuickDate(text) {
+  const candidatesByLength = {
+    4: [[1, 1, 2]],
+    5: [[1, 2, 2], [2, 1, 2]],
+    6: [[2, 2, 2], [1, 1, 4]],
+    7: [[1, 2, 4], [2, 1, 4]],
+    8: [[2, 2, 4]],
+  }
+  const candidates = candidatesByLength[text.length] || []
+  for (const [dayLength, monthLength, yearLength] of candidates) {
+    const day = text.slice(0, dayLength)
+    const month = text.slice(dayLength, dayLength + monthLength)
+    const year = text.slice(dayLength + monthLength, dayLength + monthLength + yearLength)
+    const formatted = compactDateCandidate(day, month, year)
+    if (formatted) return formatted
+  }
+  return text
+}
+
+function normalizeQuickTime(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const colon = text.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (colon) return `${pad(colon[1])}:${pad(colon[2])}`
+  const compact = text.match(/^(\d{1,2})(\d{2})$/)
+  if (compact) return `${pad(compact[1])}:${compact[2]}`
+  return text
+}
+
+function normalizeQuickField(field) {
+  if (field.type === 'date') {
+    osForm.value[field.key] = formatQuickDateForInput(normalizeQuickDate(osForm.value[field.key]))
+  }
+  if (field.type === 'time') osForm.value[field.key] = normalizeQuickTime(osForm.value[field.key])
+}
+
+function validateQuickField(field, index) {
+  normalizeQuickField(field)
+  if (field.type === 'date' && osForm.value[field.key] && !isValidOrderDate(osForm.value[field.key])) {
+    quickInvalidFieldKey.value = field.key
+    osForm.value[field.key] = ''
+    focusQuickOsField(index)
+    return false
+  }
+  if (field.type === 'time' && osForm.value[field.key] && !isValidTime(osForm.value[field.key])) {
+    quickInvalidFieldKey.value = field.key
+    osForm.value[field.key] = ''
+    focusQuickOsField(index)
+    return false
+  }
+  if (quickInvalidFieldKey.value === field.key) quickInvalidFieldKey.value = ''
+  return true
+}
+
+function normalizeQuickOsFields() {
+  quickOsFields.forEach(normalizeQuickField)
+}
+
+function dateParts(value) {
+  const text = String(value || '').trim()
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (iso) return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+  const br = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (br) return { year: Number(br[3]), month: Number(br[2]), day: Number(br[1]) }
+  return null
+}
+
+function isValidOrderDate(value) {
+  const parts = dateParts(value)
+  if (!parts) return false
+  const date = new Date(parts.year, parts.month - 1, parts.day)
+  return !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === parts.year &&
+    date.getMonth() + 1 === parts.month &&
+    date.getDate() === parts.day
+}
+
+function orderDateTime(value, time = '00:00') {
+  const parts = dateParts(value)
+  if (!parts) return null
+  const [hours = '0', minutes = '0'] = String(time || '00:00').split(':')
+  const date = new Date(parts.year, parts.month - 1, parts.day, Number(hours), Number(minutes))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function isValidTime(value) {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})$/)
+  if (!match) return false
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+}
+
+watch([osEntryMode, showNewForm, activeSubTab], () => {
+  if (isMotorMode.value || editingOrderId.value || osEntryMode.value !== 'quick') return
+  if (!showNewForm.value || (!props.createOnly && activeSubTab.value !== 'nova')) return
+  focusQuickOsField(0)
+})
 
 function handleNormalOsDestinationSelect({ fullName }) {
   if (isMotorMode.value) return
@@ -539,7 +945,7 @@ function prepareSubTab(tab, { forceNew = false } = {}) {
       return
     }
     showNewForm.value = true
-    if (forceNew || !editingOrderId.value || isMotorMode.value) {
+    if (forceNew || !editingOrderId.value) {
       editingOrderId.value = null
       motorEventOrderId.value = null
       resetOsForm()
@@ -754,9 +1160,17 @@ const visibleOrdersBase = computed(() =>
   })
 )
 
+function isOrderFinished(order) {
+  return Boolean(order.maintenanceEndDate && order.maintenanceEndTime)
+}
+
+function isOrderOpen(order) {
+  return !isOrderFinished(order)
+}
+
 const orderStats = computed(() => {
   const orders = visibleOrdersBase.value
-  const finished = orders.filter(o => o.maintenanceEndDate && o.maintenanceEndTime).length
+  const finished = orders.filter(isOrderFinished).length
   const withMaterials = orders.filter(o => (o.items || []).length).length
   return {
     total: orders.length,
@@ -766,7 +1180,7 @@ const orderStats = computed(() => {
   }
 })
 
-const filteredOrders = computed(() => {
+const searchedOrders = computed(() => {
   const baseOrders = visibleOrdersBase.value
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return baseOrders
@@ -791,6 +1205,21 @@ const filteredOrders = computed(() => {
   })
 })
 
+const orderStatusTabs = computed(() => {
+  const orders = searchedOrders.value
+  return [
+    { id: 'open', label: 'Ordens abertas', count: orders.filter(isOrderOpen).length },
+    { id: 'finished', label: 'Ordens finalizadas', count: orders.filter(isOrderFinished).length },
+  ]
+})
+
+const filteredOrders = computed(() => {
+  if (isMotorMode.value) return searchedOrders.value
+  return searchedOrders.value.filter(order =>
+    ordersStatusTab.value === 'finished' ? isOrderFinished(order) : isOrderOpen(order)
+  )
+})
+
 const historyOrders = computed(() => {
   const q = historySearch.value.trim().toLowerCase()
   const from = historyDateFrom.value ? new Date(`${historyDateFrom.value}T00:00:00`) : null
@@ -798,7 +1227,7 @@ const historyOrders = computed(() => {
 
   return visibleOrdersBase.value
     .filter(o => {
-      const requestDate = o.requestDate ? new Date(`${o.requestDate}T00:00:00`) : null
+      const requestDate = o.requestDate ? orderDateTime(o.requestDate) : null
       if (from && requestDate && requestDate < from) return false
       if (to && requestDate && requestDate > to) return false
 
@@ -929,35 +1358,50 @@ watch(() => [props.focusOrderId, visibleOrdersBase.value.length], ([orderId]) =>
   editFocusedOrder(orderId)
 }, { immediate: true })
 
+watch(() => osForm.value.initialMotorEventType, (eventType) => {
+  if (!isMotorMode.value || eventType !== 'movimentado') return
+  osForm.value.maintenanceLocationType = 'interna'
+})
+
+watch(() => motorEventForm.value.eventType, (eventType) => {
+  if (!isMotorMode.value || eventType !== 'movimentado') return
+  osForm.value.maintenanceLocationType = 'interna'
+})
+
 function validateOsForm() {
+  if (!isMotorMode.value) syncQuickDestinationFromText(false)
   const numberText = String(osForm.value.number || '').trim()
   if (numberText && (!Number.isInteger(Number(numberText)) || Number(numberText) <= 0)) { showError('Número da ordem inválido'); return false }
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
   if (!isRegisteredRequester(osForm.value.requestedBy)) { showError('Solicitante deve ser uma pessoa cadastrada ativa'); return false }
-  if (!isMotorMode.value && osForm.value.maintenanceProfessional.trim() && !isRegisteredRequester(osForm.value.maintenanceProfessional)) { showError('Profissional deve ser uma pessoa cadastrada ativa'); return false }
+  if (osForm.value.maintenanceLocationType === 'interna' && osForm.value.maintenanceProfessional.trim() && !isRegisteredRequester(osForm.value.maintenanceProfessional)) { showError('Profissional deve ser uma pessoa cadastrada ativa'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
   if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
+  if (!isValidOrderDate(osForm.value.requestDate)) { showError('Data inválida'); return false }
+  if (!isValidTime(osForm.value.requestTime)) { showError('Horário inválido'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
   if (!isMotorMode.value && !osForm.value.destinationId) { showError('Selecione um equipamento em destinos'); return false }
   if (!isMotorMode.value && !destinationOptions.value.some(d => d.id === osForm.value.destinationId)) { showError('Equipamento deve ser um destino ativo'); return false }
-  if (isMotorMode.value && osForm.value.maintenanceLocationType === 'externa' && !osForm.value.maintenanceExternalLocation.trim()) { showError('Oficina externa é obrigatória'); return false }
+  if (osForm.value.maintenanceLocationType === 'externa' && !osForm.value.maintenanceExternalLocation.trim()) { showError('Oficina externa é obrigatória'); return false }
   if (isMotorMode.value && !motorObjectiveTypes.some(type => type.id === osForm.value.initialMotorEventType)) { showError('Evento inicial do motor é obrigatório'); return false }
-  if (isMotorMode.value && osForm.value.initialMotorEventType !== 'nenhum' && !osForm.value.initialMotorEventDate) { showError('Data do evento do motor é obrigatória'); return false }
   if (isMotorMode.value && osForm.value.initialMotorEventType === 'movimentado' && !osForm.value.initialMotorEventToDestinationId) { showError('Informe o novo local do motor'); return false }
-  if (editingOrderId.value && isMotorMode.value && motorEventForm.value.eventType !== 'nenhum' && !motorEventForm.value.eventDate) { showError('Data do evento do motor é obrigatória'); return false }
   if (editingOrderId.value && isMotorMode.value && motorEventForm.value.eventType === 'movimentado' && !motorEventForm.value.toDestinationId) { showError('Informe o novo local do motor'); return false }
 
-  const internalMaintenance = !isMotorMode.value || osForm.value.maintenanceLocationType === 'interna'
-  const hasStartDate = internalMaintenance && !!osForm.value.maintenanceStartDate
-  const hasStartTime = internalMaintenance && !!osForm.value.maintenanceStartTime
+  const internalMaintenance = osForm.value.maintenanceLocationType === 'interna'
+  const hasStartDate = !!osForm.value.maintenanceStartDate
+  const hasStartTime = !!osForm.value.maintenanceStartTime
   const hasEndDate = !!osForm.value.maintenanceEndDate
   const hasEndTime = !!osForm.value.maintenanceEndTime
   if (hasStartDate !== hasStartTime) { showError('Informe data e horário de início da manutenção'); return false }
   if (hasEndDate !== hasEndTime) { showError('Informe data e horário de término da manutenção'); return false }
-  if (!isMotorMode.value && internalMaintenance && (hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime)) { showError('Informe início antes do término da manutenção'); return false }
+  if (hasStartDate && !isValidOrderDate(osForm.value.maintenanceStartDate)) { showError('Data de início inválida'); return false }
+  if (hasStartTime && !isValidTime(osForm.value.maintenanceStartTime)) { showError('Horário de início inválido'); return false }
+  if (hasEndDate && !isValidOrderDate(osForm.value.maintenanceEndDate)) { showError('Data de término inválida'); return false }
+  if (hasEndTime && !isValidTime(osForm.value.maintenanceEndTime)) { showError('Horário de término inválido'); return false }
+  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime)) { showError('Informe início/envio antes do término/retorno da manutenção'); return false }
   if (hasStartDate && hasEndDate) {
-    const start = new Date(`${osForm.value.maintenanceStartDate}T${osForm.value.maintenanceStartTime}`)
-    const end = new Date(`${osForm.value.maintenanceEndDate}T${osForm.value.maintenanceEndTime}`)
+    const start = orderDateTime(osForm.value.maintenanceStartDate, osForm.value.maintenanceStartTime)
+    const end = orderDateTime(osForm.value.maintenanceEndDate, osForm.value.maintenanceEndTime)
     if (end < start) { showError('Término não pode ser antes do início da manutenção'); return false }
   }
   return true
@@ -982,13 +1426,13 @@ function buildOsPayload() {
   const form = osForm.value
   const equipment = isMotorMode.value ? (selectedOsMotor.value?.tag || form.equipment.trim()) : selectedDestinationLabel(form.destinationId)
   const numberText = String(form.number || '').trim()
-  const internalMaintenance = !isMotorMode.value || form.maintenanceLocationType === 'interna'
+  const internalMaintenance = form.maintenanceLocationType === 'interna'
   const hasInitialMotorEvent = isMotorMode.value && form.initialMotorEventType !== 'nenhum'
   const initialMotorEventPerformedBy = form.maintenanceLocationType === 'externa'
     ? form.maintenanceExternalLocation.trim()
-    : form.initialMotorEventPerformedBy.trim()
-  const maintenanceStartDate = isMotorMode.value && internalMaintenance ? form.requestDate : form.maintenanceStartDate
-  const maintenanceStartTime = isMotorMode.value && internalMaintenance ? form.requestTime : form.maintenanceStartTime
+    : form.maintenanceProfessional.trim()
+  const maintenanceStartDate = form.maintenanceStartDate
+  const maintenanceStartTime = form.maintenanceStartTime
   const maintenanceProfessional = isMotorMode.value && internalMaintenance ? initialMotorEventPerformedBy : form.maintenanceProfessional.trim()
 
   return {
@@ -1002,31 +1446,33 @@ function buildOsPayload() {
     equipment,
     motorOriginDestinationId: isMotorMode.value ? form.motorOriginDestinationId : '',
     motorOriginDestinationName: isMotorMode.value ? form.motorOriginDestinationName : '',
-    maintenanceLocationType: isMotorMode.value ? form.maintenanceLocationType : '',
+    maintenanceLocationType: form.maintenanceLocationType,
     maintenanceDestinationId: '',
-    maintenanceExternalLocation: isMotorMode.value && form.maintenanceLocationType === 'externa' ? form.maintenanceExternalLocation.trim() : '',
+    maintenanceExternalLocation: form.maintenanceLocationType === 'externa' ? form.maintenanceExternalLocation.trim() : '',
     initialMotorEventType: isMotorMode.value ? form.initialMotorEventType : '',
-    initialMotorEventDate: hasInitialMotorEvent ? form.initialMotorEventDate : '',
+    initialMotorEventDate: hasInitialMotorEvent ? (form.maintenanceEndDate || form.requestDate) : '',
     initialMotorEventPerformedBy: hasInitialMotorEvent ? initialMotorEventPerformedBy : '',
     initialMotorEventToDestinationId: hasInitialMotorEvent && form.initialMotorEventType === 'movimentado' ? form.initialMotorEventToDestinationId : '',
     initialMotorEventToDestination: '',
-    initialMotorEventNotes: hasInitialMotorEvent ? form.initialMotorEventNotes.trim() : '',
+    initialMotorEventNotes: hasInitialMotorEvent ? form.maintenanceNote.trim() : '',
     serviceType: form.serviceType || DEFAULT_SERVICE_TYPE,
     note: form.note.trim(),
-    maintenanceStartDate: internalMaintenance ? maintenanceStartDate : '',
-    maintenanceStartTime: internalMaintenance ? maintenanceStartTime : '',
+    maintenanceStartDate,
+    maintenanceStartTime,
     maintenanceEndDate: form.maintenanceEndDate,
     maintenanceEndTime: form.maintenanceEndTime,
     maintenanceProfessional: internalMaintenance ? maintenanceProfessional : '',
-    maintenanceMaterials: internalMaintenance ? form.maintenanceMaterials.trim() : '',
-    maintenanceNote: internalMaintenance ? form.maintenanceNote.trim() : '',
+    maintenanceMaterials: form.maintenanceMaterials.trim(),
+    maintenanceNote: form.maintenanceNote.trim(),
   }
 }
 
 // ===== Actions =====
 async function handleCreateOS() {
   if (!canManageOs.value) return
+  if (!isMotorMode.value && osEntryMode.value === 'quick') normalizeQuickOsFields()
   if (!validateOsForm()) return
+  const continueQuickEntry = !isMotorMode.value && osEntryMode.value === 'quick'
   try {
     await addWorkOrder(buildOsPayload())
     if (isMotorMode.value) await loadMotorData().catch(() => {})
@@ -1034,6 +1480,15 @@ async function handleCreateOS() {
     if (props.createOnly) {
       resetOsForm()
       emit('created')
+      return
+    }
+    if (continueQuickEntry) {
+      resetOsForm()
+      activeSubTab.value = 'nova'
+      showNewForm.value = true
+      osEntryMode.value = 'quick'
+      await nextTick()
+      focusQuickOsField(0)
       return
     }
     showNewForm.value = false
@@ -1078,7 +1533,7 @@ async function handleSubmitOS() {
 function loadOrderIntoEditForm(order) {
   expandedOrderId.value = order.id
   editingOrderId.value = order.id
-  showNewForm.value = !isMotorMode.value
+  showNewForm.value = true
   osEntryMode.value = 'form'
   osForm.value = createEmptyOsForm(order)
   destinationPickerSearch.value = selectedDestinationLabel(osForm.value.destinationId)
@@ -1101,17 +1556,16 @@ async function startEditOS(order) {
   if (!canManageOs.value) return
   window.dispatchEvent(new CustomEvent('app-picker-open', { detail: 'edit-os' }))
   osEntryMode.value = 'form'
-  expandedOrderId.value = order.id
-  activeSubTab.value = isMotorMode.value ? 'ordens' : 'nova'
-  await nextTick()
   loadOrderIntoEditForm(order)
+  activeSubTab.value = 'nova'
+  await nextTick()
 }
 
 function cancelEdit() {
   editingOrderId.value = null
   motorEventOrderId.value = null
   showNewForm.value = false
-  if (!isMotorMode.value) activeSubTab.value = 'ordens'
+  activeSubTab.value = 'ordens'
   resetOsForm()
 }
 
@@ -1181,24 +1635,26 @@ function buildMotorEventPayload(order) {
   if (motorEventForm.value.eventType === 'nenhum') {
     return
   }
+  const usingEditForm = editingOrderId.value === order.id
   if (motorEventForm.value.eventType === 'movimentado' && !motorEventForm.value.toDestinationId) {
     showError('Informe o novo local do motor')
     return
   }
-  if (!motorEventForm.value.eventDate) {
+  if (!usingEditForm && !motorEventForm.value.eventDate) {
     showError('Data do evento do motor é obrigatória')
     return
   }
-  const usingEditForm = editingOrderId.value === order.id
   const maintenanceLocationType = usingEditForm ? osForm.value.maintenanceLocationType : order.maintenanceLocationType
   const externalLocation = usingEditForm
     ? osForm.value.maintenanceExternalLocation
     : (order.maintenanceExternalLocation || order.maintenanceLocationName || '')
   const performedBy = maintenanceLocationType === 'externa'
     ? externalLocation
-    : motorEventForm.value.performedBy
+    : (usingEditForm ? osForm.value.maintenanceProfessional : motorEventForm.value.performedBy)
   return {
     ...motorEventForm.value,
+    eventDate: usingEditForm ? (osForm.value.maintenanceEndDate || osForm.value.requestDate || order.requestDate) : motorEventForm.value.eventDate,
+    notes: usingEditForm ? osForm.value.maintenanceNote.trim() : motorEventForm.value.notes,
     toDestinationId: motorEventForm.value.eventType === 'movimentado' ? motorEventForm.value.toDestinationId : '',
     toDestination: '',
     performedBy,
@@ -1288,6 +1744,7 @@ function formatDate(iso) {
 
 function formatDateOnly(value) {
   if (!value) return '-'
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-')
     return `${day}/${month}/${year}`
@@ -1323,11 +1780,11 @@ function maintenanceEndLabel(order) {
 }
 
 function orderStatusLabel(order) {
-  return order.maintenanceEndDate && order.maintenanceEndTime ? 'Finalizada' : 'Aberta'
+  return isOrderFinished(order) ? 'Finalizada' : 'Aberta'
 }
 
 function orderStatusClass(order) {
-  return order.maintenanceEndDate && order.maintenanceEndTime
+  return isOrderFinished(order)
     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
 }
@@ -1500,6 +1957,23 @@ function matBackToStep2() {
         </div>
       </div>
 
+      <div v-if="!createOnly && activeSubTab === 'ordens' && !isMotorMode" class="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+        <button
+          v-for="tab in orderStatusTabs"
+          :key="tab.id"
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+          :class="ordersStatusTab === tab.id ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+          @click="ordersStatusTab = tab.id"
+        >
+          {{ tab.label }}
+          <span
+            class="rounded px-1.5 py-0.5 text-[10px]"
+            :class="ordersStatusTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300'"
+          >{{ tab.count }}</span>
+        </button>
+      </div>
+
       <!-- New OS form -->
       <div v-if="showNewForm && (activeSubTab === 'nova' || createOnly)" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between gap-3">
@@ -1534,13 +2008,22 @@ function matBackToStep2() {
               </p>
             </div>
           </div>
-          <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div class="grid grid-cols-1 border-b border-gray-100 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]">
+              <label class="flex min-h-10 items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                Nº da Ordem
+              </label>
+              <div class="min-h-10 w-full bg-gray-50 px-3 py-2 text-sm text-gray-500 dark:bg-gray-800/70 dark:text-gray-400">
+                Automático ao criar
+              </div>
+            </div>
             <div
               v-for="(field, index) in quickOsFields"
               :key="field.key"
-              class="grid grid-cols-1 border-b border-gray-100 last:border-b-0 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]"
+              class="relative grid grid-cols-1 border-b border-gray-100 last:border-b-0 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]"
+              :class="quickSuggestionOptions(field).length ? 'z-50' : 'z-0'"
             >
-              <label class="flex items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              <label class="flex min-h-10 items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                 {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
               </label>
               <select
@@ -1548,49 +2031,98 @@ function matBackToStep2() {
                 :ref="el => setQuickOsFieldRef(el, index)"
                 v-model="osForm[field.key]"
                 class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                @focus="closeQuickSuggestions()"
                 @keydown.enter.prevent="handleQuickOsMove(field, index)"
-                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+                @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
+                @keydown.up.prevent="handleQuickOsBack(field, index)"
               >
                 <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
               </select>
-              <PersonPicker
-                v-else-if="field.type === 'person'"
-                :ref="el => setQuickOsFieldRef(el, index)"
-                v-model="osForm[field.key]"
-                :placeholder="field.placeholder"
-                compact
-                :invalid="Boolean(osForm[field.key]) && !isRegisteredRequester(osForm[field.key])"
-                @select="focusNextQuickOsField(index)"
-                @commit="focusNextQuickOsField(index)"
-              />
-              <div v-else-if="field.type === 'destination'" class="px-0 py-0">
-                <DestinationTreePicker
+              <div
+                v-else-if="field.type === 'person' || field.type === 'destination'"
+                data-quick-suggestion-root
+                class="relative min-h-10 bg-white dark:bg-gray-900"
+              >
+                <input
                   :ref="el => setQuickOsFieldRef(el, index)"
-                  v-model="osForm.destinationId"
+                  v-model="osForm[field.key]"
+                  type="text"
+                  autocomplete="off"
                   :placeholder="field.placeholder"
-                  compact
-                  @select="payload => handleQuickDestinationSelect(payload, index)"
-                  @clear="clearNormalOsDestination"
+                  class="relative z-10 min-h-10 w-full border-0 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 dark:text-gray-100"
+                  :class="(field.type === 'person' && osForm[field.key] && !isRegisteredRequester(osForm[field.key])) || (field.type === 'destination' && osForm.equipment && !osForm.destinationId)
+                    ? 'focus:ring-amber-500 text-amber-700 dark:text-amber-300'
+                    : 'focus:ring-primary-500'"
+                  @focus="$event.target.select(); openQuickSuggestions(field)"
+                  @input="handleQuickAutocompleteInput(field)"
+                  @change="field.type === 'destination' && syncQuickDestinationFromText(false)"
+                  @blur="field.type === 'destination' && syncQuickDestinationFromText(false); setTimeout(closeQuickSuggestions, 120)"
+                  @keydown.enter.prevent="commitQuickAutocomplete(field, index)"
+                  @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                  @keydown.down.prevent="handleQuickAutocompleteDown(field)"
+                  @keydown.up.prevent="handleQuickAutocompleteUp(field, index)"
+                  @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
                 />
+                <div
+                  v-if="quickSuggestionOptions(field).length"
+                  class="absolute left-0 right-0 top-full z-[200] max-h-56 overflow-auto border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <button
+                    v-for="(suggestion, suggestionIndex) in quickSuggestionOptions(field)"
+                    :key="suggestion.option"
+                    type="button"
+                    class="block w-full truncate px-3 py-2 text-left text-gray-700 dark:text-gray-200"
+                    :class="suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+                    @mousedown.prevent="chooseQuickSuggestion(field, suggestion.option, index)"
+                  >
+                    {{ suggestion.option }}
+                  </button>
+                </div>
+                <p
+                  v-else-if="quickAutocompleteStatus(field)"
+                  class="pointer-events-none absolute bottom-0 left-3 right-3 translate-y-[-2px] truncate text-[10px]"
+                  :class="quickAutocompleteStatus(field).type === 'error'
+                    ? 'text-red-500 dark:text-red-400'
+                    : quickAutocompleteStatus(field).type === 'warn'
+                      ? 'text-amber-600 dark:text-amber-300'
+                      : 'text-gray-400 dark:text-gray-500'"
+                >
+                  {{ quickAutocompleteStatus(field).text }}
+                </p>
               </div>
               <input
                 v-else
                 :ref="el => setQuickOsFieldRef(el, index)"
                 v-model="osForm[field.key]"
-                :type="field.type"
+                :type="quickInputType(field)"
                 :list="field.list"
-                :placeholder="field.placeholder"
-                class="min-h-10 w-full border-0 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-900 dark:text-gray-100"
+                :placeholder="quickPlaceholder(field)"
+                class="min-h-10 w-full border-0 px-3 py-2 text-sm outline-none focus:ring-2 dark:text-gray-100"
+                :class="isQuickFieldInvalid(field)
+                  ? 'bg-red-50 text-red-700 ring-2 ring-red-500 placeholder-red-300 focus:ring-red-500 dark:bg-red-950/30 dark:text-red-200 dark:placeholder-red-400'
+                  : 'bg-white text-gray-900 focus:ring-primary-500 dark:bg-gray-900'"
+                @focus="closeQuickSuggestions(); field.type === 'date' && (osForm[field.key] = formatQuickDateForInput(osForm[field.key])); $event.target.select()"
+                @input="quickInvalidFieldKey === field.key && (quickInvalidFieldKey = '')"
+                @blur="normalizeQuickField(field)"
                 @keydown.enter.prevent="handleQuickOsMove(field, index)"
+                @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
+                @keydown.shift.tab.prevent="handleQuickOsBack(field, index)"
                 @keydown.down.prevent="handleQuickOsMove(field, index)"
-                @keydown.up.prevent="focusPreviousQuickOsField(index)"
+                @keydown.up.prevent="handleQuickOsBack(field, index)"
               />
             </div>
           </div>
         </div>
 
-        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="space-y-3">
-          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Abertura da OS</h4>
+        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
+          <div class="flex items-center gap-3">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">1</span>
+            <div>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Abertura da OS</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Quem pediu, onde é o serviço e qual problema entrou.</p>
+            </div>
+          </div>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nº da Ordem</label>
@@ -1629,6 +2161,23 @@ function matBackToStep2() {
                 <option>Outros</option>
               </select>
             </div>
+            <div v-if="!isMotorMode" class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo de execução</label>
+              <div class="grid grid-cols-2 rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                <button
+                  type="button"
+                  class="px-2 py-2 text-xs font-medium transition-colors"
+                  :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  @click="osForm.maintenanceLocationType = 'interna'"
+                >Interna</button>
+                <button
+                  type="button"
+                  class="px-2 py-2 text-xs font-medium transition-colors"
+                  :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  @click="osForm.maintenanceLocationType = 'externa'"
+                >Externa</button>
+              </div>
+            </div>
             <div v-if="isMotorMode" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
               <select v-model="osForm.motorId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="applyMotorToOsForm()">
@@ -1638,30 +2187,10 @@ function matBackToStep2() {
             </div>
             <template v-if="isMotorMode">
               <div class="md:col-span-2">
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Origem atual</label>
-                <input :value="osForm.motorOriginDestinationName || 'Sem local registrado'" type="text" disabled class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400" />
-              </div>
-              <div class="md:col-span-4 ds-surface p-3 space-y-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Registrar evento do motor</h4>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Evento vinculado a esta OS</span>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <select v-model="osForm.initialMotorEventType" class="ds-input">
-                    <option v-for="type in motorObjectiveTypes" :key="type.id" :value="type.id">{{ type.label }}</option>
-                  </select>
-                  <template v-if="osForm.initialMotorEventType !== 'nenhum'">
-                    <input v-model="osForm.initialMotorEventDate" type="date" class="ds-input" />
-                    <input v-if="osForm.maintenanceLocationType === 'interna'" v-model="osForm.initialMotorEventPerformedBy" list="os-people-options" placeholder="Executado por" class="ds-input" />
-                    <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
-                      {{ osForm.maintenanceExternalLocation || 'Preencha a oficina externa abaixo' }}
-                    </div>
-                    <div v-if="osForm.initialMotorEventType === 'movimentado'" class="md:col-span-2">
-                      <DestinationTreePicker v-model="osForm.initialMotorEventToDestinationId" placeholder="Novo local do motor *" />
-                    </div>
-                  </template>
-                </div>
-                <textarea v-if="osForm.initialMotorEventType !== 'nenhum'" v-model="osForm.initialMotorEventNotes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Evento do motor</label>
+                <select v-model="osForm.initialMotorEventType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                  <option v-for="type in motorObjectiveTypes" :key="type.id" :value="type.id">{{ type.label }}</option>
+                </select>
               </div>
               <div class="md:col-span-2">
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo de manutenção *</label>
@@ -1675,18 +2204,14 @@ function matBackToStep2() {
                   <button
                     type="button"
                     class="px-2 py-2 text-xs font-medium transition-colors"
-                    :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                    :disabled="osForm.initialMotorEventType === 'movimentado'"
+                    :class="[
+                      osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                      osForm.initialMotorEventType === 'movimentado' ? 'cursor-not-allowed opacity-50' : ''
+                    ]"
                     @click="osForm.maintenanceLocationType = 'externa'"
                   >Externa</button>
                 </div>
-              </div>
-              <div v-if="osForm.maintenanceLocationType === 'interna'" class="md:col-span-2">
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina/local</label>
-                <input value="Oficina" type="text" disabled class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400" />
-              </div>
-              <div v-else class="md:col-span-2">
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Destino/oficina externa (Executado por) *</label>
-                <input v-model="osForm.maintenanceExternalLocation" type="text" placeholder="Oficina externa, fornecedor ou local de envio" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
               </div>
             </template>
             <div class="md:col-span-4">
@@ -1696,14 +2221,20 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && (!isMotorMode || osForm.maintenanceLocationType === 'interna')" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
-          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução interna</h4>
+        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'interna'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
+          <div class="flex items-center gap-3">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">2</span>
+            <div>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Execução interna</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Período, profissional, materiais e resultado do serviço.</p>
+            </div>
+          </div>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div v-if="!isMotorMode">
+            <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data início</label>
               <input v-model="osForm.maintenanceStartDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
-            <div v-if="!isMotorMode">
+            <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário início</label>
               <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
@@ -1715,13 +2246,17 @@ function matBackToStep2() {
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
               <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
-            <div v-if="!isMotorMode" class="md:col-span-2">
+            <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Profissional</label>
               <PersonPicker
                 v-model="osForm.maintenanceProfessional"
                 placeholder="Buscar pessoa cadastrada..."
                 :invalid="Boolean(osForm.maintenanceProfessional) && !isRegisteredRequester(osForm.maintenanceProfessional)"
               />
+            </div>
+            <div v-if="isMotorMode && osForm.initialMotorEventType === 'movimentado'" class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Novo local do motor *</label>
+              <DestinationTreePicker v-model="osForm.initialMotorEventToDestinationId" placeholder="Buscar novo local do motor..." />
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
@@ -1734,16 +2269,42 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && isMotorMode && osForm.maintenanceLocationType === 'externa'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
-          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fechamento</h4>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'externa'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
+          <div class="flex items-center gap-3">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">2</span>
             <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data término</label>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Execução externa</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ isMotorMode ? 'Para onde o motor foi enviado e quando retornou.' : 'Quem executou fora, quando saiu e quando retornou.' }}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina externa / executado por *</label>
+              <input v-model="osForm.maintenanceExternalLocation" type="text" placeholder="Oficina externa, fornecedor ou local de envio" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data envio</label>
+              <input v-model="osForm.maintenanceStartDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário envio</label>
+              <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data retorno</label>
               <input v-model="osForm.maintenanceEndDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário retorno</label>
               <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
+              <textarea v-model="osForm.maintenanceMaterials" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Materiais fora do catálogo, peças ou ferramentas"></textarea>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações da execução externa</label>
+              <textarea v-model="osForm.maintenanceNote" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Retorno, pendências, laudo ou observações"></textarea>
             </div>
           </div>
         </div>
@@ -1757,7 +2318,12 @@ function matBackToStep2() {
       <!-- Orders list -->
       <div v-if="!createOnly && activeSubTab === 'ordens' && filteredOrders.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
         <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
-        <p class="text-sm">{{ searchQuery ? 'Nenhuma OS encontrada' : emptyOrdersText }}</p>
+        <p class="text-sm">
+          {{ searchQuery
+            ? 'Nenhuma OS encontrada'
+            : (!isMotorMode ? (ordersStatusTab === 'finished' ? 'Nenhuma ordem finalizada' : 'Nenhuma ordem aberta') : emptyOrdersText)
+          }}
+        </p>
       </div>
 
       <div v-else-if="!createOnly && activeSubTab === 'ordens'" class="ds-list-panel">
@@ -1834,7 +2400,7 @@ function matBackToStep2() {
           <div v-if="expandedOrderId === order.id" class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-4">
             <template v-if="editingOrderId === order.id">
               <div class="space-y-4">
-                <div class="space-y-3">
+                <div class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40">
                   <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Abertura da OS</h4>
                   <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
@@ -1866,6 +2432,23 @@ function matBackToStep2() {
                         @clear="clearNormalOsDestination"
                       />
                     </div>
+                    <div v-if="!isMotorMode" class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo de execução</label>
+                      <div class="grid grid-cols-2 rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                        <button
+                          type="button"
+                          class="px-2 py-2 text-xs font-medium transition-colors"
+                          :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                          @click="osForm.maintenanceLocationType = 'interna'"
+                        >Interna</button>
+                        <button
+                          type="button"
+                          class="px-2 py-2 text-xs font-medium transition-colors"
+                          :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                          @click="osForm.maintenanceLocationType = 'externa'"
+                        >Externa</button>
+                      </div>
+                    </div>
                     <div v-if="isMotorMode" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motor *</label>
                       <select v-model="osForm.motorId" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @change="applyMotorToOsForm()">
@@ -1875,30 +2458,10 @@ function matBackToStep2() {
                     </div>
                     <template v-if="isMotorMode">
                       <div class="md:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Origem atual</label>
-                        <input :value="osForm.motorOriginDestinationName || 'Sem local registrado'" type="text" disabled class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400" />
-                      </div>
-                      <div v-if="order.motorId" class="md:col-span-4 ds-surface p-3 space-y-3">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Registrar evento do motor</h4>
-                          <span class="text-xs text-gray-400 dark:text-gray-500">Evento vinculado a esta OS</span>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <select v-model="motorEventForm.eventType" class="ds-input">
-                            <option v-for="t in motorEventTypes" :key="t.id" :value="t.id">{{ t.label }}</option>
-                          </select>
-                          <template v-if="motorEventForm.eventType !== 'nenhum'">
-                            <input v-model="motorEventForm.eventDate" type="date" class="ds-input" />
-                            <input v-if="osForm.maintenanceLocationType !== 'externa'" v-model="motorEventForm.performedBy" list="os-people-options" placeholder="Executado por" class="ds-input" />
-                            <div v-else class="ds-input bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400">
-                              {{ osForm.maintenanceExternalLocation || 'Oficina externa' }}
-                            </div>
-                            <div v-if="motorEventForm.eventType === 'movimentado'" class="md:col-span-2">
-                              <DestinationTreePicker v-model="motorEventForm.toDestinationId" placeholder="Novo local do motor *" />
-                            </div>
-                          </template>
-                        </div>
-                        <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Evento do motor</label>
+                        <select v-model="motorEventForm.eventType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                          <option v-for="t in motorEventTypes" :key="t.id" :value="t.id">{{ t.label }}</option>
+                        </select>
                       </div>
                       <div class="md:col-span-2">
                         <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo de manutenção *</label>
@@ -1912,18 +2475,14 @@ function matBackToStep2() {
                           <button
                             type="button"
                             class="px-2 py-2 text-xs font-medium transition-colors"
-                            :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                            :disabled="motorEventForm.eventType === 'movimentado'"
+                            :class="[
+                              osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                              motorEventForm.eventType === 'movimentado' ? 'cursor-not-allowed opacity-50' : ''
+                            ]"
                             @click="osForm.maintenanceLocationType = 'externa'"
                           >Externa</button>
                         </div>
-                      </div>
-                      <div v-if="osForm.maintenanceLocationType === 'interna'" class="md:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina/local</label>
-                        <input value="Oficina" type="text" disabled class="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400" />
-                      </div>
-                      <div v-else class="md:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Destino/oficina externa *</label>
-                        <input v-model="osForm.maintenanceExternalLocation" type="text" placeholder="Oficina externa, fornecedor ou local de envio" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                       </div>
                     </template>
                     <div class="md:col-span-4">
@@ -1933,14 +2492,14 @@ function matBackToStep2() {
                   </div>
                 </div>
 
-                <div v-if="!isMotorMode || osForm.maintenanceLocationType === 'interna'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div v-if="osForm.maintenanceLocationType === 'interna'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
                   <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução interna</h4>
                   <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div v-if="!isMotorMode">
+                    <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data início</label>
                       <input v-model="osForm.maintenanceStartDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
-                    <div v-if="!isMotorMode">
+                    <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário início</label>
                       <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
@@ -1952,13 +2511,17 @@ function matBackToStep2() {
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
                       <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
-                    <div v-if="!isMotorMode" class="md:col-span-2">
+                    <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Profissional</label>
                       <PersonPicker
                         v-model="osForm.maintenanceProfessional"
                         placeholder="Buscar pessoa cadastrada..."
                         :invalid="Boolean(osForm.maintenanceProfessional) && !isRegisteredRequester(osForm.maintenanceProfessional)"
                       />
+                    </div>
+                    <div v-if="isMotorMode && motorEventForm.eventType === 'movimentado'" class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Novo local do motor *</label>
+                      <DestinationTreePicker v-model="motorEventForm.toDestinationId" placeholder="Buscar novo local do motor..." />
                     </div>
                     <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
@@ -1971,16 +2534,36 @@ function matBackToStep2() {
                   </div>
                 </div>
 
-                <div v-if="isMotorMode && osForm.maintenanceLocationType === 'externa'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fechamento</h4>
+                <div v-if="osForm.maintenanceLocationType === 'externa'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução externa</h4>
                   <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina externa / executado por *</label>
+                      <input v-model="osForm.maintenanceExternalLocation" type="text" placeholder="Oficina externa, fornecedor ou local de envio" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                    </div>
                     <div>
-                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data término</label>
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data envio</label>
+                      <input v-model="osForm.maintenanceStartDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário envio</label>
+                      <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data retorno</label>
                       <input v-model="osForm.maintenanceEndDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário retorno</label>
                       <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
+                      <textarea v-model="osForm.maintenanceMaterials" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações da execução externa</label>
+                      <textarea v-model="osForm.maintenanceNote" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
                     </div>
                   </div>
                 </div>
@@ -2019,8 +2602,32 @@ function matBackToStep2() {
             </template>
 
             <template v-else>
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
-                <div class="space-y-3">
+              <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ order.number }}</span>
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span>
+                      <span v-if="isMotorMode && motorOrderEventLabel(order)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">{{ motorOrderEventLabel(order) }}</span>
+                    </div>
+                    <h3 class="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ order.requestedBy || 'Sem solicitante' }} · {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</p>
+                  </div>
+                  <div class="grid min-w-[220px] grid-cols-2 gap-2 text-right">
+                    <div class="rounded-lg bg-white px-3 py-2 dark:bg-gray-900/60">
+                      <p class="text-[10px] uppercase tracking-wider text-gray-400">Materiais</p>
+                      <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ (order.items || []).length }}</p>
+                    </div>
+                    <div class="rounded-lg bg-white px-3 py-2 dark:bg-gray-900/60">
+                      <p class="text-[10px] uppercase tracking-wider text-gray-400">Término</p>
+                      <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 text-sm lg:grid-cols-2">
+                <div class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40">
                   <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Abertura da OS</h4>
                   <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
@@ -2045,14 +2652,6 @@ function matBackToStep2() {
                       </p>
                     </div>
                     <div v-if="isMotorMode && order.motorId">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Origem atual</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ order.motorOriginDestinationName || '-' }}</p>
-                    </div>
-                    <div v-if="isMotorMode && order.motorId">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Oficina/local</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ maintenanceLocationLabel(order) }}</p>
-                    </div>
-                    <div v-if="isMotorMode && order.motorId">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Manutenção</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenanceLocationTypeLabel(order) }}</p>
                     </div>
@@ -2067,7 +2666,7 @@ function matBackToStep2() {
                   </div>
                 </div>
 
-                <div v-if="!isMotorMode || order.maintenanceLocationType === 'interna'" class="space-y-3">
+                <div v-if="!order.maintenanceLocationType || order.maintenanceLocationType === 'interna'" class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40">
                   <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução interna</h4>
                   <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -2088,12 +2687,31 @@ function matBackToStep2() {
                     </div>
                   </div>
                 </div>
-                <div class="space-y-3">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fechamento</h4>
+                <div
+                  class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40"
+                  :class="order.maintenanceLocationType === 'externa' ? '' : 'lg:col-span-2'"
+                >
+                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{ order.maintenanceLocationType === 'externa' ? 'Execução externa' : 'Fechamento' }}</h4>
                   <div class="grid grid-cols-2 gap-3">
+                    <div v-if="order.maintenanceLocationType === 'externa'">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Executado por</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ order.maintenanceExternalLocation || '-' }}</p>
+                    </div>
+                    <div v-if="order.maintenanceLocationType === 'externa' && !isMotorMode">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Período</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ maintenancePeriod(order) }}</p>
+                    </div>
                     <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Término</span>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">{{ order.maintenanceLocationType === 'externa' && !isMotorMode ? 'Retorno' : 'Término' }}</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</p>
+                    </div>
+                    <div v-if="order.maintenanceLocationType === 'externa' && order.maintenanceMaterials" class="col-span-2">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Materiais adicionais</span>
+                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceMaterials }}</p>
+                    </div>
+                    <div v-if="order.maintenanceLocationType === 'externa' && order.maintenanceNote" class="col-span-2">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
+                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceNote }}</p>
                     </div>
                   </div>
                 </div>
@@ -2152,7 +2770,7 @@ function matBackToStep2() {
                     </div>
                   </template>
                 </div>
-                <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observacoes do evento" class="ds-input"></textarea>
+                <textarea v-if="motorEventForm.eventType !== 'nenhum'" v-model="motorEventForm.notes" rows="2" placeholder="Observações do evento" class="ds-input"></textarea>
                 <div class="flex justify-end gap-2">
                   <AppButton variant="ghost" size="sm" @click="cancelMotorEvent">Cancelar</AppButton>
                   <AppButton variant="primary" size="sm" @click="handleMotorEvent(order)">Salvar evento</AppButton>

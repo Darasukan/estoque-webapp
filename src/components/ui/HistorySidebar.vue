@@ -56,7 +56,7 @@ function toggleSection(facet) {
 
 <template>
   <aside
-    class="fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="history-filter-sidebar fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
     :class="collapsed ? 'w-12' : 'w-60'"
   >
     <div class="border-b border-gray-200 dark:border-gray-700">
@@ -131,7 +131,7 @@ function toggleSection(facet) {
         </section>
 
         <section class="order-10 px-3 py-3 space-y-1.5 border-b border-gray-100 dark:border-gray-700/50">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Periodo</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Período</p>
           <div class="grid grid-cols-2 gap-1.5">
             <div>
               <label class="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">De</label>

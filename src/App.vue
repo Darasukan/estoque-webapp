@@ -44,6 +44,8 @@ const { loadData: loadWorkOrders } = useWorkOrders()
 const { loadData: loadMotors } = useMotors()
 const { loadData: loadClosings } = useClosings()
 const { success, error } = useToast()
+const localBrandFavicon = '/local-brand/favicon.png'
+const localBrandName = ref('Estoque')
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const UI_STATE_KEY = 'estoque_ui_state_v1'
@@ -163,7 +165,17 @@ async function loadAllData() {
   try { await loadUsers() } catch {}
 }
 
+async function loadLocalBrand() {
+  try {
+    const response = await fetch('/local-brand/brand.json', { cache: 'no-store' })
+    if (!response.ok) return
+    const data = await response.json()
+    if (typeof data.name === 'string' && data.name.trim()) localBrandName.value = data.name.trim()
+  } catch {}
+}
+
 onMounted(async () => {
+  loadLocalBrand()
   await checkSession()
   if (activeTab.value === 'cadastros' && !isLoggedIn.value) activeTab.value = 'catalogo'
   await loadAllData()
@@ -302,6 +314,10 @@ function runNavigationShortcut(shortcut) {
 
 function openInventoryQuickMovement(payload) {
   if (!payload?.variationId || !payload?.itemId) {
+    if (payload?.targetType && payload?.targetKey) {
+      openMovementTab(payload?.type || 'saida', payload)
+      return
+    }
     openMovementTab(payload?.type || 'saida')
     return
   }
@@ -310,6 +326,10 @@ function openInventoryQuickMovement(payload) {
 
 function openCadastroQuickMovement(payload) {
   if (!payload?.variationId || !payload?.itemId) {
+    if (payload?.targetType && payload?.targetKey) {
+      openMovementTab(payload?.type || 'saida', payload)
+      return
+    }
     openMovementTab(payload?.type || 'saida')
     return
   }
@@ -499,12 +519,12 @@ function handleGlobalShortcutKeydown(event) {
           <div class="flex items-center gap-1">
             <div class="mr-2 flex items-center gap-2 border-r border-gray-200 pr-3 dark:border-white/[0.08]">
               <img
-                src="/local-brand/favicon.png"
-                alt="Estoque"
+                :src="localBrandFavicon"
+                :alt="localBrandName"
                 class="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
                 @error="$event.currentTarget.style.display = 'none'"
               />
-              <span class="hidden text-sm font-semibold text-gray-800 dark:text-gray-100 sm:inline">Estoque</span>
+              <span class="hidden text-sm font-semibold text-gray-800 dark:text-gray-100 sm:inline">{{ localBrandName }}</span>
             </div>
             <button
               v-for="tab in tabs"

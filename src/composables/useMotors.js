@@ -7,7 +7,7 @@ const motorMaterials = ref({})
 
 export const MOTOR_STATUSES = [
   { id: 'ativo', label: 'Ativo' },
-  { id: 'em_manutencao', label: 'Em manutencao' },
+  { id: 'em_manutencao', label: 'Em manutenção' },
   { id: 'reserva', label: 'Reserva' },
   { id: 'inativo', label: 'Inativo' },
 ]
@@ -22,7 +22,7 @@ export const MOTOR_EVENT_TYPES = [
   { id: 'movimentado', label: 'Movimentado' },
   { id: 'inativado', label: 'Inativado' },
   { id: 'reativado', label: 'Reativado' },
-  { id: 'observacao', label: 'Observacao' },
+  { id: 'observacao', label: 'Observação' },
 ]
 
 export function motorStatusLabel(status) {

@@ -15,7 +15,8 @@ const {
   getItemsForSubcategory, renameAttribute, addAttribute, removeAttribute,
   getVariationsForItem, addItem, editItem, deleteItem,
   addVariation, editVariation, deleteVariation,
-  reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes
+  reorderGroups, reorderCategories, reorderSubcategories, reorderItemAttributes,
+  sortGroupsAlphabetically, sortCategoriesAlphabetically, sortSubcategoriesAlphabetically
 } = useItems()
 
 const { success, error } = useToast()
@@ -277,7 +278,7 @@ async function saveMove() {
         targetSubcategory || null
       )
       if (!result?.ok) {
-        error(result?.error || 'NÃ£o foi possÃ­vel mover o item.')
+        error(result?.error || 'Não foi possível mover o item.')
         return
       }
       selectedGroup.value = targetGroup
@@ -289,7 +290,7 @@ async function saveMove() {
     }
     cancelMove()
   } catch (err) {
-    error(err?.message || 'NÃ£o foi possÃ­vel mover.')
+    error(err?.message || 'Não foi possível mover.')
   }
 }
 
@@ -422,7 +423,7 @@ function isEditingAttr(itemId, attrName) {
   return editingAttr.value?.itemId === itemId && editingAttr.value?.oldName === attrName
 }
 
-// ===== Inline add item =====
+// ===== Add item modal =====
 const groupDirectKey = '__group_direct__'
 const categoryDirectKey = '__category_direct__'
 const addingItemForSub = ref(null)
@@ -522,6 +523,28 @@ function getItemDefaultsForAdd(sub) {
     location: subItems[0]?.location || scopedItems[0]?.location || '',
   }
 }
+
+const newItemContextLabel = computed(() => {
+  const sub = addingItemForSub.value
+  if (!sub) return ''
+  if (sub === groupDirectKey) return selectedGroup.value || ''
+  if (sub === categoryDirectKey) return selectedCategory.value || selectedGroup.value || ''
+  return sub
+})
+
+const newItemHelpText = computed(() => {
+  const sub = addingItemForSub.value
+  if (sub === groupDirectKey) return 'Modelo cadastrado direto no grupo, sem subgrupo.'
+  if (sub === categoryDirectKey) return 'Modelo cadastrado neste subgrupo, sem subnivel opcional.'
+  return 'Modelo cadastrado dentro deste subnivel opcional.'
+})
+
+const newItemPlaceholder = computed(() => {
+  const label = newItemContextLabel.value
+  if (!label) return 'Nome do modelo'
+  if (addingItemForSub.value === groupDirectKey) return `Nome do modelo sem subgrupo em ${label}`
+  return `Nome do modelo em ${label}`
+})
 
 function startAddItem(sub) {
   const defaults = getItemDefaultsForAdd(sub)
@@ -868,6 +891,24 @@ function onDragEnd() {
 function isDraggingType(type) { return dragCtx.value?.type === type }
 function isDragFrom(type, idx) { return dragCtx.value?.type === type && dragCtx.value.from === idx }
 function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragToIdx.value === idx && dragCtx.value.from !== idx }
+
+async function organizeGroupsAlphabetically() {
+  await sortGroupsAlphabetically()
+  success('Grupos organizados em ordem alfabetica.')
+}
+
+async function organizeCategoriesAlphabetically() {
+  if (!selectedGroup.value) return
+  await sortCategoriesAlphabetically(selectedGroup.value)
+  success('Subgrupos organizados em ordem alfabetica.')
+}
+
+async function organizeSubcategoriesAlphabetically() {
+  if (!selectedGroup.value || !selectedCategory.value) return
+  await sortSubcategoriesAlphabetically(selectedGroup.value, selectedCategory.value)
+  success('Subniveis organizados em ordem alfabetica.')
+}
+
   return {
     units,
     activeLocais,
@@ -885,6 +926,7 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     selectedCategory,
     selectedSubcategory,
     groupSearch,
+    searchQ,
     filteredGroupList,
     editing,
     editValue,
@@ -955,6 +997,9 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     newItemLocation,
     newItemAttrs,
     newItemAttrInput,
+    newItemContextLabel,
+    newItemHelpText,
+    newItemPlaceholder,
     startAddItem,
     cancelAddItem,
     addNewItemAttr,
@@ -1020,5 +1065,8 @@ function isDragTarget(type, idx) { return dragCtx.value?.type === type && dragTo
     isDraggingType,
     isDragFrom,
     isDragTarget,
+    organizeGroupsAlphabetically,
+    organizeCategoriesAlphabetically,
+    organizeSubcategoriesAlphabetically,
   }
 }

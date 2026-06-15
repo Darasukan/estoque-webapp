@@ -10,6 +10,7 @@ const { login } = useAuth()
 const user = ref('')
 const pass = ref('')
 const errorMsg = ref('')
+const localBrandLogo = '/local-brand/logo.jpg'
 
 function onSubmit() {
   errorMsg.value = ''
@@ -48,7 +49,7 @@ function onCancel() {
       <div class="ds-panel w-full max-w-sm mx-4 p-6" @click.stop>
         <div class="mb-5 flex justify-center">
           <img
-            src="/local-brand/logo.jpg"
+            :src="localBrandLogo"
             alt="Logo local"
             class="max-h-28 w-auto rounded-lg bg-white object-contain p-2"
             @error="$event.currentTarget.style.display = 'none'"

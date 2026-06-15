@@ -249,6 +249,18 @@ const variationFormItem = computed(() =>
   directVariationMode.value ? directVariationItem.value : viewingItem.value
 )
 
+function syncDirectVariationSingleModel() {
+  if (!directVariationMode.value) return
+  const available = directVariationItems.value
+  if (available.length === 1) {
+    directVariationItemId.value = available[0].id
+    return
+  }
+  if (directVariationItemId.value && !available.some(item => item.id === directVariationItemId.value)) {
+    resetDirectVariationForm()
+  }
+}
+
 function _extrasObjToList(obj) {
   return Object.entries(obj || {}).map(([key, value]) => ({ key, value }))
 }
@@ -332,7 +344,10 @@ function onDirectVariationCategoryChange() {
 
 function onDirectVariationSubcategoryChange() {
   resetDirectVariationForm()
+  syncDirectVariationSingleModel()
 }
+
+watch(directVariationItems, syncDirectVariationSingleModel)
 
 watch(directVariationItem, item => {
   if (!directVariationMode.value || !item || editingVariationId.value) return

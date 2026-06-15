@@ -123,7 +123,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     role_text TEXT DEFAULT '',
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','inativo','demitido','afastado'))
   );
 
   CREATE TABLE IF NOT EXISTS suppliers (
@@ -146,6 +147,7 @@ db.exec(`
     target_type TEXT NOT NULL CHECK(target_type IN ('grupo','categoria','subcategoria','item','variacao')),
     target_key TEXT NOT NULL,
     target_label TEXT DEFAULT '',
+    days INTEGER NOT NULL DEFAULT 30,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -294,6 +296,17 @@ if (!movCols.includes('requested_by_person_id')) {
 const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)
 if (!destinationCols.includes('material_rules')) {
   db.prepare("ALTER TABLE destinations ADD COLUMN material_rules TEXT NOT NULL DEFAULT '[]'").run()
+}
+
+const peopleCols = db.prepare("PRAGMA table_info(people)").all().map(c => c.name)
+if (!peopleCols.includes('status')) {
+  db.prepare("ALTER TABLE people ADD COLUMN status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','inativo','demitido','afastado'))").run()
+  db.prepare("UPDATE people SET status = CASE WHEN active = 1 THEN 'ativo' ELSE 'inativo' END").run()
+}
+
+const epiRoleRuleCols = db.prepare("PRAGMA table_info(epi_role_rules)").all().map(c => c.name)
+if (!epiRoleRuleCols.includes('days')) {
+  db.prepare("ALTER TABLE epi_role_rules ADD COLUMN days INTEGER NOT NULL DEFAULT 30").run()
 }
 
 // Migration: add detailed OS fields if missing

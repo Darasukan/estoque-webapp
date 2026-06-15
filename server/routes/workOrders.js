@@ -80,6 +80,25 @@ function parseOrderNumber(value) {
   return Number.isInteger(n) && n > 0 ? n : NaN
 }
 
+function parseOrderDateTime(dateValue, timeValue = '00:00') {
+  const dateText = clean(dateValue)
+  const timeText = clean(timeValue) || '00:00'
+  const iso = dateText.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const br = dateText.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  const parts = iso
+    ? { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+    : br
+      ? { year: Number(br[3]), month: Number(br[2]), day: Number(br[1]) }
+      : null
+  if (!parts) return null
+  const time = timeText.match(/^(\d{2}):(\d{2})$/)
+  if (!time) return null
+  const date = new Date(parts.year, parts.month - 1, parts.day, Number(time[1]), Number(time[2]))
+  if (Number.isNaN(date.getTime())) return null
+  if (date.getFullYear() !== parts.year || date.getMonth() + 1 !== parts.month || date.getDate() !== parts.day) return null
+  return date
+}
+
 function validateMaintenanceDates({
   maintenanceStartDate,
   maintenanceStartTime,
@@ -93,11 +112,11 @@ function validateMaintenanceDates({
   const hasEndTime = !!clean(maintenanceEndTime)
   if (hasStartDate !== hasStartTime) return 'Informe data e horário de início da manutenção'
   if (hasEndDate !== hasEndTime) return 'Informe data e horário de término da manutenção'
-  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime) && !allowEndWithoutStart) return 'Informe início antes do término da manutenção'
+  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime) && !allowEndWithoutStart) return 'Informe início/envio antes do término/retorno da manutenção'
   if (hasStartDate && hasEndDate) {
-    const start = new Date(`${clean(maintenanceStartDate)}T${clean(maintenanceStartTime)}`)
-    const end = new Date(`${clean(maintenanceEndDate)}T${clean(maintenanceEndTime)}`)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Datas de manutenção inválidas'
+    const start = parseOrderDateTime(maintenanceStartDate, maintenanceStartTime)
+    const end = parseOrderDateTime(maintenanceEndDate, maintenanceEndTime)
+    if (!start || !end) return 'Datas de manutenção inválidas'
     if (end < start) return 'Término não pode ser antes do início da manutenção'
   }
   return ''
@@ -129,7 +148,7 @@ function normalizeMaintenanceLocationType(value, hasInternal, hasExternal) {
   if (normalized === 'interna' || normalized === 'externa') return normalized
   if (hasInternal) return 'interna'
   if (hasExternal) return 'externa'
-  return 'externa'
+  return 'interna'
 }
 
 function buildMaintenanceLocation(body, existing = null) {
@@ -138,7 +157,7 @@ function buildMaintenanceLocation(body, existing = null) {
   const maintenanceExternalLocation = clean(body.maintenanceExternalLocation ?? existing?.maintenance_external_location ?? '')
   const maintenanceLocationType = normalizeMaintenanceLocationType(rawType, !!maintenanceDestinationId, !!maintenanceExternalLocation)
   if (maintenanceLocationType === 'externa' && !maintenanceExternalLocation) {
-    return { error: 'Oficina externa e obrigatoria' }
+    return { error: 'Oficina externa é obrigatória' }
   }
   return {
     maintenanceLocationType,
@@ -415,6 +434,7 @@ router.post('/', requireAuth, (req, res) => {
   if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
   if (!clean(requestDate)) return res.status(400).json({ error: 'Data é obrigatória' })
   if (!clean(requestTime)) return res.status(400).json({ error: 'Horário é obrigatório' })
+  if (!parseOrderDateTime(requestDate, requestTime)) return res.status(400).json({ error: 'Data ou horário inválido' })
 
   const parsedNumber = parseOrderNumber(rawNumber)
   if (Number.isNaN(parsedNumber)) return res.status(400).json({ error: 'Número da ordem inválido' })
@@ -428,9 +448,7 @@ router.post('/', requireAuth, (req, res) => {
   if (clean(motorId) && !motor) return res.status(400).json({ error: 'Motor nao encontrado' })
 
   const isMotorOrder = !!motor
-  const maintenanceLocation = isMotorOrder
-    ? buildMaintenanceLocation({ maintenanceLocationType, maintenanceDestinationId, maintenanceExternalLocation })
-    : null
+  const maintenanceLocation = buildMaintenanceLocation({ maintenanceLocationType, maintenanceDestinationId, maintenanceExternalLocation })
   if (maintenanceLocation?.error) return res.status(400).json({ error: maintenanceLocation.error })
   const motorObjectiveType = isMotorOrder ? normalizeMotorObjectiveType(initialMotorEventType) : ''
   if (isMotorOrder && !motorObjectiveType) return res.status(400).json({ error: 'Evento inicial do motor invalido' })
@@ -441,25 +459,25 @@ router.post('/', requireAuth, (req, res) => {
     ? resolveDestinationName(initialMotorEventToDestinationIdValue)
     : ''
   if (hasInitialMotorEvent && motorObjectiveType === 'movimentado' && !initialMotorEventToDestinationIdValue) {
-    return res.status(400).json({ error: 'Novo local do motor e obrigatorio para movimentacao' })
+    return res.status(400).json({ error: 'Novo local do motor é obrigatório para movimentação' })
   }
   if (hasInitialMotorEvent && initialMotorEventToDestinationIdValue && !initialMotorEventToDestinationValue) {
     return res.status(400).json({ error: 'Destino do evento nao encontrado' })
   }
-  const internalMaintenance = !isMotorOrder || maintenanceLocation.maintenanceLocationType === 'interna'
-  const maintenanceStartDateValue = internalMaintenance ? clean(maintenanceStartDate) : ''
-  const maintenanceStartTimeValue = internalMaintenance ? clean(maintenanceStartTime) : ''
+  const internalMaintenance = maintenanceLocation.maintenanceLocationType === 'interna'
+  const maintenanceStartDateValue = clean(maintenanceStartDate)
+  const maintenanceStartTimeValue = clean(maintenanceStartTime)
   const maintenanceEndDateValue = clean(maintenanceEndDate)
   const maintenanceEndTimeValue = clean(maintenanceEndTime)
   const maintenanceProfessionalValue = internalMaintenance ? clean(maintenanceProfessional) : ''
-  const maintenanceMaterialsValue = internalMaintenance ? (maintenanceMaterials || '') : ''
-  const maintenanceNoteValue = internalMaintenance ? (maintenanceNote || '') : ''
+  const maintenanceMaterialsValue = maintenanceMaterials || ''
+  const maintenanceNoteValue = maintenanceNote || ''
   const maintenanceError = validateMaintenanceDates({
     maintenanceStartDate: maintenanceStartDateValue,
     maintenanceStartTime: maintenanceStartTimeValue,
     maintenanceEndDate: maintenanceEndDateValue,
     maintenanceEndTime: maintenanceEndTimeValue,
-    allowEndWithoutStart: isMotorOrder,
+    allowEndWithoutStart: false,
   })
   if (maintenanceError) return res.status(400).json({ error: maintenanceError })
 
@@ -494,10 +512,10 @@ router.post('/', requireAuth, (req, res) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id, number, titleValue, clean(motorId), destinationIdValue, destinationName, equipmentValue,
       originIdValue, originNameValue,
-      maintenanceLocation?.maintenanceLocationType || '',
-      maintenanceLocation?.maintenanceDestinationId || '',
-      maintenanceLocation?.maintenanceDestinationName || '',
-      maintenanceLocation?.maintenanceExternalLocation || '',
+      maintenanceLocation.maintenanceLocationType || '',
+      maintenanceLocation.maintenanceDestinationId || '',
+      maintenanceLocation.maintenanceDestinationName || '',
+      maintenanceLocation.maintenanceExternalLocation || '',
       serviceTypeValue,
       clean(requestDate), clean(requestTime), clean(requestedBy), note || '',
       maintenanceStartDateValue, maintenanceStartTimeValue, maintenanceEndDateValue, maintenanceEndTimeValue,
@@ -607,13 +625,17 @@ router.put('/:id', requireAuth, (req, res) => {
   const numberExists = db.prepare('SELECT id FROM work_orders WHERE number = ? AND id != ?').get(nextNumber, req.params.id)
   if (numberExists) return res.status(409).json({ error: 'Número da ordem já existe' })
 
-  const maintenanceLocation = isMotorOrder
-    ? buildMaintenanceLocation({
-        maintenanceLocationType,
-        maintenanceDestinationId,
-        maintenanceExternalLocation,
-      }, o)
-    : null
+  const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
+  const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
+  if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
+  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
+  if (!parseOrderDateTime(requestDateValue, requestTimeValue)) return res.status(400).json({ error: 'Data ou horário inválido' })
+
+  const maintenanceLocation = buildMaintenanceLocation({
+    maintenanceLocationType,
+    maintenanceDestinationId,
+    maintenanceExternalLocation,
+  }, o)
   if (maintenanceLocation?.error) return res.status(400).json({ error: maintenanceLocation.error })
 
   const originIdValue = isMotorOrder
@@ -633,38 +655,26 @@ router.put('/:id', requireAuth, (req, res) => {
     : destinationName
 
   const serviceTypeValue = serviceType !== undefined ? normalizeServiceType(serviceType) : (o.service_type || 'Outros')
-  const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
-  const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
   const requestedByValue = requestedBy !== undefined ? clean(requestedBy) : o.requested_by
 
   if (!requestedByValue) return res.status(400).json({ error: 'Solicitante é obrigatório' })
-  if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
-  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
   if (!equipmentValue) return res.status(400).json({ error: 'Equipamento é obrigatório' })
-  const internalMaintenance = !isMotorOrder || maintenanceLocation.maintenanceLocationType === 'interna'
-  const maintenanceStartDateValue = internalMaintenance
-    ? (maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || ''))
-    : ''
-  const maintenanceStartTimeValue = internalMaintenance
-    ? (maintenanceStartTime !== undefined ? clean(maintenanceStartTime) : (o.maintenance_start_time || ''))
-    : ''
+  const internalMaintenance = maintenanceLocation.maintenanceLocationType === 'interna'
+  const maintenanceStartDateValue = maintenanceStartDate !== undefined ? clean(maintenanceStartDate) : (o.maintenance_start_date || '')
+  const maintenanceStartTimeValue = maintenanceStartTime !== undefined ? clean(maintenanceStartTime) : (o.maintenance_start_time || '')
   const maintenanceEndDateValue = maintenanceEndDate !== undefined ? clean(maintenanceEndDate) : (o.maintenance_end_date || '')
   const maintenanceEndTimeValue = maintenanceEndTime !== undefined ? clean(maintenanceEndTime) : (o.maintenance_end_time || '')
   const maintenanceProfessionalValue = internalMaintenance
     ? (maintenanceProfessional !== undefined ? clean(maintenanceProfessional) : (o.maintenance_professional || ''))
     : ''
-  const maintenanceMaterialsValue = internalMaintenance
-    ? (maintenanceMaterials !== undefined ? maintenanceMaterials : (o.maintenance_materials || ''))
-    : ''
-  const maintenanceNoteValue = internalMaintenance
-    ? (maintenanceNote !== undefined ? maintenanceNote : (o.maintenance_note || ''))
-    : ''
+  const maintenanceMaterialsValue = maintenanceMaterials !== undefined ? maintenanceMaterials : (o.maintenance_materials || '')
+  const maintenanceNoteValue = maintenanceNote !== undefined ? maintenanceNote : (o.maintenance_note || '')
   const maintenanceError = validateMaintenanceDates({
     maintenanceStartDate: maintenanceStartDateValue,
     maintenanceStartTime: maintenanceStartTimeValue,
     maintenanceEndDate: maintenanceEndDateValue,
     maintenanceEndTime: maintenanceEndTimeValue,
-    allowEndWithoutStart: isMotorOrder,
+    allowEndWithoutStart: false,
   })
   if (maintenanceError) return res.status(400).json({ error: maintenanceError })
 
@@ -685,10 +695,10 @@ router.put('/:id', requireAuth, (req, res) => {
     equipment: equipmentValue,
     motorOriginDestinationId: originIdValue,
     motorOriginDestinationName: originNameValue,
-    maintenanceLocationType: maintenanceLocation?.maintenanceLocationType || '',
-    maintenanceDestinationId: maintenanceLocation?.maintenanceDestinationId || '',
-    maintenanceDestinationName: maintenanceLocation?.maintenanceDestinationName || '',
-    maintenanceExternalLocation: maintenanceLocation?.maintenanceExternalLocation || '',
+    maintenanceLocationType: maintenanceLocation.maintenanceLocationType || '',
+    maintenanceDestinationId: maintenanceLocation.maintenanceDestinationId || '',
+    maintenanceDestinationName: maintenanceLocation.maintenanceDestinationName || '',
+    maintenanceExternalLocation: maintenanceLocation.maintenanceExternalLocation || '',
     serviceType: serviceTypeValue,
     requestDate: requestDateValue,
     requestTime: requestTimeValue,

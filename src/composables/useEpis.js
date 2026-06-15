@@ -39,18 +39,20 @@ export function useEpis() {
   const activeRoleRules = computed(() => sortRules(roleRules.value.filter(r => r.active)))
   const activePeriodicities = computed(() => sortPeriods(periodicities.value.filter(p => p.active)))
 
-  async function addRoleRule(roleName, target) {
+  async function addRoleRule(roleName, target, days = 30) {
     const cleanRole = String(roleName || '').trim()
     const cleanTarget = normalizeTarget(target)
+    const cleanDays = Number(days)
     if (!cleanRole) return { ok: false, error: 'Cargo obrigatorio.' }
     if (!cleanTarget.targetType || !cleanTarget.targetKey) return { ok: false, error: 'EPI obrigatorio.' }
+    if (!Number.isInteger(cleanDays) || cleanDays <= 0) return { ok: false, error: 'Periodicidade invalida.' }
     if (roleRules.value.some(r =>
       r.roleName.toLowerCase() === cleanRole.toLowerCase() &&
       r.targetType === cleanTarget.targetType &&
       r.targetKey === cleanTarget.targetKey
     )) return { ok: false, error: 'Este EPI ja esta vinculado ao cargo.' }
 
-    const created = await api.createEpiRoleRule({ roleName: cleanRole, ...cleanTarget, active: true })
+    const created = await api.createEpiRoleRule({ roleName: cleanRole, ...cleanTarget, days: cleanDays, active: true })
     roleRules.value = sortRules([...roleRules.value, created])
     return { ok: true, rule: created }
   }

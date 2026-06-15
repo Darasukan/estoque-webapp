@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useItems } from '../../composables/useItems.js'
-import { usePeople } from '../../composables/usePeople.js'
+import { personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
@@ -9,22 +9,26 @@ import AttributeBadges from '../ui/AttributeBadges.vue'
 const emit = defineEmits(['quick-movement'])
 
 const { items, variations } = useItems()
-const { activePeople } = usePeople()
+const { people } = usePeople()
 const { movements } = useMovements()
 const { activeRoleRules, activePeriodicities } = useEpis()
 
 const search = ref('')
 const statusFilter = ref('all')
+const personStatusFilter = ref('ativo')
+const statusFilterOpen = ref(false)
+const personStatusFilterOpen = ref(false)
+const filterMenuPosition = ref({ top: 0, left: 0 })
 const currentPage = ref(1)
 const pageSize = ref(20)
+const historyRecord = ref(null)
 
-const targetTypeRank = { grupo: 1, categoria: 2, subcategoria: 3, item: 4, variacao: 5 }
 const targetTypeLabels = {
   grupo: 'Grupo',
   categoria: 'Categoria',
   subcategoria: 'Subcategoria',
   item: 'Item',
-  variacao: 'Variacao',
+  variacao: 'Variação',
 }
 
 const statusConfig = {
@@ -90,13 +94,9 @@ function movementPersonMatches(movement, person) {
   return normalize(movement.requestedBy) === normalize(person.name)
 }
 
-function periodForMovement(movement) {
-  return activePeriodicities.value
-    .filter(period => targetMatchesMovement(period, movement))
-    .sort((a, b) => targetTypeRank[b.targetType] - targetTypeRank[a.targetType])[0] || null
-}
-
 function periodForRule(rule) {
+  const days = Number(rule?.days || 0)
+  if (Number.isInteger(days) && days > 0) return { days }
   return activePeriodicities.value.find(period =>
     period.targetType === rule.targetType && period.targetKey === rule.targetKey
   ) || null
@@ -134,6 +134,21 @@ function variationLabel(variation, item) {
   return [item?.name, ...attrs, ...extras].filter(Boolean).join(' / ')
 }
 
+const personStatusTabs = [
+  { id: 'ativo', label: 'Ativas' },
+  { id: 'all', label: 'Todas' },
+  { id: 'inativo', label: 'Inativas' },
+  { id: 'afastado', label: 'Afastadas' },
+  { id: 'demitido', label: 'Demitidas' },
+]
+
+function readableTargetLabel(rule) {
+  const label = String(rule?.targetLabel || rule?.targetKey || '').trim()
+  if (!label) return '-'
+  const parts = label.split('>').map(part => part.trim()).filter(Boolean)
+  return parts[parts.length - 1] || label
+}
+
 function resolveQuickTarget(rule) {
   const target = targetFromRule(rule)
   const matches = variations.value
@@ -151,7 +166,9 @@ function targetVariationRow(rule) {
 
 const records = computed(() => {
   const rows = []
-  for (const person of activePeople.value) {
+  for (const person of people.value) {
+    const personStatus = person.status || (person.active ? 'ativo' : 'inativo')
+    if (personStatusFilter.value !== 'all' && personStatus !== personStatusFilter.value) continue
     const role = String(person.role || '').trim()
     if (!role) continue
     const rules = activeRoleRules.value.filter(rule => normalize(rule.roleName) === normalize(role))
@@ -161,9 +178,9 @@ const records = computed(() => {
         .filter(movement => movementPersonMatches(movement, person) && targetMatchesMovement(target, movement))
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null
-      const period = movement ? periodForMovement(movement) : periodForRule(rule)
+      const period = periodForRule(rule)
       const dueDate = movement && period ? addDays(movement.date, period.days) : null
-      const record = { person, rule, movement, period, dueDate }
+      const record = { person: { ...person, status: personStatus }, rule, movement, period, dueDate }
       rows.push({ ...record, status: epiStatus(record) })
     }
   }
@@ -191,6 +208,14 @@ const filterTabs = computed(() => [
   { id: 'expired', label: 'Vencidos', count: counts.value.expired },
 ])
 
+const currentStatusFilterLabel = computed(() =>
+  filterTabs.value.find(tab => tab.id === statusFilter.value)?.label || 'Todos'
+)
+
+const currentPersonStatusFilterLabel = computed(() =>
+  personStatusTabs.find(tab => tab.id === personStatusFilter.value)?.label || 'Ativas'
+)
+
 const filteredRecords = computed(() => {
   const q = normalize(search.value)
   return records.value.filter(record => {
@@ -206,6 +231,7 @@ const filteredRecords = computed(() => {
     return [
       record.person.name,
       record.person.role,
+      personStatusLabel(record.person.status),
       record.rule.targetLabel,
       record.rule.targetKey,
       record.movement?.itemName,
@@ -220,13 +246,61 @@ const paginatedRecords = computed(() => {
   return filteredRecords.value.slice(start, start + pageSize.value)
 })
 
+function historyRowsForRecord(record) {
+  if (!record) return []
+  const target = targetFromRule(record.rule)
+  return movements.value
+    .filter(movement => movementPersonMatches(movement, record.person) && targetMatchesMovement(target, movement))
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+}
+
+const selectedHistoryRows = computed(() => historyRowsForRecord(historyRecord.value))
+
+function movementAttributesText(movement) {
+  return [
+    ...Object.entries(movement.variationValues || {}).map(([key, value]) => `${key}: ${value}`),
+    ...Object.entries(movement.variationExtras || {}).map(([key, value]) => `${key}: ${value}`),
+  ].filter(Boolean).join(' / ')
+}
+
+function openHistory(record) {
+  historyRecord.value = record
+}
+
 watch([filteredRecords, pageSize], () => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
 
-watch([search, statusFilter], () => {
+watch([search, statusFilter, personStatusFilter], () => {
   currentPage.value = 1
 })
+
+function setPersonStatusFilter(id) {
+  personStatusFilter.value = id
+  personStatusFilterOpen.value = false
+}
+
+function setStatusFilter(id) {
+  statusFilter.value = id
+  statusFilterOpen.value = false
+}
+
+function openFilterMenu(kind, event) {
+  const rect = event.currentTarget.getBoundingClientRect()
+  const width = kind === 'person' ? 176 : 192
+  filterMenuPosition.value = {
+    top: rect.bottom + 6,
+    left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+  }
+  personStatusFilterOpen.value = kind === 'person' ? !personStatusFilterOpen.value : false
+  statusFilterOpen.value = kind === 'status' ? !statusFilterOpen.value : false
+}
+
+const filterMenuStyle = computed(() => ({
+  top: `${filterMenuPosition.value.top}px`,
+  left: `${filterMenuPosition.value.left}px`,
+}))
 
 function quickMovement(record) {
   const exact = resolveQuickTarget(record.rule)
@@ -234,6 +308,9 @@ function quickMovement(record) {
     type: 'saida',
     itemId: exact?.item?.id,
     variationId: exact?.variation?.id,
+    targetType: record.rule.targetType,
+    targetKey: record.rule.targetKey,
+    targetLabel: record.rule.targetLabel,
     requestedBy: record.person.name,
     requestedByPersonId: record.person.id,
     nonce: `epi:${record.person.id}:${record.rule.id}:${Date.now()}`,
@@ -275,52 +352,119 @@ function quickMovement(record) {
       />
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
+    <div
+      v-if="personStatusFilterOpen || statusFilterOpen"
+      class="fixed inset-0 z-20"
+      @click="personStatusFilterOpen = false; statusFilterOpen = false"
+    ></div>
+    <div
+      v-if="personStatusFilterOpen"
+      class="fixed z-50 min-w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-gray-700 dark:bg-gray-900"
+      :style="filterMenuStyle"
+    >
+      <button
+        v-for="tab in personStatusTabs"
+        :key="tab.id"
+        type="button"
+        class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left font-semibold transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+        :class="personStatusFilter === tab.id ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'"
+        @click.stop="setPersonStatusFilter(tab.id)"
+      >
+        <span>{{ tab.label }}</span>
+        <span v-if="personStatusFilter === tab.id">✓</span>
+      </button>
+    </div>
+    <div
+      v-if="statusFilterOpen"
+      class="fixed z-50 min-w-48 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-gray-700 dark:bg-gray-900"
+      :style="filterMenuStyle"
+    >
       <button
         v-for="tab in filterTabs"
         :key="tab.id"
         type="button"
-        class="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
-        :class="statusFilter === tab.id
-          ? 'bg-primary-600 text-white'
-          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'"
-        @click="statusFilter = tab.id"
+        class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left font-semibold transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+        :class="statusFilter === tab.id ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'"
+        @click.stop="setStatusFilter(tab.id)"
       >
-        {{ tab.label }}
-        <span class="ml-1 opacity-75">{{ tab.count }}</span>
+        <span>{{ tab.label }}</span>
+        <span class="text-gray-400">{{ tab.count }}</span>
       </button>
     </div>
 
     <div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-      <div v-if="!filteredRecords.length" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-        Nenhum EPI encontrado para os filtros selecionados.
-      </div>
-      <div v-else class="overflow-x-auto">
+      <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
-              <th class="px-4 py-3 text-left font-semibold">Pessoa</th>
+              <th class="relative px-4 py-3 text-left font-semibold">
+                <div class="flex items-center gap-2">
+                  <span>Pessoa</span>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold normal-case tracking-normal transition-colors"
+                    :class="personStatusFilter !== 'ativo'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+                    title="Filtrar pessoas"
+                    @click.stop="openFilterMenu('person', $event)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h18l-7 8v5l-4 2v-7l-7-8Z" />
+                    </svg>
+                    <span>{{ currentPersonStatusFilterLabel }}</span>
+                  </button>
+                </div>
+              </th>
               <th class="px-4 py-3 text-left font-semibold">EPI exigido</th>
               <th class="px-4 py-3 text-left font-semibold">Ultima saida</th>
               <th class="px-4 py-3 text-left font-semibold">Vencimento</th>
-              <th class="px-4 py-3 text-left font-semibold">Status</th>
+              <th class="relative px-4 py-3 text-left font-semibold">
+                <div class="flex items-center gap-2">
+                  <span>Status</span>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold normal-case tracking-normal transition-colors"
+                    :class="statusFilter !== 'all'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+                    title="Filtrar status"
+                    @click.stop="openFilterMenu('status', $event)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h18l-7 8v5l-4 2v-7l-7-8Z" />
+                    </svg>
+                    <span>{{ currentStatusFilterLabel }}</span>
+                  </button>
+                </div>
+              </th>
               <th class="px-4 py-3 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+            <tr v-if="!filteredRecords.length">
+              <td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                Nenhum EPI encontrado para os filtros selecionados.
+              </td>
+            </tr>
             <tr v-for="record in paginatedRecords" :key="`${record.person.id}:${record.rule.id}`" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
               <td class="px-4 py-3">
                 <p class="font-semibold text-gray-900 dark:text-gray-100">{{ record.person.name }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ record.person.role || '-' }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ record.person.role || '-' }}
+                  <span v-if="record.person.status !== 'ativo'"> · {{ personStatusLabel(record.person.status) }}</span>
+                </p>
               </td>
               <td class="px-4 py-3">
-                <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[record.rule.targetType] }}</span>
+                <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                  {{ targetTypeLabels[record.rule.targetType] }}
+                </span>
                 <template v-if="targetVariationRow(record.rule)">
                   <p class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
                   <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
                 </template>
-                <p v-else class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
-                <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Troca a cada {{ record.period.days }} dias</p>
+                <p v-else class="mt-1 font-medium text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
+                <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Periodicidade: {{ record.period.days }} dias</p>
               </td>
               <td class="px-4 py-3">
                 <p class="font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.movement?.date) }}</p>
@@ -335,19 +479,28 @@ function quickMovement(record) {
                 </span>
               </td>
               <td class="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-700 cursor-pointer"
-                  @click="quickMovement(record)"
-                >
-                  Registrar saida
-                </button>
+                <div class="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
+                    @click="openHistory(record)"
+                  >
+                    Histórico
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-700 cursor-pointer"
+                    @click="quickMovement(record)"
+                  >
+                    Registrar saida
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
 
-        <div class="flex items-center justify-between border-t border-gray-200 bg-gray-50/70 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400">
+        <div v-if="filteredRecords.length" class="flex items-center justify-between border-t border-gray-200 bg-gray-50/70 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400">
           <div class="flex items-center gap-2">
             <span>Exibir</span>
             <select v-model.number="pageSize" class="rounded-lg border border-gray-200 bg-white px-2 py-1 dark:border-gray-700 dark:bg-gray-900">
@@ -366,6 +519,59 @@ function quickMovement(record) {
           </div>
         </div>
       </div>
+    </div>
+
+    <div
+      v-if="historyRecord"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+      @click.self="historyRecord = null"
+    >
+      <section class="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Histórico de retirada</p>
+            <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ historyRecord.person.name }}</h3>
+            <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{{ readableTargetLabel(historyRecord.rule) }}</p>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            @click="historyRecord = null"
+          >
+            Fechar
+          </button>
+        </header>
+
+        <div v-if="selectedHistoryRows.length" class="min-h-0 flex-1 overflow-auto">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+              <tr>
+                <th class="px-4 py-3 text-left font-semibold">Data</th>
+                <th class="px-4 py-3 text-left font-semibold">EPI retirado</th>
+                <th class="px-4 py-3 text-center font-semibold">Qtd.</th>
+                <th class="px-4 py-3 text-left font-semibold">Destino / Doc</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <tr v-for="movement in selectedHistoryRows" :key="movement.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+                <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ formatDate(movement.date) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-gray-900 dark:text-gray-100">{{ movement.itemName }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ movementAttributesText(movement) || 'Sem atributos' }}</p>
+                </td>
+                <td class="px-4 py-3 text-center font-semibold text-red-600 dark:text-red-400">-{{ movement.qty }} {{ movement.itemUnit }}</td>
+                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                  <p>{{ movement.destination || '-' }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ movement.docRef || movement.note || '-' }}</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          Nenhuma retirada registrada para este EPI desta pessoa.
+        </div>
+      </section>
     </div>
   </section>
 </template>

@@ -16,15 +16,11 @@ const { activePeople } = usePeople()
 const { movements } = useMovements()
 const {
   roleRules,
-  periodicities,
   activeRoleRules,
   activePeriodicities,
   addRoleRule,
   editRoleRule,
   deleteRoleRule,
-  addPeriodicity,
-  editPeriodicity,
-  deletePeriodicity,
 } = useEpis()
 const { success, error } = useToast()
 
@@ -32,9 +28,7 @@ const activeTab = ref('cargo')
 const selectedRoleName = ref('')
 const selectedPersonId = ref('')
 const selectedRuleTarget = ref(null)
-const selectedPeriodTarget = ref(null)
-const newPeriodDays = ref(30)
-const periodDrafts = ref({})
+const ruleDayDrafts = ref({})
 const selectorOpen = ref(false)
 const selectorContext = ref('rule')
 const selectorSearch = ref('')
@@ -59,7 +53,7 @@ const targetTypeLabels = {
   categoria: 'Categoria',
   subcategoria: 'Subcategoria',
   item: 'Item',
-  variacao: 'Variacao',
+  variacao: 'Variação',
 }
 const DIRECT_ITEMS_SUBCATEGORY = 'Itens diretos'
 
@@ -115,6 +109,13 @@ function targetVariationRow(target) {
   const variation = variations.value.find(row => row.id === target.targetKey)
   const item = variation ? itemById.value.get(variation.itemId) : null
   return variation && item ? { variation, item } : null
+}
+
+function readableTargetLabel(target) {
+  const label = String(target?.targetLabel || target?.targetKey || '').trim()
+  if (!label) return '-'
+  const parts = label.split('>').map(part => part.trim()).filter(Boolean)
+  return parts[parts.length - 1] || label
 }
 
 const catalogTargets = computed(() => {
@@ -216,7 +217,7 @@ const variationsForSelectedItem = computed(() =>
 )
 
 const modalSelectedLabel = computed(() =>
-  modalSelectedTarget.value?.targetLabel || 'Nenhum EPI selecionado'
+  modalSelectedTarget.value ? readableTargetLabel(modalSelectedTarget.value) : 'Nenhum EPI selecionado'
 )
 
 function itemStock(item) {
@@ -249,7 +250,7 @@ function openSelector(context) {
   selectorContext.value = context
   selectorSearch.value = ''
   selectorScope.value = 'levels'
-  modalSelectedTarget.value = context === 'rule' ? selectedRuleTarget.value : selectedPeriodTarget.value
+  modalSelectedTarget.value = selectedRuleTarget.value
   selectorOpen.value = true
 }
 
@@ -264,8 +265,7 @@ function setModalTarget(target) {
 
 function confirmSelector() {
   if (!modalSelectedTarget.value) return
-  if (selectorContext.value === 'rule') selectedRuleTarget.value = modalSelectedTarget.value
-  else selectedPeriodTarget.value = modalSelectedTarget.value
+  selectedRuleTarget.value = modalSelectedTarget.value
   selectorOpen.value = false
 }
 
@@ -358,10 +358,10 @@ function targetFromRule(rule) {
   }
 }
 
-function periodForMovement(movement) {
-  return activePeriodicities.value
-    .filter(period => targetMatchesMovement(period, movement))
-    .sort((a, b) => targetTypeRank[b.targetType] - targetTypeRank[a.targetType])[0] || null
+function periodForRule(rule) {
+  const days = Number(rule?.days || 0)
+  if (Number.isInteger(days) && days > 0) return { days }
+  return activePeriodicities.value.find(p => p.targetType === rule.targetType && p.targetKey === rule.targetKey) || null
 }
 
 function addDays(date, days) {
@@ -398,7 +398,7 @@ const personEpiRecords = computed(() => {
       .filter(m => movementPersonMatches(m, person) && targetMatchesMovement(targetFromRule(rule), m))
       .slice()
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null
-    const period = movement ? periodForMovement(movement) : activePeriodicities.value.find(p => p.targetType === rule.targetType && p.targetKey === rule.targetKey)
+    const period = periodForRule(rule)
     const dueDate = movement && period ? addDays(movement.date, period.days) : null
     const record = { rule, movement, period, dueDate }
     return { ...record, status: epiStatus(record) }
@@ -432,41 +432,35 @@ async function onDeleteRule(rule) {
   success('Vinculo removido.')
 }
 
-async function onAddPeriodicity() {
-  if (!isLoggedIn?.value) return
-  if (!selectedPeriodTarget.value) { error('Selecione um EPI.'); return }
-  const result = await addPeriodicity(selectedPeriodTarget.value, Number(newPeriodDays.value))
+async function onUpdateRuleDays(rule) {
+  const days = Number(ruleDayDrafts.value[rule.id] ?? rule.days)
+  const result = await editRoleRule(rule.id, { days })
   if (!result.ok) { error(result.error); return }
-  success('Periodicidade cadastrada.')
-  selectedPeriodTarget.value = null
-  newPeriodDays.value = 30
+  ruleDayDrafts.value[rule.id] = result.rule.days
+  success('Periodicidade do cargo atualizada.')
 }
 
-async function onUpdatePeriodicity(period) {
-  const days = Number(periodDrafts.value[period.id] ?? period.days)
-  const result = await editPeriodicity(period.id, { days })
-  if (!result.ok) { error(result.error); return }
-  success('Periodicidade atualizada.')
+function ruleDayValue(rule) {
+  return ruleDayDrafts.value[rule.id] ?? rule.days ?? 30
 }
 
-async function onTogglePeriodicity(period) {
-  const result = await editPeriodicity(period.id, { active: !period.active })
-  if (!result.ok) error(result.error)
-}
-
-async function onDeletePeriodicity(period) {
-  if (!confirm(`Excluir periodicidade de "${period.targetLabel || period.targetKey}"?`)) return
-  await deletePeriodicity(period.id)
-  success('Periodicidade removida.')
+function setRuleDayValue(rule, value) {
+  ruleDayDrafts.value[rule.id] = Number(value)
 }
 
 function quickMovement(record) {
   const target = catalogTargets.value.find(t => t.targetType === record.rule.targetType && t.targetKey === record.rule.targetKey)
-  if (target?.variationId && target?.itemId) {
-    emit('quick-movement', { type: 'saida', itemId: target.itemId, variationId: target.variationId })
-    return
-  }
-  emit('quick-movement', { type: 'saida' })
+  emit('quick-movement', {
+    type: 'saida',
+    itemId: target?.itemId,
+    variationId: target?.variationId,
+    targetType: record.rule.targetType,
+    targetKey: record.rule.targetKey,
+    targetLabel: record.rule.targetLabel,
+    requestedBy: selectedPerson.value?.name || '',
+    requestedByPersonId: selectedPerson.value?.id || '',
+    nonce: `epi-cadastro:${selectedPerson.value?.id || 'pessoa'}:${record.rule.id}:${Date.now()}`,
+  })
 }
 </script>
 
@@ -475,11 +469,11 @@ function quickMovement(record) {
     <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">EPIs</h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Obrigatoriedade por cargo, periodicidade e controle por pessoa.</p>
+        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Obrigatoriedade e periodicidade por cargo, com controle por pessoa.</p>
       </div>
       <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
         <button
-          v-for="tab in [{ id: 'cargo', label: 'Por cargo' }, { id: 'periodos', label: 'Periodicidades' }, { id: 'pessoas', label: 'Por pessoa' }]"
+          v-for="tab in [{ id: 'cargo', label: 'Por cargo' }, { id: 'pessoas', label: 'Por pessoa' }]"
           :key="tab.id"
           type="button"
           class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
@@ -490,7 +484,7 @@ function quickMovement(record) {
     </div>
 
     <section v-if="activeTab === 'cargo'" class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo</label>
         <select v-model="selectedRoleName" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
           <option value="">Selecione um cargo</option>
@@ -505,27 +499,44 @@ function quickMovement(record) {
             @click="openSelector('rule')"
           >
             <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'EPI' }}</span>
-            <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget?.targetLabel || 'Selecionar por blocos do catalogo' }}</span>
+            <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget ? readableTargetLabel(selectedRuleTarget) : 'Selecionar por blocos do catálogo' }}</span>
           </button>
           <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
         </div>
       </aside>
 
       <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">EPIs obrigatorios de {{ selectedRoleName || 'cargo' }}</h3>
         </div>
         <div v-if="rulesForRole.length" class="divide-y divide-gray-100 dark:divide-gray-700">
-          <article v-for="rule in rulesForRole" :key="rule.id" class="flex flex-wrap items-center justify-between gap-3 px-4 py-3" :class="{ 'opacity-60': !rule.active }">
+          <article v-for="rule in rulesForRole" :key="rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_14rem_auto]" :class="{ 'opacity-60': !rule.active }">
             <div>
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[rule.targetType] }}</span>
+              <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                {{ targetTypeLabels[rule.targetType] }}
+              </span>
               <template v-if="targetVariationRow(rule)">
-                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(rule).item.name }}</p>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(rule).item.name }}</p>
                 <AttributeBadges class="mt-1" :item="targetVariationRow(rule).item" :variation="targetVariationRow(rule).variation" compact />
               </template>
-              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ rule.targetLabel || rule.targetKey }}</p>
+              <p v-else class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ readableTargetLabel(rule) }}</p>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Periodicidade</label>
+              <div class="flex items-center gap-2">
+                <input
+                  :value="ruleDayValue(rule)"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  @input="setRuleDayValue(rule, $event.target.value)"
+                />
+                <span class="text-xs text-gray-500 dark:text-gray-400">dias</span>
+              </div>
             </div>
             <div class="flex items-center gap-2">
+              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700" @click="onUpdateRuleDays(rule)">Atualizar</button>
               <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
               <button type="button" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700" @click="onDeleteRule(rule)">Excluir</button>
             </div>
@@ -535,50 +546,8 @@ function quickMovement(record) {
       </div>
     </section>
 
-    <section v-else-if="activeTab === 'periodos'" class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">EPI</label>
-        <button
-          type="button"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-left text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-          @click="openSelector('period')"
-        >
-          <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedPeriodTarget ? targetTypeLabels[selectedPeriodTarget.targetType] : 'EPI' }}</span>
-          <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedPeriodTarget?.targetLabel || 'Selecionar por blocos do catalogo' }}</span>
-        </button>
-        <label class="mb-1 mt-4 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dias para troca</label>
-        <input v-model.number="newPeriodDays" type="number" min="1" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
-        <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedPeriodTarget || !newPeriodDays" @click="onAddPeriodicity">Salvar periodicidade</button>
-      </aside>
-
-      <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Periodicidades cadastradas</h3>
-        </div>
-        <div v-if="periodicities.length" class="divide-y divide-gray-100 dark:divide-gray-700">
-          <article v-for="period in periodicities" :key="period.id" class="grid gap-3 px-4 py-3 md:grid-cols-[1fr_8rem_auto]" :class="{ 'opacity-60': !period.active }">
-            <div>
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[period.targetType] }}</span>
-              <template v-if="targetVariationRow(period)">
-                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(period).item.name }}</p>
-                <AttributeBadges class="mt-1" :item="targetVariationRow(period).item" :variation="targetVariationRow(period).variation" compact />
-              </template>
-              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ period.targetLabel || period.targetKey }}</p>
-            </div>
-            <input v-model.number="periodDrafts[period.id]" :placeholder="String(period.days)" type="number" min="1" step="1" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700" @click="onUpdatePeriodicity(period)">Atualizar</button>
-              <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="period.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onTogglePeriodicity(period)">{{ period.active ? 'Ativo' : 'Inativo' }}</button>
-              <button type="button" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700" @click="onDeletePeriodicity(period)">Excluir</button>
-            </div>
-          </article>
-        </div>
-        <div v-else class="p-8 text-sm text-gray-500 dark:text-gray-400">Nenhuma periodicidade cadastrada.</div>
-      </div>
-    </section>
-
     <section v-else class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pessoa</label>
         <select v-model="selectedPersonId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
           <option value="">Selecione uma pessoa</option>
@@ -591,18 +560,21 @@ function quickMovement(record) {
       </aside>
 
       <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Controle de EPI de {{ selectedPerson?.name || 'pessoa' }}</h3>
         </div>
         <div v-if="personEpiRecords.length" class="divide-y divide-gray-100 dark:divide-gray-700">
           <article v-for="record in personEpiRecords" :key="record.rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_10rem_10rem_9rem_auto]">
             <div>
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ targetTypeLabels[record.rule.targetType] }}</span>
+              <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                {{ targetTypeLabels[record.rule.targetType] }}
+              </span>
               <template v-if="targetVariationRow(record.rule)">
-                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
                 <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
               </template>
-              <p v-else class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ record.rule.targetLabel || record.rule.targetKey }}</p>
+              <p v-else class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
+              <p v-if="record.period" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Periodicidade: {{ record.period.days }} dias</p>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ record.movement ? `${record.movement.itemName} - ${record.movement.qty} ${record.movement.itemUnit}` : 'Nenhuma saida registrada' }}</p>
             </div>
             <div>
@@ -690,7 +662,7 @@ function quickMovement(record) {
                   <span class="mt-1 block text-sm font-semibold">{{ targetVariationRow(target).item.name }}</span>
                   <AttributeBadges class="mt-2" :item="targetVariationRow(target).item" :variation="targetVariationRow(target).variation" compact />
                 </template>
-                <span v-else class="mt-1 block text-sm font-semibold">{{ target.targetLabel }}</span>
+                <span v-else class="mt-1 block text-sm font-semibold">{{ readableTargetLabel(target) }}</span>
               </button>
             </div>
 

@@ -93,18 +93,18 @@ function enrichSeedData(data) {
   const locations = [
     { id: 'loc_almox', name: 'Almoxarifado', description: 'Local principal de estoque.' },
     { id: 'loc_almox_epi', name: 'EPI', parentId: 'loc_almox', description: 'Prateleiras de EPI.' },
-    { id: 'loc_almox_manut', name: 'Manutencao', parentId: 'loc_almox', description: 'Pecas e ferramentas.' },
+    { id: 'loc_almox_manut', name: 'Manutenção', parentId: 'loc_almox', description: 'Peças e ferramentas.' },
     { id: 'loc_oficina', name: 'Oficina', description: 'Oficina interna.' },
   ]
   const roles = [
-    { id: 'role_mecanico', name: 'Mecanico', description: 'Execucao de manutencao mecanica.' },
-    { id: 'role_eletricista', name: 'Eletricista', description: 'Execucao de manutencao eletrica.' },
+    { id: 'role_mecanico', name: 'Mecânico', description: 'Execução de manutenção mecânica.' },
+    { id: 'role_eletricista', name: 'Eletricista', description: 'Execução de manutenção elétrica.' },
     { id: 'role_costureira', name: 'Costureira', description: 'Operacao de costura.' },
     { id: 'role_almoxarife', name: 'Almoxarife', description: 'Controle de estoque.' },
   ]
   const people = [
     { id: 'person_maria', name: 'Maria Souza', role: 'Costureira' },
-    { id: 'person_joao', name: 'Joao Pereira', role: 'Mecanico' },
+    { id: 'person_joao', name: 'João Pereira', role: 'Mecânico' },
     { id: 'person_ana', name: 'Ana Lima', role: 'Almoxarife' },
     { id: 'person_carlos', name: 'Carlos Silva', role: 'Eletricista' },
   ]
@@ -120,7 +120,7 @@ function enrichSeedData(data) {
   for (const row of linkedRows) {
     if (row.item.group === 'EPIs') row.variation.destinations = ['dest_epi', 'dest_costura']
     else row.variation.destinations = ['dest_rama_texima', 'dest_jigger_1']
-    row.variation.location = row.item.group === 'EPIs' ? 'Almoxarifado > EPI' : 'Almoxarifado > Manutencao'
+    row.variation.location = row.item.group === 'EPIs' ? 'Almoxarifado > EPI' : 'Almoxarifado > Manutenção'
   }
 
   const movements = []
@@ -129,16 +129,16 @@ function enrichSeedData(data) {
   for (const row of historyRows) {
     movements.push(makeMovement(row, movIndex++, 'entrada', 10, '2025-04-10T08:15:00.000Z', { supplier: 'Fornecedor Modelo', docRef: 'NF 2025-0410', note: 'Entrada historica do seed.' }))
     movements.push(makeMovement(row, movIndex++, 'saida', 2, '2025-05-12T10:30:00.000Z', { requestedBy: 'Maria Souza', destination: row.item.group === 'EPIs' ? 'EPI' : 'Rama Texima', docRef: 'REQ 2025-0512', note: 'Saida historica do seed.' }))
-    movements.push(makeMovement(row, movIndex++, 'saida', 4, '2025-06-18T14:00:00.000Z', { requestedBy: 'Joao Pereira', destination: row.item.group === 'EPIs' ? 'Maquinas de Costura' : 'Jigger 1', docRef: 'REQ 2025-0618' }))
+    movements.push(makeMovement(row, movIndex++, 'saida', 4, '2025-06-18T14:00:00.000Z', { requestedBy: 'João Pereira', destination: row.item.group === 'EPIs' ? 'Máquinas de Costura' : 'Jigger 1', docRef: 'REQ 2025-0618' }))
     movements.push(makeMovement(row, movIndex++, 'entrada', 4, '2025-09-05T09:45:00.000Z', { supplier: 'Fornecedor Modelo', docRef: 'PC 2025-0905' }))
     movements.push(makeMovement(row, movIndex++, 'saida', 3, '2026-01-22T11:20:00.000Z', { requestedBy: 'Carlos Silva', destination: row.item.group === 'EPIs' ? 'EPI' : 'Turbo 1', docRef: 'REQ 2026-0122' }))
-    movements.push(makeMovement(row, movIndex++, 'entrada', 1, '2026-04-08T16:10:00.000Z', { supplier: 'Ajuste de inventario', docRef: 'AJUSTE', note: 'Ajuste historico do seed.' }))
+    movements.push(makeMovement(row, movIndex++, 'entrada', 1, '2026-04-08T16:10:00.000Z', { supplier: 'Ajuste de inventário', docRef: 'AJUSTE', note: 'Ajuste histórico do seed.' }))
   }
 
   const osMaterial = findSeedRow(data, item => item.name === 'Disco de Corte') || historyRows[0]
   const motorMaterial = findSeedRow(data, item => item.name === 'Spray Lubrificante') || historyRows[1]
   const osMovement = osMaterial
-    ? makeMovement(osMaterial, movIndex++, 'saida', 2, '2026-03-18T13:40:00.000Z', { requestedBy: 'Joao Pereira', destination: 'Rama Texima', docRef: 'OS #101', note: 'Material adicionado via OS #101.' })
+    ? makeMovement(osMaterial, movIndex++, 'saida', 2, '2026-03-18T13:40:00.000Z', { requestedBy: 'João Pereira', destination: 'Rama Texima', docRef: 'OS #101', note: 'Material adicionado via OS #101.' })
     : null
   const motorOsMovement = motorMaterial
     ? makeMovement(motorMaterial, movIndex++, 'saida', 1, '2026-04-22T15:05:00.000Z', { requestedBy: 'Carlos Silva', destination: 'Oficina', docRef: 'OS #103', note: 'Material adicionado via OS de motor #103.' })
@@ -175,7 +175,7 @@ function enrichSeedData(data) {
       destinationId: 'dest_jigger_1',
       destinationName: 'Jigger 1',
       status: 'em_manutencao',
-      notes: 'Motor em manutencao preventiva.',
+      notes: 'Motor em manutenção preventiva.',
       createdAt: '2025-08-11T08:00:00.000Z',
       updatedAt: '2026-04-28T12:00:00.000Z',
     },
@@ -214,9 +214,9 @@ function enrichSeedData(data) {
       maintenanceStartTime: '13:00',
       maintenanceEndDate: '2026-03-18',
       maintenanceEndTime: '15:00',
-      maintenanceProfessional: 'Joao Pereira',
+      maintenanceProfessional: 'João Pereira',
       maintenanceMaterials: 'Disco e insumos de limpeza.',
-      maintenanceNote: 'Servico concluido.',
+      maintenanceNote: 'Serviço concluído.',
       createdAt: '2026-03-18T08:30:00.000Z',
     },
     {
@@ -226,7 +226,7 @@ function enrichSeedData(data) {
       destinationId: 'dest_jigger_1',
       destinationName: 'Jigger 1',
       equipment: 'Jigger 1',
-      serviceType: 'Eletrica',
+      serviceType: 'Elétrica',
       requestDate: '2026-04-12',
       requestTime: '09:10',
       requestedBy: 'Carlos Silva',
@@ -251,7 +251,7 @@ function enrichSeedData(data) {
       serviceType: 'Outros',
       requestDate: '2026-04-22',
       requestTime: '09:00',
-      requestedBy: 'Joao Pereira',
+      requestedBy: 'João Pereira',
       note: 'Revisao preventiva.',
       maintenanceStartDate: '2026-04-22',
       maintenanceStartTime: '10:00',
@@ -325,7 +325,7 @@ function enrichSeedData(data) {
     { id: 'mev_seed_azul_1', motorId: 'motor_azul', workOrderId: 'wo_seed_103', eventType: 'revisado', eventDate: '2026-04-22T09:00:00.000Z', fromDestination: 'Rama Texima', performedBy: 'Carlos Silva', notes: 'Revisao preventiva.' },
     { id: 'mev_seed_azul_2', motorId: 'motor_azul', workOrderId: 'wo_seed_103', eventType: 'movimentado', eventDate: '2026-04-22T16:00:00.000Z', fromDestination: 'Oficina', toDestination: 'Rama Texima', performedBy: 'Carlos Silva', notes: 'Retorno para operacao.' },
     { id: 'mev_seed_verde_1', motorId: 'motor_verde', workOrderId: 'wo_seed_104', eventType: 'rebobinado', eventDate: '2026-04-28T14:20:00.000Z', fromDestination: 'Jigger 1', toDestination: 'Americana Motores', performedBy: 'Americana Motores', notes: 'Enviado para rebobinamento externo.' },
-    { id: 'mev_seed_reserva_1', motorId: 'motor_reserva', eventType: 'observacao', eventDate: '2026-02-12T11:00:00.000Z', fromDestination: 'Turbo 1', performedBy: 'Joao Pereira', notes: 'Motor reserva testado.' },
+    { id: 'mev_seed_reserva_1', motorId: 'motor_reserva', eventType: 'observacao', eventDate: '2026-02-12T11:00:00.000Z', fromDestination: 'Turbo 1', performedBy: 'João Pereira', notes: 'Motor reserva testado.' },
   ]
 
   return {

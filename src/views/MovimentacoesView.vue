@@ -51,14 +51,16 @@ function focusRef(target) {
 }
 
 // ===== Sub-tabs =====
-const movementSubTabs = ['entrada', 'saida']
+const movementSubTabs = ['entrada', 'saida', 'rapida']
 const validSubTabs = [...movementSubTabs, 'historico', 'resumo']
-const activeSubTab = ref(validSubTabs.includes(props.initialSubTab) ? props.initialSubTab : 'entrada')
+const initialSubTab = props.initialSubTab === 'entradaRapida' || props.initialSubTab === 'saidaRapida' ? 'rapida' : props.initialSubTab
+const activeSubTab = ref(validSubTabs.includes(initialSubTab) ? initialSubTab : 'entrada')
 
 const visibleSubTabs = computed(() => {
   const all = [
     { id: 'entrada',   label: 'Entrada',   icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6' },
     { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
+    { id: 'rapida',    label: 'Rápida',    icon: 'M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3' },
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
     { id: 'resumo',    label: 'Resumo por Destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
   ]
@@ -71,8 +73,8 @@ watch(isLoggedIn, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubT
 function switchSubTab(tab) {
   if (!validSubTabs.includes(tab) || activeSubTab.value === tab) return
   const keepMovementContext =
-    movementSubTabs.includes(activeSubTab.value) &&
-    movementSubTabs.includes(tab) &&
+    ['entrada', 'saida'].includes(activeSubTab.value) &&
+    ['entrada', 'saida'].includes(tab) &&
     step.value > 1
 
   suppressFlowReset.value = true
@@ -132,6 +134,39 @@ const personSelectVal = ref('')
 const destSelectVal = ref('')
 const movementDestinationId = ref('')
 const appliedPrefillKey = ref('')
+const activeQuickMovementType = ref(props.initialSubTab === 'entradaRapida' ? 'entrada' : 'saida')
+
+// ===== Entrada rapida =====
+const quickEntrySearch = ref('')
+const quickEntrySelected = ref(null)
+const quickEntryQty = ref('1')
+const quickEntrySupplier = ref('')
+const quickEntryUnitCost = ref('')
+const quickEntryDocType = ref('sem')
+const quickEntryDocRef = ref('')
+const quickEntryNote = ref('')
+const quickEntryQueue = ref([])
+const quickEntryPending = ref(false)
+const quickEntryAttempted = ref(false)
+const quickEntrySupplierDropdownOpen = ref(false)
+const quickEntryDocDropdownOpen = ref(false)
+const quickEntrySearchInputEl = ref(null)
+
+// ===== Saida rapida =====
+const quickExitSearch = ref('')
+const quickExitSelected = ref(null)
+const quickExitQty = ref('1')
+const quickExitRequestedBy = ref('')
+const quickExitRequestedByPersonId = ref('')
+const quickExitPersonDropdownOpen = ref(false)
+const quickExitDestinationId = ref('')
+const quickExitDestinationName = ref('')
+const quickExitDestinationOther = ref(false)
+const quickExitNote = ref('')
+const quickExitQueue = ref([])
+const quickExitPending = ref(false)
+const quickExitAttempted = ref(false)
+const quickExitSearchInputEl = ref(null)
 
 function resetFlow() {
   step.value = 1
@@ -177,14 +212,71 @@ function adaptFormForSubTab(tab) {
   }
 }
 
+function applyRequestedByPrefill(prefill, tab) {
+  if (tab !== 'saida' || (!prefill.requestedBy && !prefill.requestedByPersonId)) return
+  const person = activePeople.value.find(p =>
+    (prefill.requestedByPersonId && p.id === prefill.requestedByPersonId) ||
+    normalizeText(p.name) === normalizeText(prefill.requestedBy)
+  )
+  personSelectVal.value = person?.name || prefill.requestedBy || ''
+  form.value.requestedBy = person?.name || prefill.requestedBy || ''
+  form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
+}
+
+function hierarchyFromPrefillTarget(prefill) {
+  if (!prefill?.targetType || !prefill?.targetKey) return null
+  if (prefill.targetType === 'grupo') return { group: prefill.targetKey, category: null, subcategory: null }
+  if (prefill.targetType === 'categoria') {
+    const [group, category] = String(prefill.targetKey).split('|')
+    return { group: group || null, category: category || null, subcategory: null }
+  }
+  if (prefill.targetType === 'subcategoria') {
+    const [group, category, subcategory] = String(prefill.targetKey).split('|')
+    return { group: group || null, category: category || null, subcategory: subcategory || null }
+  }
+  if (prefill.targetType === 'item') {
+    const item = items.value.find(i => i.id === prefill.targetKey)
+    if (!item) return null
+    return { item, group: item.group || null, category: item.category || null, subcategory: item.subcategory || null }
+  }
+  return null
+}
+
+function applyTargetPrefill(prefill, tab) {
+  const target = hierarchyFromPrefillTarget(prefill)
+  if (!target) return false
+  appliedPrefillKey.value = prefill.nonce || `${tab}:${prefill.targetType}:${prefill.targetKey}`
+  suppressFlowReset.value = true
+  activeSubTab.value = tab
+  resetFlow()
+  setActiveGroup(target.group)
+  setActiveCategory(target.category)
+  setActiveSubcategory(target.subcategory)
+  itemSearch.value = ''
+  applyRequestedByPrefill(prefill, tab)
+  if (target.item) {
+    selectedItem.value = target.item
+    step.value = 2
+    setViewingItem(target.item.id)
+  } else {
+    step.value = 1
+  }
+  nextTick(() => {
+    suppressFlowReset.value = false
+    if (!target.item) focusRef(searchInputEl)
+  })
+  return true
+}
+
 function applyMovementPrefill(prefill) {
   if (!prefill || !isLoggedIn.value) return
   const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
-  const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}`
+  const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}:${prefill.targetType || ''}:${prefill.targetKey || ''}`
   if (appliedPrefillKey.value === prefillKey) return
   const item = items.value.find(i => i.id === prefill.itemId)
   const variation = variations.value.find(v => v.id === prefill.variationId)
   if (!item || !variation) {
+    if (applyTargetPrefill(prefill, tab)) return
     if (!items.value.length || !variations.value.length) return
     appliedPrefillKey.value = prefillKey
     error('Item ou variação não encontrada para movimentação rápida.')
@@ -198,15 +290,7 @@ function applyMovementPrefill(prefill) {
   selectedItem.value = item
   selectedVariation.value = variation
   step.value = 3
-  if (tab === 'saida' && (prefill.requestedBy || prefill.requestedByPersonId)) {
-    const person = activePeople.value.find(p =>
-      (prefill.requestedByPersonId && p.id === prefill.requestedByPersonId) ||
-      normalizeText(p.name) === normalizeText(prefill.requestedBy)
-    )
-    personSelectVal.value = person?.name || prefill.requestedBy || ''
-    form.value.requestedBy = person?.name || prefill.requestedBy || ''
-    form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
-  }
+  applyRequestedByPrefill(prefill, tab)
   setViewingItem(item.id)
   nextTick(() => {
     suppressFlowReset.value = false
@@ -219,10 +303,13 @@ watch(() => props.initialSubTab, tab => {
     applyMovementPrefill(props.prefillMovement)
     return
   }
-  if (!tab || activeSubTab.value === tab) return
-  if (!validSubTabs.includes(tab)) return
+  if (tab === 'entradaRapida') activeQuickMovementType.value = 'entrada'
+  if (tab === 'saidaRapida') activeQuickMovementType.value = 'saida'
+  const normalizedTab = tab === 'entradaRapida' || tab === 'saidaRapida' ? 'rapida' : tab
+  if (!normalizedTab || activeSubTab.value === normalizedTab) return
+  if (!validSubTabs.includes(normalizedTab)) return
   suppressFlowReset.value = true
-  activeSubTab.value = tab
+  activeSubTab.value = normalizedTab
   resetFlow()
   nextTick(() => {
     suppressFlowReset.value = false
@@ -304,30 +391,117 @@ function normalizeText(value) {
 
 const searchNorm = computed(() => normalizeText(itemSearch.value))
 
+function searchTokens(value) {
+  return normalizeText(value).split(/\s+/).filter(Boolean)
+}
+
+function itemSearchText(item) {
+  return normalizeText([
+    item.name,
+    item.group,
+    item.category,
+    item.subcategory,
+    item.unit,
+    item.location,
+  ].filter(Boolean).join(' '))
+}
+
+function variationSearchText(item, variation) {
+  return normalizeText([
+    itemSearchText(item),
+    variation.location,
+    ...Object.values(variation.values || {}),
+    ...Object.entries(variation.values || {}).flatMap(([key, value]) => [key, value]),
+    ...Object.values(variation.extras || {}),
+    ...Object.entries(variation.extras || {}).flatMap(([key, value]) => [key, value]),
+  ].filter(Boolean).join(' '))
+}
+
+function matchesSearchTokens(text, tokens) {
+  return tokens.every(token => text.includes(token))
+}
+
+const variationResults = computed(() => {
+  const tokens = searchTokens(itemSearch.value)
+  if (!tokens.length) return []
+  const results = []
+  for (const item of items.value) {
+    for (const variation of getVariationsForItem(item.id)) {
+      if (matchesSearchTokens(variationSearchText(item, variation), tokens)) {
+        results.push({ item, variation })
+      }
+    }
+  }
+  return results
+    .sort((a, b) =>
+      a.item.name.localeCompare(b.item.name, 'pt-BR', { sensitivity: 'base', numeric: true }) ||
+      variationLabel(a.variation, a.item).localeCompare(variationLabel(b.variation, b.item), 'pt-BR', { sensitivity: 'base', numeric: true })
+    )
+    .slice(0, 50)
+})
+
+const quickExitResults = computed(() => {
+  const tokens = searchTokens(quickExitSearch.value)
+  if (!tokens.length) return []
+  const results = []
+  for (const item of items.value) {
+    for (const variation of getVariationsForItem(item.id)) {
+      if (matchesSearchTokens(variationSearchText(item, variation), tokens)) {
+        results.push({ item, variation })
+      }
+    }
+  }
+  return results
+    .sort((a, b) =>
+      a.item.name.localeCompare(b.item.name, 'pt-BR', { sensitivity: 'base', numeric: true }) ||
+      variationLabel(a.variation, a.item).localeCompare(variationLabel(b.variation, b.item), 'pt-BR', { sensitivity: 'base', numeric: true })
+    )
+    .slice(0, 30)
+})
+
+const quickEntryResults = computed(() => {
+  const tokens = searchTokens(quickEntrySearch.value)
+  if (!tokens.length) return []
+  const results = []
+  for (const item of items.value) {
+    for (const variation of getVariationsForItem(item.id)) {
+      if (matchesSearchTokens(variationSearchText(item, variation), tokens)) {
+        results.push({ item, variation })
+      }
+    }
+  }
+  return results
+    .sort((a, b) =>
+      a.item.name.localeCompare(b.item.name, 'pt-BR', { sensitivity: 'base', numeric: true }) ||
+      variationLabel(a.variation, a.item).localeCompare(variationLabel(b.variation, b.item), 'pt-BR', { sensitivity: 'base', numeric: true })
+    )
+    .slice(0, 30)
+})
+
 // When searching, search across all items; when browsing, use navigation
 const itemResults = computed(() => {
-  const q = searchNorm.value
-  if (!q) return []
+  const tokens = searchTokens(itemSearch.value)
+  if (!tokens.length) return []
   return items.value.filter(item => {
-    if (
-      normalizeText(item.name).includes(q) ||
-      normalizeText(item.group).includes(q) ||
-      normalizeText(item.category).includes(q) ||
-      normalizeText(item.subcategory).includes(q)
-    ) return true
+    if (matchesSearchTokens(itemSearchText(item), tokens)) return true
     const vars = getVariationsForItem(item.id)
-    return vars.some(v => {
-      if (Object.values(v.values || {}).some(val => normalizeText(val).includes(q))) return true
-      if (Object.values(v.extras || {}).some(val => normalizeText(val).includes(q))) return true
-      if (normalizeText(v.location).includes(q)) return true
-      return false
-    })
+    return vars.some(v => matchesSearchTokens(variationSearchText(item, v), tokens))
   }).slice(0, 50)
 })
 
 function selectItem(item) {
   selectedItem.value = item
   step.value = 2
+}
+
+function selectVariationResult(result) {
+  if (activeSubTab.value === 'saida' && result.variation.stock <= 0) {
+    error('Esta variacao esta sem estoque para saida.')
+    return
+  }
+  selectedItem.value = result.item
+  itemSearch.value = ''
+  selectVariation(result.variation)
 }
 
 function findSingleHierarchySearchMatch(q) {
@@ -355,6 +529,10 @@ function findSingleHierarchySearchMatch(q) {
 function handleItemSearchEnter() {
   const q = searchNorm.value
   if (!q) return
+  if (variationResults.value.length === 1) {
+    selectVariationResult(variationResults.value[0])
+    return
+  }
   if (itemResults.value.length === 1) {
     selectItem(itemResults.value[0])
     return
@@ -585,6 +763,347 @@ const formBlockReason = computed(() => {
 const visibleFormBlockReason = computed(() =>
   movementFormAttempted.value ? formBlockReason.value : ''
 )
+
+const quickEntryQtyParsed = computed(() => {
+  const n = Number(quickEntryQty.value)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+
+const quickEntryUnitCostParsed = computed(() => {
+  if (quickEntryUnitCost.value === '' || quickEntryUnitCost.value === null || quickEntryUnitCost.value === undefined) return null
+  const n = Number(quickEntryUnitCost.value)
+  return Number.isFinite(n) && n >= 0 ? n : null
+})
+
+const quickEntryFilteredSuppliers = computed(() => {
+  const q = String(quickEntrySupplier.value || '').trim().toLowerCase()
+  if (!q) return activeSuppliers.value
+  return activeSuppliers.value.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    String(s.description || '').toLowerCase().includes(q)
+  )
+})
+
+const quickEntrySupplierNameExists = computed(() => {
+  const q = String(quickEntrySupplier.value || '').trim().toLowerCase()
+  return Boolean(q && activeSuppliers.value.some(s => s.name.toLowerCase() === q))
+})
+
+const quickEntryDocText = computed(() =>
+  quickEntryDocType.value && quickEntryDocType.value !== 'sem' && quickEntryDocRef.value.trim()
+    ? `${quickEntryDocType.value === 'nf' ? 'NF' : 'PC'} ${quickEntryDocRef.value.trim()}`
+    : ''
+)
+
+const quickEntryCanAdd = computed(() =>
+  Boolean(
+    quickEntrySelected.value &&
+    quickEntryQtyParsed.value &&
+    (quickEntryUnitCost.value === '' || quickEntryUnitCostParsed.value !== null)
+  )
+)
+
+const quickEntryBlockReason = computed(() => {
+  if (!quickEntrySelected.value) return 'Selecione uma variação.'
+  if (!quickEntryQtyParsed.value) return 'Informe uma quantidade maior que zero.'
+  if (quickEntryUnitCost.value !== '' && quickEntryUnitCostParsed.value === null) return 'Informe um custo válido ou deixe vazio.'
+  return ''
+})
+
+function selectQuickEntryResult(result) {
+  quickEntrySelected.value = result
+  quickEntrySearch.value = ''
+  quickEntryQty.value = '1'
+  quickEntryAttempted.value = false
+}
+
+function handleQuickEntrySearchEnter() {
+  if (quickEntryResults.value.length === 1) selectQuickEntryResult(quickEntryResults.value[0])
+}
+
+function setQuickMovementType(type) {
+  activeQuickMovementType.value = type
+  quickEntrySupplierDropdownOpen.value = false
+  quickEntryDocDropdownOpen.value = false
+  quickExitPersonDropdownOpen.value = false
+  nextTick(() => focusRef(type === 'entrada' ? quickEntrySearchInputEl : quickExitSearchInputEl))
+}
+
+function selectQuickEntrySupplier(supplier) {
+  quickEntrySupplier.value = supplier.name
+  quickEntrySupplierDropdownOpen.value = false
+}
+
+function handleQuickEntrySupplierEnter() {
+  if (quickEntryFilteredSuppliers.value.length === 1) selectQuickEntrySupplier(quickEntryFilteredSuppliers.value[0])
+}
+
+function selectQuickEntryDocType(v) {
+  quickEntryDocType.value = v
+  if (v === 'sem') quickEntryDocRef.value = ''
+}
+
+function quickEntryLineFromSelection() {
+  const { item, variation } = quickEntrySelected.value
+  return {
+    uid: `quick_entrada_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: 'entrada',
+    variationId: variation.id,
+    itemId: item.id,
+    itemName: item.name,
+    itemGroup: item.group,
+    itemCategory: item.category || '',
+    itemSubcategory: item.subcategory || '',
+    itemUnit: item.unit,
+    variationValues: { ...(variation.values || {}) },
+    variationExtras: { ...(variation.extras || {}) },
+    qty: quickEntryQtyParsed.value,
+    supplier: quickEntrySupplier.value,
+    unitCost: quickEntryUnitCostParsed.value,
+    requestedBy: '',
+    requestedByPersonId: '',
+    destination: '',
+    destinationId: '',
+    destinationOther: false,
+    docRef: quickEntryDocText.value,
+    note: quickEntryNote.value,
+  }
+}
+
+function addQuickEntryLine() {
+  quickEntryAttempted.value = true
+  if (!quickEntryCanAdd.value) {
+    if (quickEntryBlockReason.value) error(quickEntryBlockReason.value)
+    return
+  }
+  quickEntryQueue.value = [...quickEntryQueue.value, quickEntryLineFromSelection()]
+  quickEntrySelected.value = null
+  quickEntrySearch.value = ''
+  quickEntryQty.value = '1'
+  quickEntryNote.value = ''
+  quickEntryAttempted.value = false
+  nextTick(() => focusRef(quickEntrySearchInputEl))
+}
+
+function removeQuickEntryLine(uid) {
+  quickEntryQueue.value = quickEntryQueue.value.filter(line => line.uid !== uid)
+}
+
+function clearQuickEntryQueue() {
+  quickEntryQueue.value = []
+}
+
+async function confirmQuickEntryQueue() {
+  if (quickEntryPending.value || !quickEntryQueue.value.length) return
+  try {
+    quickEntryPending.value = true
+    await ensureSuppliersForLines(quickEntryQueue.value)
+    const created = await addMovementBatch('entrada', quickEntryQueue.value, {})
+    for (const movement of created) {
+      const updatedVar = variations.value.find(v => v.id === movement.variationId)
+      if (updatedVar) updatedVar.stock = movement.stockAfter
+    }
+    success(`${created.length} entrada${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
+    quickEntryQueue.value = []
+    nextTick(() => focusRef(quickEntrySearchInputEl))
+  } catch (e) {
+    error(e.message)
+  } finally {
+    quickEntryPending.value = false
+  }
+}
+
+const quickExitQtyParsed = computed(() => {
+  const n = Number(quickExitQty.value)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+
+const quickExitFilteredPeople = computed(() => {
+  const q = String(quickExitRequestedBy.value || '').trim().toLowerCase()
+  if (!q) return activePeople.value
+  return activePeople.value.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    String(p.role || '').toLowerCase().includes(q)
+  )
+})
+
+const quickExitPersonIsValid = computed(() =>
+  activePeople.value.some(p =>
+    p.id === quickExitRequestedByPersonId.value &&
+    p.name.toLowerCase() === String(quickExitRequestedBy.value || '').trim().toLowerCase()
+  )
+)
+
+const quickExitDestinationText = computed(() =>
+  quickExitDestinationOther.value ? quickExitDestinationName.value : getDestFullName(quickExitDestinationId.value)
+)
+
+const quickExitDestinationValid = computed(() =>
+  quickExitDestinationOther.value
+    ? quickExitDestinationName.value.trim().length > 0
+    : Boolean(quickExitDestinationId.value && quickExitDestinationText.value)
+)
+
+const quickExitSelectedQueuedQty = computed(() => {
+  const variationId = quickExitSelected.value?.variation?.id
+  if (!variationId) return 0
+  return quickExitQueue.value
+    .filter(line => line.variationId === variationId)
+    .reduce((sum, line) => sum + Number(line.qty || 0), 0)
+})
+
+const quickExitAvailableStock = computed(() => {
+  const stock = Number(quickExitSelected.value?.variation?.stock || 0)
+  return Math.max(0, stock - quickExitSelectedQueuedQty.value)
+})
+
+const quickExitCanAdd = computed(() =>
+  Boolean(
+    quickExitSelected.value &&
+    quickExitQtyParsed.value &&
+    quickExitQtyParsed.value <= quickExitAvailableStock.value &&
+    quickExitPersonIsValid.value &&
+    quickExitDestinationValid.value
+  )
+)
+
+const quickExitBlockReason = computed(() => {
+  if (!quickExitSelected.value) return 'Selecione uma variação.'
+  if (!quickExitQtyParsed.value) return 'Informe uma quantidade maior que zero.'
+  if (quickExitQtyParsed.value > quickExitAvailableStock.value) return `Estoque disponível: ${quickExitAvailableStock.value} ${quickExitSelected.value.item.unit}.`
+  if (!quickExitRequestedBy.value.trim()) return 'Selecione quem retirou.'
+  if (!quickExitPersonIsValid.value) return 'Quem retirou precisa ser uma pessoa cadastrada.'
+  if (!quickExitDestinationValid.value) return 'Selecione ou informe o destino.'
+  return ''
+})
+
+function selectQuickExitResult(result) {
+  if (result.variation.stock <= 0) {
+    error('Esta variação está sem estoque para saída.')
+    return
+  }
+  quickExitSelected.value = result
+  quickExitSearch.value = ''
+  quickExitQty.value = '1'
+  quickExitAttempted.value = false
+}
+
+function handleQuickExitSearchEnter() {
+  if (quickExitResults.value.length === 1) selectQuickExitResult(quickExitResults.value[0])
+}
+
+function selectQuickExitPerson(person) {
+  quickExitRequestedBy.value = person.name
+  quickExitRequestedByPersonId.value = person.id
+  quickExitPersonDropdownOpen.value = false
+}
+
+function syncQuickExitPersonFromInput() {
+  const q = String(quickExitRequestedBy.value || '').trim().toLowerCase()
+  const exact = activePeople.value.find(p => p.name.toLowerCase() === q)
+  quickExitRequestedByPersonId.value = exact?.id || ''
+  quickExitPersonDropdownOpen.value = true
+}
+
+function handleQuickExitPersonEnter() {
+  if (quickExitFilteredPeople.value.length === 1) selectQuickExitPerson(quickExitFilteredPeople.value[0])
+}
+
+function handleQuickExitDestinationSelect({ fullName }) {
+  quickExitDestinationOther.value = false
+  quickExitDestinationName.value = fullName
+}
+
+function handleQuickExitDestinationClear() {
+  quickExitDestinationId.value = ''
+  quickExitDestinationName.value = ''
+  quickExitDestinationOther.value = false
+}
+
+function handleQuickExitDestinationOther() {
+  quickExitDestinationId.value = ''
+  quickExitDestinationName.value = ''
+  quickExitDestinationOther.value = true
+}
+
+function quickExitLineFromSelection() {
+  const { item, variation } = quickExitSelected.value
+  return {
+    uid: `quick_saida_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: 'saida',
+    variationId: variation.id,
+    itemId: item.id,
+    itemName: item.name,
+    itemGroup: item.group,
+    itemCategory: item.category || '',
+    itemSubcategory: item.subcategory || '',
+    itemUnit: item.unit,
+    variationValues: { ...(variation.values || {}) },
+    variationExtras: { ...(variation.extras || {}) },
+    qty: quickExitQtyParsed.value,
+    supplier: '',
+    unitCost: null,
+    requestedBy: quickExitRequestedBy.value,
+    requestedByPersonId: quickExitRequestedByPersonId.value,
+    destination: quickExitDestinationText.value,
+    destinationId: quickExitDestinationOther.value ? '' : quickExitDestinationId.value,
+    destinationOther: quickExitDestinationOther.value,
+    docRef: '',
+    note: quickExitNote.value,
+  }
+}
+
+function addQuickExitLine() {
+  quickExitAttempted.value = true
+  if (!quickExitCanAdd.value) {
+    if (quickExitBlockReason.value) error(quickExitBlockReason.value)
+    return
+  }
+  quickExitQueue.value = [...quickExitQueue.value, quickExitLineFromSelection()]
+  quickExitSelected.value = null
+  quickExitSearch.value = ''
+  quickExitQty.value = '1'
+  quickExitNote.value = ''
+  quickExitAttempted.value = false
+  nextTick(() => focusRef(quickExitSearchInputEl))
+}
+
+function removeQuickExitLine(uid) {
+  quickExitQueue.value = quickExitQueue.value.filter(line => line.uid !== uid)
+}
+
+function clearQuickExitQueue() {
+  quickExitQueue.value = []
+}
+
+async function confirmQuickExitQueue() {
+  if (quickExitPending.value || !quickExitQueue.value.length) return
+  const totals = new Map()
+  for (const line of quickExitQueue.value) totals.set(line.variationId, (totals.get(line.variationId) || 0) + Number(line.qty || 0))
+  for (const [variationId, qty] of totals.entries()) {
+    const liveVar = variations.value.find(v => v.id === variationId)
+    if (!liveVar) { error('Uma variação da fila não foi encontrada.'); return }
+    if (qty > Number(liveVar.stock || 0)) {
+      error(`Estoque insuficiente para ${quickExitQueue.value.find(line => line.variationId === variationId)?.itemName || 'item da fila'}.`)
+      return
+    }
+  }
+  try {
+    quickExitPending.value = true
+    const created = await addMovementBatch('saida', quickExitQueue.value, {})
+    for (const movement of created) {
+      const updatedVar = variations.value.find(v => v.id === movement.variationId)
+      if (updatedVar) updatedVar.stock = movement.stockAfter
+    }
+    success(`${created.length} saída${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
+    quickExitQueue.value = []
+    nextTick(() => focusRef(quickExitSearchInputEl))
+  } catch (e) {
+    error(e.message)
+  } finally {
+    quickExitPending.value = false
+  }
+}
 
 // Work orders filtered by the destination selected in the saída form
 const filteredWorkOrders = computed(() => {
@@ -1058,9 +1577,50 @@ defineExpose({
 
         <!-- SEARCH MODE: show flat results when searching -->
         <template v-else-if="searchNorm">
-          <div v-if="itemResults.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
+          <div v-if="variationResults.length === 0 && itemResults.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
             Nenhum item encontrado para "<span class="italic">{{ itemSearch }}</span>".
           </div>
+          <div v-else-if="variationResults.length" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700/50 overflow-hidden">
+            <button
+              v-for="result in variationResults"
+              :key="result.variation.id"
+              type="button"
+              class="group w-full text-left px-4 py-3 transition-colors"
+              :class="activeSubTab === 'saida' && result.variation.stock <= 0
+                ? 'opacity-45 cursor-not-allowed'
+                : 'hover:bg-primary-50 dark:hover:bg-primary-900/20 cursor-pointer'"
+              :disabled="activeSubTab === 'saida' && result.variation.stock <= 0"
+              @click="selectVariationResult(result)"
+            >
+              <div class="flex items-center gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">{{ result.item.name }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ hierarchyLabel(result.item) }}</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300 line-clamp-2">{{ variationLabel(result.variation, result.item) }}</p>
+                </div>
+                <div class="hidden min-w-32 text-right text-xs text-gray-400 dark:text-gray-500 sm:block">
+                  <p>{{ result.variation.location || result.item.location || 'Sem local' }}</p>
+                  <p v-if="result.variation.destinations?.length" class="truncate">
+                    {{ result.variation.destinations.map(id => getDestinationName(id)).filter(Boolean).join(', ') }}
+                  </p>
+                </div>
+                <div class="w-24 flex-shrink-0 text-right">
+                  <p class="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Estoque</p>
+                  <p
+                    class="text-sm font-bold tabular-nums"
+                    :class="result.variation.stock <= 0
+                      ? 'text-red-500 dark:text-red-400'
+                      : result.variation.minStock > 0 && result.variation.stock <= result.variation.minStock
+                        ? 'text-amber-500 dark:text-amber-400'
+                        : 'text-gray-800 dark:text-gray-100'"
+                  >
+                    {{ result.variation.stock }} {{ result.item.unit }}
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+
           <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             <button
               v-for="item in itemResults"
@@ -1382,10 +1942,21 @@ defineExpose({
       </div>
 
       <!-- ===== STEP 3: Form ===== -->
-      <div v-else-if="step === 3" class="rounded-xl border border-gray-200 dark:border-gray-700">
+      <div
+        v-else-if="step === 3"
+        class="rounded-xl border shadow-sm"
+        :class="activeSubTab === 'entrada'
+          ? 'border-green-400/70 dark:border-green-700/80'
+          : 'border-red-400/70 dark:border-red-700/80'"
+      >
 
         <!-- Header -->
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
+        <div
+          class="flex items-center gap-3 px-4 py-3 border-b rounded-t-xl"
+          :class="activeSubTab === 'entrada'
+            ? 'border-green-200 bg-green-50/80 dark:border-green-900/60 dark:bg-green-950/20'
+            : 'border-red-200 bg-red-50/80 dark:border-red-900/60 dark:bg-red-950/20'"
+        >
           <button
             class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
             title="Voltar para variações"
@@ -1404,7 +1975,8 @@ defineExpose({
             {{ activeSubTab === 'entrada' ? 'Entrada' : 'Saída' }}
           </span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Movimentando agora</p>
+            <p class="text-base font-semibold text-gray-800 dark:text-gray-100 truncate">{{ selectedItem?.name }}</p>
             <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">
               {{ hierarchyLabel(selectedItem) }} · {{ variationLabel(selectedVariation, selectedItem) }}
             </p>
@@ -1709,6 +2281,538 @@ defineExpose({
 
       </div>
 
+    </template>
+
+    <!-- ======================================================= -->
+    <!-- MOVIMENTACAO RAPIDA                                     -->
+    <!-- ======================================================= -->
+    <template v-else-if="activeSubTab === 'rapida'">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Movimentação rápida</p>
+          <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Lançar itens em sequência</h2>
+        </div>
+        <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900">
+          <button
+            type="button"
+            class="rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+            :class="activeQuickMovementType === 'saida'
+              ? 'bg-red-600 text-white shadow-sm'
+              : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'"
+            @click="setQuickMovementType('saida')"
+          >
+            Saída
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+            :class="activeQuickMovementType === 'entrada'
+              ? 'bg-green-600 text-white shadow-sm'
+              : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'"
+            @click="setQuickMovementType('entrada')"
+          >
+            Entrada
+          </button>
+        </div>
+      </div>
+
+      <div v-if="activeQuickMovementType === 'entrada'" class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+          <div class="mb-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Entrada rapida</p>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar entradas em sequencia</h2>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
+            <div class="lg:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
+              <div class="relative">
+                <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  ref="quickEntrySearchInputEl"
+                  v-model="quickEntrySearch"
+                  type="text"
+                  placeholder="Ex: luva latex volk p ca15100..."
+                  class="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  @keydown.enter.prevent="handleQuickEntrySearchEnter"
+                />
+                <button
+                  v-if="quickEntrySearch"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  type="button"
+                  @click="quickEntrySearch = ''"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="quickEntrySearch && quickEntryResults.length" class="lg:col-span-2 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700/60 overflow-hidden">
+              <button
+                v-for="result in quickEntryResults"
+                :key="result.variation.id"
+                type="button"
+                class="w-full px-4 py-3 text-left transition-colors hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                @click="selectQuickEntryResult(result)"
+              >
+                <div class="flex items-center gap-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ result.item.name }}</p>
+                    <p class="mt-0.5 truncate text-[11px] text-gray-400 dark:text-gray-500">{{ hierarchyLabel(result.item) }}</p>
+                    <p class="mt-1 line-clamp-2 text-xs text-gray-600 dark:text-gray-300">{{ variationLabel(result.variation, result.item) }}</p>
+                  </div>
+                  <div class="w-24 flex-shrink-0 text-right">
+                    <p class="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Estoque</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ result.variation.stock }} {{ result.item.unit }}</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            <p v-else-if="quickEntrySearch" class="lg:col-span-2 rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+              Nenhuma variação encontrada.
+            </p>
+
+            <div v-if="quickEntrySelected" class="lg:col-span-2 rounded-lg border border-green-200 bg-green-50/70 p-3 dark:border-green-900/50 dark:bg-green-900/10">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ quickEntrySelected.item.name }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ hierarchyLabel(quickEntrySelected.item) }}</p>
+                  <p class="mt-1 text-xs text-gray-700 dark:text-gray-300">{{ variationLabel(quickEntrySelected.variation, quickEntrySelected.item) }}</p>
+                </div>
+                <div class="text-right text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {{ quickEntrySelected.variation.stock }} {{ quickEntrySelected.item.unit }}
+                  <p class="text-[11px] font-normal uppercase tracking-wider text-gray-400 dark:text-gray-500">atual</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quantidade</label>
+              <input
+                v-model="quickEntryQty"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:outline-none focus:ring-1 dark:bg-gray-800 dark:text-gray-100"
+                :class="quickEntryAttempted && !quickEntryQtyParsed
+                  ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500 dark:border-amber-700'
+                  : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'"
+                @keydown.enter.prevent="addQuickEntryLine"
+              />
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Custo unitario</label>
+              <input
+                v-model="quickEntryUnitCost"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Opcional"
+                class="w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:outline-none focus:ring-1 dark:bg-gray-800 dark:text-gray-100"
+                :class="quickEntryAttempted && quickEntryUnitCost !== '' && quickEntryUnitCostParsed === null
+                  ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500 dark:border-amber-700'
+                  : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'"
+                @keydown.enter.prevent="addQuickEntryLine"
+              />
+            </div>
+
+            <div class="relative">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Fornecedor</label>
+              <div v-if="quickEntrySupplierDropdownOpen" class="fixed inset-0 z-10" @click="quickEntrySupplierDropdownOpen = false"></div>
+              <input
+                v-model="quickEntrySupplier"
+                type="text"
+                placeholder="Buscar ou digitar fornecedor..."
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                @focus="quickEntrySupplierDropdownOpen = true"
+                @input="quickEntrySupplierDropdownOpen = true"
+                @keydown.enter.prevent="handleQuickEntrySupplierEnter"
+              />
+              <div v-if="quickEntrySupplierDropdownOpen" class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <button
+                  v-for="supplier in quickEntryFilteredSuppliers"
+                  :key="supplier.id"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700/60"
+                  @mousedown.prevent="selectQuickEntrySupplier(supplier)"
+                >
+                  <span class="truncate font-medium">{{ supplier.name }}</span>
+                  <span v-if="supplier.description" class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">{{ supplier.description }}</span>
+                </button>
+                <p v-if="!quickEntryFilteredSuppliers.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">Nenhum fornecedor encontrado.</p>
+              </div>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                {{ quickEntrySupplier && !quickEntrySupplierNameExists ? 'Novo fornecedor sera cadastrado ao confirmar.' : 'Opcional.' }}
+              </p>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Nº Documento</label>
+              <div
+                class="flex items-stretch rounded-xl border transition-colors"
+                :class="quickEntryDocType !== 'sem' ? 'border-gray-300 dark:border-gray-600 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500' : 'border-gray-200 dark:border-gray-700'"
+              >
+                <div class="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700">
+                  <div v-if="quickEntryDocDropdownOpen" class="fixed inset-0 z-10" @click="quickEntryDocDropdownOpen = false"></div>
+                  <button
+                    type="button"
+                    class="flex h-full items-center gap-1.5 rounded-l-xl py-2 pl-3 pr-2 text-xs font-semibold transition-colors focus:outline-none"
+                    :class="quickEntryDocType !== 'sem'
+                      ? 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-gray-800/60 dark:text-gray-400 dark:hover:bg-gray-700/60'"
+                    @click="quickEntryDocDropdownOpen = !quickEntryDocDropdownOpen"
+                  >
+                    <span>{{ quickEntryDocType === 'nf' ? 'NF-e' : quickEntryDocType === 'pedido' ? 'PC' : 'Sem doc.' }}</span>
+                    <svg class="h-3.5 w-3.5 opacity-60 transition-transform duration-150" :class="quickEntryDocDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  <div
+                    v-if="quickEntryDocDropdownOpen"
+                    class="absolute left-0 top-full z-20 mt-1 min-w-[130px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <button
+                      v-for="opt in [{ v: 'sem', label: 'Sem doc.' }, { v: 'nf', label: 'NF-e' }, { v: 'pedido', label: 'PC' }]"
+                      :key="opt.v"
+                      type="button"
+                      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
+                      :class="quickEntryDocType === opt.v
+                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
+                        : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/60'"
+                      @click="selectQuickEntryDocType(opt.v); quickEntryDocDropdownOpen = false"
+                    >
+                      <svg v-if="quickEntryDocType === opt.v" class="h-3.5 w-3.5 flex-shrink-0 text-primary-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
+                      <span v-else class="w-3.5"></span>
+                      {{ opt.label }}
+                    </button>
+                  </div>
+                </div>
+                <input
+                  v-if="quickEntryDocType !== 'sem'"
+                  v-model="quickEntryDocRef"
+                  type="text"
+                  :placeholder="quickEntryDocType === 'nf' ? 'Numero da NF-e...' : 'Numero do pedido...'"
+                  class="min-w-0 flex-1 rounded-r-xl bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-600"
+                  @keydown.enter.prevent="addQuickEntryLine"
+                />
+                <span
+                  v-else
+                  class="flex flex-1 items-center rounded-r-xl bg-white px-3 text-xs italic text-gray-400 dark:bg-gray-800 dark:text-gray-500"
+                >Sem documento</span>
+              </div>
+            </div>
+
+            <div class="lg:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Observação</label>
+              <input
+                v-model="quickEntryNote"
+                type="text"
+                placeholder="Opcional..."
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                @keydown.enter.prevent="addQuickEntryLine"
+              />
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              :class="quickEntryCanAdd
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
+              @click="addQuickEntryLine"
+            >
+              Adicionar à fila
+            </button>
+            <p v-if="quickEntryAttempted && quickEntryBlockReason" class="text-xs text-amber-600 dark:text-amber-400">{{ quickEntryBlockReason }}</p>
+          </div>
+        </section>
+
+        <aside class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Fila de entrada</p>
+              <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ quickEntryQueue.length }} item{{ quickEntryQueue.length === 1 ? '' : 's' }}</p>
+            </div>
+            <button
+              v-if="quickEntryQueue.length"
+              type="button"
+              class="text-xs text-gray-400 hover:text-red-500"
+              @click="clearQuickEntryQueue"
+            >
+              Limpar
+            </button>
+          </div>
+
+          <div v-if="quickEntryQueue.length" class="max-h-[28rem] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+            <div v-for="line in quickEntryQueue" :key="line.uid" class="px-4 py-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ line.itemName }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ [line.itemGroup, line.itemCategory, line.itemSubcategory].filter(Boolean).join(' > ') }}</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                    {{ Object.entries(line.variationValues || {}).concat(Object.entries(line.variationExtras || {})).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(' · ') || 'Variação padrão' }}
+                  </p>
+                  <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                    {{ [line.supplier, line.unitCost !== null ? `Custo: R$ ${Number(line.unitCost).toFixed(2)}` : '', line.docRef].filter(Boolean).join(' · ') || 'Sem fornecedor/custo/doc.' }}
+                  </p>
+                </div>
+                <div class="flex-shrink-0 text-right">
+                  <p class="text-sm font-bold text-green-600 dark:text-green-400">+{{ line.qty }} {{ line.itemUnit }}</p>
+                  <button type="button" class="mt-2 text-xs text-red-500 hover:text-red-600" @click="removeQuickEntryLine(line.uid)">Remover</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="px-4 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+            Nenhuma entrada na fila.
+          </div>
+
+          <div class="border-t border-gray-200 p-4 dark:border-gray-700">
+            <button
+              type="button"
+              class="w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+              :class="quickEntryQueue.length && !quickEntryPending
+                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
+              :disabled="!quickEntryQueue.length || quickEntryPending"
+              @click="confirmQuickEntryQueue"
+            >
+              {{ quickEntryPending ? 'Confirmando...' : `Confirmar ${quickEntryQueue.length || ''} entrada${quickEntryQueue.length === 1 ? '' : 's'}` }}
+            </button>
+          </div>
+        </aside>
+      </div>
+
+    <!-- ======================================================= -->
+    <!-- SAIDA RAPIDA                                            -->
+    <!-- ======================================================= -->
+      <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+          <div class="mb-4">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Saida rapida</p>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar saidas em sequencia</h2>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
+            <div class="lg:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
+              <div class="relative">
+                <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  ref="quickExitSearchInputEl"
+                  v-model="quickExitSearch"
+                  type="text"
+                  placeholder="Ex: luva latex volk p ca15100..."
+                  class="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  @keydown.enter.prevent="handleQuickExitSearchEnter"
+                />
+                <button
+                  v-if="quickExitSearch"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  type="button"
+                  @click="quickExitSearch = ''"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="quickExitSearch && quickExitResults.length" class="lg:col-span-2 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700/60 overflow-hidden">
+              <button
+                v-for="result in quickExitResults"
+                :key="result.variation.id"
+                type="button"
+                class="w-full px-4 py-3 text-left transition-colors"
+                :class="result.variation.stock <= 0 ? 'cursor-not-allowed opacity-45' : 'hover:bg-primary-50 dark:hover:bg-primary-900/20'"
+                :disabled="result.variation.stock <= 0"
+                @click="selectQuickExitResult(result)"
+              >
+                <div class="flex items-center gap-4">
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ result.item.name }}</p>
+                    <p class="mt-0.5 truncate text-[11px] text-gray-400 dark:text-gray-500">{{ hierarchyLabel(result.item) }}</p>
+                    <p class="mt-1 line-clamp-2 text-xs text-gray-600 dark:text-gray-300">{{ variationLabel(result.variation, result.item) }}</p>
+                  </div>
+                  <div class="w-24 flex-shrink-0 text-right">
+                    <p class="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Estoque</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ result.variation.stock }} {{ result.item.unit }}</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            <p v-else-if="quickExitSearch" class="lg:col-span-2 rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+              Nenhuma variação encontrada.
+            </p>
+
+            <div v-if="quickExitSelected" class="lg:col-span-2 rounded-lg border border-primary-200 bg-primary-50/70 p-3 dark:border-primary-900/50 dark:bg-primary-900/10">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ quickExitSelected.item.name }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ hierarchyLabel(quickExitSelected.item) }}</p>
+                  <p class="mt-1 text-xs text-gray-700 dark:text-gray-300">{{ variationLabel(quickExitSelected.variation, quickExitSelected.item) }}</p>
+                </div>
+                <div class="text-right text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {{ quickExitAvailableStock }} {{ quickExitSelected.item.unit }}
+                  <p class="text-[11px] font-normal uppercase tracking-wider text-gray-400 dark:text-gray-500">disponivel</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quantidade</label>
+              <input
+                v-model="quickExitQty"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:outline-none focus:ring-1 dark:bg-gray-800 dark:text-gray-100"
+                :class="quickExitAttempted && (!quickExitQtyParsed || quickExitQtyParsed > quickExitAvailableStock)
+                  ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500 dark:border-amber-700'
+                  : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'"
+                @keydown.enter.prevent="addQuickExitLine"
+              />
+            </div>
+
+            <div class="relative">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Quem retirou</label>
+              <div v-if="quickExitPersonDropdownOpen" class="fixed inset-0 z-10" @click="quickExitPersonDropdownOpen = false"></div>
+              <input
+                v-model="quickExitRequestedBy"
+                type="text"
+                placeholder="Pessoa cadastrada..."
+                class="w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:outline-none focus:ring-1 dark:bg-gray-800 dark:text-gray-100"
+                :class="quickExitAttempted && quickExitRequestedBy && !quickExitPersonIsValid
+                  ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500 dark:border-amber-700'
+                  : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'"
+                @focus="quickExitPersonDropdownOpen = true"
+                @input="syncQuickExitPersonFromInput"
+                @keydown.enter.prevent="handleQuickExitPersonEnter"
+              />
+              <div v-if="quickExitPersonDropdownOpen" class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <button
+                  v-for="person in quickExitFilteredPeople"
+                  :key="person.id"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700/60"
+                  @mousedown.prevent="selectQuickExitPerson(person)"
+                >
+                  <span class="truncate font-medium">{{ person.name }}</span>
+                  <span v-if="person.role" class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">{{ person.role }}</span>
+                </button>
+                <p v-if="!quickExitFilteredPeople.length" class="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">Nenhuma pessoa encontrada.</p>
+              </div>
+            </div>
+
+            <div class="lg:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Destino</label>
+              <DestinationTreePicker
+                v-model="quickExitDestinationId"
+                :linked-ids="quickExitSelected?.variation?.destinations || []"
+                allow-other
+                placeholder="Pesquisar destino..."
+                other-label="Outro (digitar)..."
+                @select="handleQuickExitDestinationSelect"
+                @clear="handleQuickExitDestinationClear"
+                @other="handleQuickExitDestinationOther"
+              />
+              <input
+                v-if="quickExitDestinationOther"
+                v-model="quickExitDestinationName"
+                type="text"
+                placeholder="Digite o destino..."
+                class="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </div>
+
+            <div class="lg:col-span-2">
+              <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Observação</label>
+              <input
+                v-model="quickExitNote"
+                type="text"
+                placeholder="Opcional..."
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                @keydown.enter.prevent="addQuickExitLine"
+              />
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              :class="quickExitCanAdd
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
+              @click="addQuickExitLine"
+            >
+              Adicionar à fila
+            </button>
+            <p v-if="quickExitAttempted && quickExitBlockReason" class="text-xs text-amber-600 dark:text-amber-400">{{ quickExitBlockReason }}</p>
+          </div>
+        </section>
+
+        <aside class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+          <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Fila de saída</p>
+              <p class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ quickExitQueue.length }} item{{ quickExitQueue.length === 1 ? '' : 's' }}</p>
+            </div>
+            <button
+              v-if="quickExitQueue.length"
+              type="button"
+              class="text-xs text-gray-400 hover:text-red-500"
+              @click="clearQuickExitQueue"
+            >
+              Limpar
+            </button>
+          </div>
+
+          <div v-if="quickExitQueue.length" class="max-h-[28rem] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+            <div v-for="line in quickExitQueue" :key="line.uid" class="px-4 py-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ line.itemName }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ [line.itemGroup, line.itemCategory, line.itemSubcategory].filter(Boolean).join(' > ') }}</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                    {{ Object.entries(line.variationValues || {}).concat(Object.entries(line.variationExtras || {})).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(' · ') || 'Variação padrão' }}
+                  </p>
+                  <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ line.requestedBy }} · {{ line.destination }}</p>
+                </div>
+                <div class="flex-shrink-0 text-right">
+                  <p class="text-sm font-bold text-red-600 dark:text-red-400">-{{ line.qty }} {{ line.itemUnit }}</p>
+                  <button type="button" class="mt-2 text-xs text-red-500 hover:text-red-600" @click="removeQuickExitLine(line.uid)">Remover</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="px-4 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+            Nenhuma saída na fila.
+          </div>
+
+          <div class="border-t border-gray-200 p-4 dark:border-gray-700">
+            <button
+              type="button"
+              class="w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+              :class="quickExitQueue.length && !quickExitPending
+                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
+              :disabled="!quickExitQueue.length || quickExitPending"
+              @click="confirmQuickExitQueue"
+            >
+              {{ quickExitPending ? 'Confirmando...' : `Confirmar ${quickExitQueue.length || ''} saída${quickExitQueue.length === 1 ? '' : 's'}` }}
+            </button>
+          </div>
+        </aside>
+      </div>
     </template>
 
     <!-- ======================================================= -->

@@ -245,6 +245,7 @@ const linkedMaterials = computed(() => {
   if (!destination) return []
   return variations.value
     .filter(variation => (variation.destinations || []).includes(destination.id))
+    .filter(variation => !variationCoveredByRules(variation, destination))
     .sort((a, b) => materialLabel(a).localeCompare(materialLabel(b)))
 })
 
@@ -261,9 +262,26 @@ function variationBelongsToDestination(variation, destination) {
   return (destination.materialRules || []).some(rule => itemMatchesRule(item, rule))
 }
 
+function variationCoveredByRules(variation, destination) {
+  const item = itemForVariation(variation)
+  return (destination?.materialRules || []).some(rule => itemMatchesRule(item, rule))
+}
+
 function isManualMaterialLinked(variation) {
   return (variation.destinations || []).includes(selectedMaterialDestination.value?.id)
 }
+
+const linkedMaterialsRuleCount = computed(() => {
+  const destination = selectedMaterialDestination.value
+  if (!destination) return 0
+  return variations.value.filter(variation => variationCoveredByRules(variation, destination)).length
+})
+
+const linkedMaterialsTotalCount = computed(() => {
+  const destination = selectedMaterialDestination.value
+  if (!destination) return 0
+  return variations.value.filter(variation => variationBelongsToDestination(variation, destination)).length
+})
 
 const linkedMaterialsTotalPages = computed(() =>
   Math.max(1, Math.ceil(linkedMaterials.value.length / linkedMaterialsPerPage))
@@ -291,9 +309,9 @@ watch(linkedMaterialsTotalPages, (total) => {
 })
 
 function materialCountForDestination(destinationId) {
-  return variations.value.filter(variation =>
-    (variation.destinations || []).includes(destinationId)
-  ).length
+  const destination = [selectedParent.value, ...selectedChildren.value].filter(Boolean).find(d => d.id === destinationId)
+  if (!destination) return 0
+  return variations.value.filter(variation => variationBelongsToDestination(variation, destination)).length
 }
 
 function materialRuleCountForDestination(destinationId) {
@@ -431,6 +449,24 @@ function ruleLabel(rule) {
   return [rule.group, rule.category, rule.subcategory].filter(Boolean).join(' > ')
 }
 
+function variationsForRule(rule) {
+  return variations.value.filter(variation => itemMatchesRule(itemForVariation(variation), rule))
+}
+
+async function setRuleVariationLinks(rule, destinationId, linked, remainingRules = []) {
+  for (const variation of variationsForRule(rule)) {
+    const item = itemForVariation(variation)
+    const destinations = new Set(variation.destinations || [])
+    const hadDestination = destinations.has(destinationId)
+    if (linked) destinations.add(destinationId)
+    else if (!remainingRules.some(saved => itemMatchesRule(item, saved))) destinations.delete(destinationId)
+    if (destinations.has(destinationId) === hadDestination) continue
+    const r = await editVariation(variation.id, { destinations: [...destinations] })
+    if (!r.ok) return r
+  }
+  return { ok: true }
+}
+
 const destinationMaterialRules = computed(() =>
   selectedMaterialDestination.value?.materialRules || []
 )
@@ -551,21 +587,28 @@ async function toggleCurrentScopeRule() {
   if (!destination || !rule) return
   const current = destination.materialRules || []
   const key = ruleKey(rule)
-  const next = current.some(saved => ruleKey(saved) === key)
-    ? current.filter(saved => ruleKey(saved) !== key)
-    : [...current, rule]
+  const removing = current.some(saved => ruleKey(saved) === key)
+  const next = removing ? current.filter(saved => ruleKey(saved) !== key) : [...current, rule]
+  const linkResult = await setRuleVariationLinks(rule, destination.id, !removing, next)
+  if (!linkResult.ok) { error(linkResult.error); return }
   const r = await editDestination(destination.id, { materialRules: next })
   if (!r.ok) { error(r.error); return }
-  success(next.length < current.length ? 'Regra removida do destino.' : 'Regra salva para este destino.')
+  const affected = variationsForRule(rule).length
+  success(removing
+    ? `Regra removida do destino. ${affected} vínculo(s) removido(s).`
+    : `Regra salva para este destino. ${affected} vínculo(s) aplicado(s).`
+  )
 }
 
 async function removeMaterialRule(rule) {
   const destination = selectedMaterialDestination.value
   if (!isLoggedIn.value || !destination) return
   const next = (destination.materialRules || []).filter(saved => ruleKey(saved) !== ruleKey(rule))
+  const linkResult = await setRuleVariationLinks(rule, destination.id, false, next)
+  if (!linkResult.ok) { error(linkResult.error); return }
   const r = await editDestination(destination.id, { materialRules: next })
   if (!r.ok) { error(r.error); return }
-  success('Regra removida do destino.')
+  success(`Regra removida do destino. ${variationsForRule(rule).length} vínculo(s) removido(s).`)
 }
 
 async function savePendingMaterials() {
@@ -601,7 +644,7 @@ async function removeMaterialFromDestination(variation) {
 <template>
   <div class="flex gap-0 min-h-[560px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
     <!-- Left panel -->
-    <aside class="w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <aside class="destination-management-sidebar w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Destinos</p>
         <div class="relative">
@@ -841,7 +884,7 @@ async function removeMaterialFromDestination(variation) {
                     <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate pr-20">{{ child.name }}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 line-clamp-2">{{ child.description || 'Sem descricao' }}</p>
                     <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-3">
-                      {{ materialCountForDestination(child.id) }} materiais manuais
+                      {{ materialCountForDestination(child.id) }} materiais
                       <span v-if="materialRuleCountForDestination(child.id)"> · {{ materialRuleCountForDestination(child.id) }} regra{{ materialRuleCountForDestination(child.id) === 1 ? '' : 's' }}</span>
                     </p>
                   </button>
@@ -887,8 +930,14 @@ async function removeMaterialFromDestination(variation) {
                 <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                   {{ getDestFullName(selectedMaterialDestination?.id) }}
                 </p>
-                <p v-if="linkedMaterials.length" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  {{ linkedMaterialsPageStart }}-{{ linkedMaterialsPageEnd }} de {{ linkedMaterials.length }} materiais manuais
+                <p v-if="linkedMaterialsTotalCount" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {{ linkedMaterialsTotalCount }} materiais contabilizados
+                  <template v-if="linkedMaterialsRuleCount">
+                    · {{ linkedMaterialsRuleCount }} por regra
+                  </template>
+                  <template v-if="linkedMaterials.length">
+                    · {{ linkedMaterialsPageStart }}-{{ linkedMaterialsPageEnd }} de {{ linkedMaterials.length }} manuais
+                  </template>
                 </p>
               </div>
               <button
@@ -983,7 +1032,12 @@ async function removeMaterialFromDestination(variation) {
             </div>
 
             <div v-else class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-              Nenhum material manual vinculado a este destino.
+              <template v-if="linkedMaterialsRuleCount">
+                Materiais contabilizados pelas regras automaticas. Nenhum vinculo manual para listar.
+              </template>
+              <template v-else>
+                Nenhum material manual vinculado a este destino.
+              </template>
             </div>
           </section>
         </div>
