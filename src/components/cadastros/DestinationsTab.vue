@@ -31,6 +31,7 @@ const newDestParentId = ref(null)
 const editingDestId = ref(null)
 const editDestName = ref('')
 const editDestDesc = ref('')
+const editDestParentId = ref('')
 
 const addingMaterial = ref(false)
 const materialSearch = ref('')
@@ -136,6 +137,7 @@ function startEditDest(dest) {
   editingDestId.value = dest.id
   editDestName.value = dest.name
   editDestDesc.value = dest.description || ''
+  editDestParentId.value = dest.parentId || ''
   cancelAddDest()
 }
 
@@ -143,15 +145,22 @@ function cancelEditDest() {
   editingDestId.value = null
   editDestName.value = ''
   editDestDesc.value = ''
+  editDestParentId.value = ''
 }
 
 async function confirmEditDest() {
   if (!isLoggedIn.value || !editingDestId.value) return
+  const wasChild = Boolean(editDestParentId.value)
   const r = await editDestination(editingDestId.value, {
     name: editDestName.value,
     description: editDestDesc.value,
+    ...(wasChild ? { parentId: editDestParentId.value } : {}),
   })
   if (!r.ok) { error(r.error); return }
+  if (wasChild && editDestParentId.value && editDestParentId.value !== selectedParentId.value) {
+    selectedParentId.value = editDestParentId.value
+    selectedMaterialDestId.value = editingDestId.value
+  }
   success('Destino atualizado.')
   cancelEditDest()
 }
@@ -868,6 +877,20 @@ async function removeMaterialFromDestination(variation) {
                       @keydown.enter="confirmEditDest"
                       @keydown.escape="cancelEditDest"
                     />
+                    <select
+                      v-model="editDestParentId"
+                      class="w-full px-2 py-1 text-sm border border-primary-400 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
+                      @keydown.enter="confirmEditDest"
+                      @keydown.escape="cancelEditDest"
+                    >
+                      <option
+                        v-for="parent in topLevelDestinations"
+                        :key="parent.id"
+                        :value="parent.id"
+                      >
+                        Dentro de: {{ parent.name }}
+                      </option>
+                    </select>
                     <div class="flex justify-end gap-1">
                       <button class="p-1 rounded text-green-500 hover:text-green-600" title="Salvar" @click.stop="confirmEditDest">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>

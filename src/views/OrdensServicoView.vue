@@ -8,6 +8,7 @@ import { useMovements } from '../composables/useMovements.js'
 import { useMotors, MOTOR_EVENT_TYPES, motorEventLabel } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
 import AppButton from '../components/ui/AppButton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import PersonPicker from '../components/ui/PersonPicker.vue'
 
@@ -32,8 +33,8 @@ const {
 } = useWorkOrders()
 
 const { items, variations, getVariationsForItem } = useItems()
-const { groupedDestinations, getDestFullName } = useDestinations()
-const { activePeople } = usePeople()
+const { groupedDestinations, getDestFullName, addDestination } = useDestinations()
+const { activePeople, addPerson } = usePeople()
 const { movements } = useMovements()
 const { motors, loadData: loadMotorData, addMotorEvent, editMotorEvent } = useMotors()
 const { success, error: showError } = useToast()
@@ -66,6 +67,15 @@ const emptyOrdersText = computed(() =>
   isMotorMode.value ? 'Nenhuma OS de motor cadastrada' : 'Nenhuma ordem de serviço geral cadastrada'
 )
 const scopedMotor = computed(() => props.scopedMotorId ? motors.value.find(m => m.id === props.scopedMotorId) || null : null)
+const OS_FILTER_STATE_KEY = computed(() => `estoque_os_filters_${props.mode || 'general'}`)
+
+function loadOsFilterState() {
+  try {
+    return JSON.parse(localStorage.getItem(OS_FILTER_STATE_KEY.value) || '{}')
+  } catch {
+    return {}
+  }
+}
 
 function focusRef(target) {
   const el = Array.isArray(target?.value) ? target.value[0] : target?.value
@@ -82,7 +92,7 @@ const visibleSubTabs = computed(() => [
   },
   ...(canManageOs.value ? [{
     id: 'nova',
-    label: editingOrderId.value ? 'Editar OS' : 'Nova OS',
+    label: 'Nova OS',
     icon: 'M12 4.5v15m7.5-7.5h-15',
   }] : []),
   {
@@ -98,11 +108,12 @@ const visibleSubTabs = computed(() => [
 ])
 
 // ===== OS List =====
-const searchQuery = ref('')
-const ordersStatusTab = ref('open')
-const historySearch = ref('')
-const historyDateFrom = ref('')
-const historyDateTo = ref('')
+const savedOsFilterState = loadOsFilterState()
+const searchQuery = ref(savedOsFilterState.searchQuery || '')
+const ordersStatusTab = ref(savedOsFilterState.ordersStatusTab || 'open')
+const historySearch = ref(savedOsFilterState.historySearch || '')
+const historyDateFrom = ref(savedOsFilterState.historyDateFrom || '')
+const historyDateTo = ref(savedOsFilterState.historyDateTo || '')
 const expandedOrderId = ref(null)
 const showNewForm = ref(false)
 const editingOrderId = ref(null)
@@ -112,6 +123,42 @@ const quickSuggestionIndex = ref(0)
 const quickSuggestionFieldKey = ref('')
 const quickInvalidFieldKey = ref('')
 const osEntryMode = ref('form')
+const quickRowsMenuOpen = ref(false)
+const quickDuplicateWarningSignature = ref('')
+const quickAutoCreateRegistries = true
+const QUICK_OS_HIDDEN_FIELDS_KEY = 'estoque_quick_os_hidden_fields'
+const QUICK_OS_KEEP_VALUES_KEY = 'estoque_quick_os_keep_values'
+
+function loadQuickHiddenFields() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(QUICK_OS_HIDDEN_FIELDS_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
+
+const quickHiddenFieldKeys = ref(loadQuickHiddenFields())
+const quickKeepValues = ref(localStorage.getItem(QUICK_OS_KEEP_VALUES_KEY) === 'true')
+
+watch(quickHiddenFieldKeys, (keys) => {
+  localStorage.setItem(QUICK_OS_HIDDEN_FIELDS_KEY, JSON.stringify(keys))
+  quickOsFieldRefs.value = []
+}, { deep: true })
+
+watch(quickKeepValues, (keep) => {
+  localStorage.setItem(QUICK_OS_KEEP_VALUES_KEY, keep ? 'true' : 'false')
+})
+
+watch([searchQuery, ordersStatusTab, historySearch, historyDateFrom, historyDateTo], () => {
+  localStorage.setItem(OS_FILTER_STATE_KEY.value, JSON.stringify({
+    searchQuery: searchQuery.value,
+    ordersStatusTab: ordersStatusTab.value,
+    historySearch: historySearch.value,
+    historyDateFrom: historyDateFrom.value,
+    historyDateTo: historyDateTo.value,
+  }))
+})
 
 function pad(n) {
   return String(n).padStart(2, '0')
@@ -152,6 +199,14 @@ function valueFromOrder(order, camelKey, snakeKey = '') {
   return order?.[camelKey] || (snakeKey ? order?.[snakeKey] : '') || ''
 }
 
+function dateInputValue(value) {
+  const isoPrefix = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoPrefix) return `${isoPrefix[1]}-${isoPrefix[2]}-${isoPrefix[3]}`
+  const parts = dateParts(value)
+  if (!parts) return value || ''
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`
+}
+
 function inferEquipment(order) {
   const explicit = valueFromOrder(order, 'equipment') || valueFromOrder(order, 'destinationName', 'destination_name')
   if (explicit) return explicit
@@ -168,8 +223,8 @@ function createEmptyOsForm(order = null) {
       title: valueFromOrder(order, 'title'),
       number: order.number || '',
       requestedBy: valueFromOrder(order, 'requestedBy', 'requested_by'),
-      requestDate: valueFromOrder(order, 'requestDate', 'request_date') || fallback.date,
-      requestTime: valueFromOrder(order, 'requestTime', 'request_time') || fallback.time,
+      requestDate: dateInputValue(valueFromOrder(order, 'requestDate', 'request_date') || fallback.date),
+      requestTime: valueFromOrder(order, 'requestTime', 'request_time'),
       equipment,
       motorId: valueFromOrder(order, 'motorId', 'motor_id'),
       destinationId: valueFromOrder(order, 'destinationId', 'destination_id') || findDestinationIdByEquipment(equipment),
@@ -179,16 +234,16 @@ function createEmptyOsForm(order = null) {
       maintenanceDestinationId: valueFromOrder(order, 'maintenanceDestinationId', 'maintenance_destination_id'),
       maintenanceExternalLocation: valueFromOrder(order, 'maintenanceExternalLocation', 'maintenance_external_location') || (valueFromOrder(order, 'motorId', 'motor_id') ? valueFromOrder(order, 'destinationName', 'destination_name') : ''),
       initialMotorEventType: 'nenhum',
-      initialMotorEventDate: valueFromOrder(order, 'requestDate', 'request_date') || fallback.date,
+      initialMotorEventDate: dateInputValue(valueFromOrder(order, 'requestDate', 'request_date') || fallback.date),
       initialMotorEventPerformedBy: valueFromOrder(order, 'maintenanceProfessional', 'maintenance_professional'),
       initialMotorEventToDestinationId: '',
       initialMotorEventToDestination: '',
       initialMotorEventNotes: '',
       serviceType: valueFromOrder(order, 'serviceType', 'service_type') || DEFAULT_SERVICE_TYPE,
       note: valueFromOrder(order, 'note'),
-      maintenanceStartDate: valueFromOrder(order, 'maintenanceStartDate', 'maintenance_start_date'),
+      maintenanceStartDate: dateInputValue(valueFromOrder(order, 'maintenanceStartDate', 'maintenance_start_date')),
       maintenanceStartTime: valueFromOrder(order, 'maintenanceStartTime', 'maintenance_start_time'),
-      maintenanceEndDate: valueFromOrder(order, 'maintenanceEndDate', 'maintenance_end_date'),
+      maintenanceEndDate: dateInputValue(valueFromOrder(order, 'maintenanceEndDate', 'maintenance_end_date')),
       maintenanceEndTime: valueFromOrder(order, 'maintenanceEndTime', 'maintenance_end_time'),
       maintenanceProfessional: valueFromOrder(order, 'maintenanceProfessional', 'maintenance_professional'),
       maintenanceMaterials: valueFromOrder(order, 'maintenanceMaterials', 'maintenance_materials'),
@@ -499,8 +554,29 @@ function quickOptionsForField(field) {
   return []
 }
 
+function quickTokenMatches(optionToken, queryToken) {
+  if (isNumericToken(queryToken)) return optionToken === queryToken
+  return optionToken === queryToken || optionToken.startsWith(queryToken)
+}
+
+function isStrongQuickAutocompleteMatch(result, value) {
+  const q = normalizeText(value)
+  if (!result || !q) return false
+  if (result.normalized === q || result.normalized.startsWith(q)) return true
+  const queryTokens = textTokens(value)
+  const optionTokens = textTokens(result.option)
+  if (!queryTokens.length || !optionTokens.length) return false
+  return quickTokenMatches(optionTokens[0], queryTokens[0]) &&
+    tokenSequenceScore(queryTokens, optionTokens) > 0
+}
+
+function strongQuickAutocompleteCandidates(field, value) {
+  return quickAutocompleteCandidates(field, value)
+    .filter(result => isStrongQuickAutocompleteMatch(result, value))
+}
+
 function findQuickAutocompleteMatch(field, value, uniqueOnly = false) {
-  const matches = quickAutocompleteCandidates(field, value)
+  const matches = strongQuickAutocompleteCandidates(field, value)
   if (!matches.length) return ''
   if (!uniqueOnly) return matches[0].option
   if (matches.length === 1 || matches[0].score > matches[1].score) return matches[0].option
@@ -526,6 +602,7 @@ function quickAutocompleteStatus(field) {
   if (exact) return null
   const matches = quickAutocompleteCandidates(field, value)
   const label = field.type === 'person' ? 'Pessoa' : 'Destino'
+  if (!matches.length && quickAutoCreateRegistries) return { type: 'hint', text: `${label} sera cadastrado ao criar a OS` }
   if (!matches.length) return { type: 'error', text: `${label} não encontrado` }
   if (matches.length > 1 && matches[0].score === matches[1].score) {
     return { type: 'warn', text: 'Mais de uma opção. Digite mais um detalhe.' }
@@ -560,10 +637,15 @@ function closeQuickSuggestions({ blur = false } = {}) {
 }
 
 function handleQuickSuggestionDocumentMouseDown(event) {
-  if (!quickSuggestionFieldKey.value) return
   const target = event.target
-  if (target instanceof Element && target.closest('[data-quick-suggestion-root]')) return
-  closeQuickSuggestions()
+  if (quickSuggestionFieldKey.value) {
+    if (target instanceof Element && target.closest('[data-quick-suggestion-root]')) return
+    closeQuickSuggestions()
+  }
+  if (quickRowsMenuOpen.value) {
+    if (target instanceof Element && target.closest('[data-quick-rows-menu]')) return
+    quickRowsMenuOpen.value = false
+  }
 }
 
 function handleQuickSuggestionDocumentKeydown(event) {
@@ -634,8 +716,11 @@ function commitQuickAutocomplete(field, index) {
   if (value) {
     const suggestions = quickSuggestionOptions(field)
     if (suggestions.length) {
-      chooseQuickSuggestion(field, (suggestions[quickSuggestionIndex.value] || suggestions[0]).option, index)
-      return
+      const selectedSuggestion = suggestions[quickSuggestionIndex.value] || suggestions[0]
+      if (isStrongQuickAutocompleteMatch(selectedSuggestion, value)) {
+        chooseQuickSuggestion(field, selectedSuggestion.option, index)
+        return
+      }
     }
     const matches = quickAutocompleteCandidates(field, value)
     const exact = field.type === 'person'
@@ -643,6 +728,11 @@ function commitQuickAutocomplete(field, index) {
       : Boolean(findDestinationIdByEquipment(value))
     const match = findQuickAutocompleteMatch(field, value, true)
     if (!exact && !match) {
+      if (quickAutoCreateRegistries && !strongQuickAutocompleteCandidates(field, value).length) {
+        closeQuickSuggestions()
+        focusNextQuickOsField(index)
+        return
+      }
       showError(matches.length ? 'Mais de uma opção encontrada. Digite mais um detalhe.' : `${field.type === 'person' ? 'Pessoa' : 'Destino'} não encontrado.`)
       focusQuickOsField(index)
       return
@@ -652,6 +742,11 @@ function commitQuickAutocomplete(field, index) {
   if (field.type === 'destination' && osForm.value.equipment.trim()) {
     const ok = syncQuickDestinationFromText(true) || Boolean(findDestinationIdByEquipment(osForm.value.equipment))
     if (!ok) {
+      if (quickAutoCreateRegistries && !strongQuickAutocompleteCandidates(field, osForm.value.equipment).length) {
+        closeQuickSuggestions()
+        focusNextQuickOsField(index)
+        return
+      }
       showError('Destino não encontrado.')
       focusQuickOsField(index)
       return
@@ -677,9 +772,9 @@ function handleQuickAutocompleteUp(field, index) {
   handleQuickOsBack(field, index)
 }
 
-const quickOsFields = [
+const baseQuickOsFields = [
   { key: 'requestDate', label: 'Data', type: 'date', required: true },
-  { key: 'requestTime', label: 'Horário', type: 'time', required: true },
+  { key: 'requestTime', label: 'Horário', type: 'time' },
   { key: 'requestedBy', label: 'Solicitante', type: 'person', required: true, placeholder: 'Pessoa cadastrada' },
   { key: 'equipment', label: 'Equipamento / destino', type: 'destination', required: true, placeholder: 'Destino cadastrado' },
   { key: 'serviceType', label: 'Tipo', type: 'select', options: ['Elétrica', 'Mecânica', 'Outros'] },
@@ -693,6 +788,29 @@ const quickOsFields = [
   { key: 'maintenanceNote', label: 'Obs. manutenção', type: 'text', placeholder: 'Opcional' },
 ]
 
+const quickOptionalFieldControls = computed(() =>
+  baseQuickOsFields.filter(field => !field.required)
+)
+
+const quickOsFields = computed(() =>
+  baseQuickOsFields.filter(field => field.required || !quickHiddenFieldKeys.value.includes(field.key))
+)
+
+function isQuickFieldVisible(key) {
+  return !quickHiddenFieldKeys.value.includes(key)
+}
+
+function toggleQuickFieldVisibility(key) {
+  const hidden = new Set(quickHiddenFieldKeys.value)
+  if (hidden.has(key)) hidden.delete(key)
+  else {
+    hidden.add(key)
+    osForm.value[key] = key === 'serviceType' ? DEFAULT_SERVICE_TYPE : ''
+    if (quickInvalidFieldKey.value === key) quickInvalidFieldKey.value = ''
+  }
+  quickHiddenFieldKeys.value = [...hidden]
+}
+
 function setQuickOsFieldRef(el, index) {
   if (el) quickOsFieldRefs.value[index] = el
 }
@@ -700,7 +818,7 @@ function setQuickOsFieldRef(el, index) {
 function focusQuickOsField(index) {
   nextTick(() => {
     const el = quickOsFieldRefs.value[index]
-    const field = quickOsFields[index]
+    const field = quickOsFields.value[index]
     if (!el) return
     if (field?.type === 'date') {
       osForm.value[field.key] = formatQuickDateForInput(osForm.value[field.key])
@@ -713,7 +831,7 @@ function focusQuickOsField(index) {
 }
 
 function focusNextQuickOsField(index) {
-  focusQuickOsField(Math.min(index + 1, quickOsFields.length - 1))
+  focusQuickOsField(Math.min(index + 1, quickOsFields.value.length - 1))
 }
 
 function focusPreviousQuickOsField(index) {
@@ -722,7 +840,7 @@ function focusPreviousQuickOsField(index) {
 
 async function handleQuickOsMove(field, index) {
   if (!validateQuickField(field, index)) return
-  if (index === quickOsFields.length - 1) {
+  if (index === quickOsFields.value.length - 1) {
     await handleSubmitOS()
     return
   }
@@ -828,7 +946,7 @@ function validateQuickField(field, index) {
 }
 
 function normalizeQuickOsFields() {
-  quickOsFields.forEach(normalizeQuickField)
+  quickOsFields.value.forEach(normalizeQuickField)
 }
 
 function dateParts(value) {
@@ -888,6 +1006,47 @@ function isRegisteredRequester(name) {
   const q = normalizeText(name)
   if (!q) return false
   return activePeople.value.some(person => normalizeText(person.name) === q)
+}
+
+async function ensureQuickPersonRegistered(key, label) {
+  const name = String(osForm.value[key] || '').trim()
+  if (!name || isRegisteredRequester(name)) return true
+  if (strongQuickAutocompleteCandidates({ type: 'person' }, name).length) return true
+  const result = await addPerson(name)
+  if (!result.ok) {
+    showError(result.error || `Nao foi possivel cadastrar ${label}.`)
+    return false
+  }
+  osForm.value[key] = result.person?.name || name
+  return true
+}
+
+async function ensureQuickDestinationRegistered() {
+  const name = String(osForm.value.equipment || '').trim()
+  if (!name) return true
+  const existingId = findDestinationIdByEquipment(name)
+  if (existingId) {
+    osForm.value.destinationId = existingId
+    return true
+  }
+  if (strongQuickAutocompleteCandidates({ type: 'destination' }, name).length) return true
+  const result = await addDestination(name)
+  if (!result.ok) {
+    showError(result.error || 'Nao foi possivel cadastrar o destino.')
+    return false
+  }
+  osForm.value.destinationId = result.destination?.id || ''
+  osForm.value.equipment = result.destination?.name || name
+  return Boolean(osForm.value.destinationId)
+}
+
+async function ensureQuickAutoRegistries() {
+  if (isMotorMode.value || osEntryMode.value !== 'quick' || !quickAutoCreateRegistries) return true
+  const requesterOk = await ensureQuickPersonRegistered('requestedBy', 'solicitante')
+  if (!requesterOk) return false
+  const professionalOk = await ensureQuickPersonRegistered('maintenanceProfessional', 'profissional')
+  if (!professionalOk) return false
+  return ensureQuickDestinationRegistered()
 }
 
 watch(() => props.prefillMotor, (motor) => {
@@ -962,6 +1121,7 @@ function switchSubTab(tab) {
     if (tab === 'nova') prepareSubTab(tab, { forceNew: true })
     return
   }
+  if (tab === 'nova') prepareSubTab(tab, { forceNew: true })
   activeSubTab.value = tab
 }
 
@@ -1161,7 +1321,7 @@ const visibleOrdersBase = computed(() =>
 )
 
 function isOrderFinished(order) {
-  return Boolean(order.maintenanceEndDate && order.maintenanceEndTime)
+  return Boolean(order.maintenanceEndDate)
 }
 
 function isOrderOpen(order) {
@@ -1376,9 +1536,8 @@ function validateOsForm() {
   if (!isRegisteredRequester(osForm.value.requestedBy)) { showError('Solicitante deve ser uma pessoa cadastrada ativa'); return false }
   if (osForm.value.maintenanceLocationType === 'interna' && osForm.value.maintenanceProfessional.trim() && !isRegisteredRequester(osForm.value.maintenanceProfessional)) { showError('Profissional deve ser uma pessoa cadastrada ativa'); return false }
   if (!osForm.value.requestDate) { showError('Data é obrigatória'); return false }
-  if (!osForm.value.requestTime) { showError('Horário é obrigatório'); return false }
   if (!isValidOrderDate(osForm.value.requestDate)) { showError('Data inválida'); return false }
-  if (!isValidTime(osForm.value.requestTime)) { showError('Horário inválido'); return false }
+  if (osForm.value.requestTime && !isValidTime(osForm.value.requestTime)) { showError('Horário inválido'); return false }
   if (isMotorMode.value && !osForm.value.motorId) { showError('Motor é obrigatório'); return false }
   if (!isMotorMode.value && !osForm.value.destinationId) { showError('Selecione um equipamento em destinos'); return false }
   if (!isMotorMode.value && !destinationOptions.value.some(d => d.id === osForm.value.destinationId)) { showError('Equipamento deve ser um destino ativo'); return false }
@@ -1392,13 +1551,13 @@ function validateOsForm() {
   const hasStartTime = !!osForm.value.maintenanceStartTime
   const hasEndDate = !!osForm.value.maintenanceEndDate
   const hasEndTime = !!osForm.value.maintenanceEndTime
-  if (hasStartDate !== hasStartTime) { showError('Informe data e horário de início da manutenção'); return false }
-  if (hasEndDate !== hasEndTime) { showError('Informe data e horário de término da manutenção'); return false }
+  if (hasStartTime && !hasStartDate) { showError('Informe data de início da manutenção'); return false }
+  if (hasEndTime && !hasEndDate) { showError('Informe data de término da manutenção'); return false }
   if (hasStartDate && !isValidOrderDate(osForm.value.maintenanceStartDate)) { showError('Data de início inválida'); return false }
   if (hasStartTime && !isValidTime(osForm.value.maintenanceStartTime)) { showError('Horário de início inválido'); return false }
   if (hasEndDate && !isValidOrderDate(osForm.value.maintenanceEndDate)) { showError('Data de término inválida'); return false }
   if (hasEndTime && !isValidTime(osForm.value.maintenanceEndTime)) { showError('Horário de término inválido'); return false }
-  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime)) { showError('Informe início/envio antes do término/retorno da manutenção'); return false }
+  if (hasEndDate && !hasStartDate) { showError('Informe início/envio antes do término/retorno da manutenção'); return false }
   if (hasStartDate && hasEndDate) {
     const start = orderDateTime(osForm.value.maintenanceStartDate, osForm.value.maintenanceStartTime)
     const end = orderDateTime(osForm.value.maintenanceEndDate, osForm.value.maintenanceEndTime)
@@ -1467,23 +1626,101 @@ function buildOsPayload() {
   }
 }
 
+const duplicateWorkOrderFields = [
+  'motorId',
+  'destinationId',
+  'equipment',
+  'requestedBy',
+  'requestDate',
+  'requestTime',
+  'serviceType',
+  'note',
+  'maintenanceLocationType',
+  'maintenanceExternalLocation',
+  'maintenanceStartDate',
+  'maintenanceStartTime',
+  'maintenanceEndDate',
+  'maintenanceEndTime',
+  'maintenanceProfessional',
+  'maintenanceMaterials',
+  'maintenanceNote',
+]
+
+function duplicateValue(value) {
+  return normalizeText(value)
+}
+
+function duplicateSignatureFromPayload(payload) {
+  return JSON.stringify(duplicateWorkOrderFields.map(key => duplicateValue(payload[key])))
+}
+
+function duplicateSignatureFromOrder(order) {
+  const values = {
+    motorId: valueFromOrder(order, 'motorId', 'motor_id'),
+    destinationId: valueFromOrder(order, 'destinationId', 'destination_id'),
+    equipment: valueFromOrder(order, 'equipment'),
+    requestedBy: valueFromOrder(order, 'requestedBy', 'requested_by'),
+    requestDate: valueFromOrder(order, 'requestDate', 'request_date'),
+    requestTime: valueFromOrder(order, 'requestTime', 'request_time'),
+    serviceType: valueFromOrder(order, 'serviceType', 'service_type'),
+    note: valueFromOrder(order, 'note'),
+    maintenanceLocationType: valueFromOrder(order, 'maintenanceLocationType', 'maintenance_location_type'),
+    maintenanceExternalLocation: valueFromOrder(order, 'maintenanceExternalLocation', 'maintenance_external_location'),
+    maintenanceStartDate: valueFromOrder(order, 'maintenanceStartDate', 'maintenance_start_date'),
+    maintenanceStartTime: valueFromOrder(order, 'maintenanceStartTime', 'maintenance_start_time'),
+    maintenanceEndDate: valueFromOrder(order, 'maintenanceEndDate', 'maintenance_end_date'),
+    maintenanceEndTime: valueFromOrder(order, 'maintenanceEndTime', 'maintenance_end_time'),
+    maintenanceProfessional: valueFromOrder(order, 'maintenanceProfessional', 'maintenance_professional'),
+    maintenanceMaterials: valueFromOrder(order, 'maintenanceMaterials', 'maintenance_materials'),
+    maintenanceNote: valueFromOrder(order, 'maintenanceNote', 'maintenance_note'),
+  }
+  return JSON.stringify(duplicateWorkOrderFields.map(key => duplicateValue(values[key])))
+}
+
+function shouldWarnDuplicateWorkOrder(payload) {
+  const previousOrder = visibleOrdersBase.value[0]
+  if (!previousOrder) return false
+  const signature = duplicateSignatureFromPayload(payload)
+  if (signature !== duplicateSignatureFromOrder(previousOrder)) {
+    quickDuplicateWarningSignature.value = ''
+    return false
+  }
+  if (quickDuplicateWarningSignature.value === signature) return false
+  quickDuplicateWarningSignature.value = signature
+  showError('OS igual à anterior. Clique em Criar OS de novo para confirmar.')
+  return true
+}
+
 // ===== Actions =====
 async function handleCreateOS() {
   if (!canManageOs.value) return
-  if (!isMotorMode.value && osEntryMode.value === 'quick') normalizeQuickOsFields()
-  if (!validateOsForm()) return
   const continueQuickEntry = !isMotorMode.value && osEntryMode.value === 'quick'
   try {
-    await addWorkOrder(buildOsPayload())
+    if (continueQuickEntry) {
+      normalizeQuickOsFields()
+      const autoRegistriesOk = await ensureQuickAutoRegistries()
+      if (!autoRegistriesOk) return
+    }
+    if (!validateOsForm()) return
+    const payload = buildOsPayload()
+    if (shouldWarnDuplicateWorkOrder(payload)) return
+    const created = await addWorkOrder(payload)
+    quickDuplicateWarningSignature.value = ''
     if (isMotorMode.value) await loadMotorData().catch(() => {})
-    success('Ordem de serviço criada')
+    success('Ordem de serviço criada', {
+      label: 'Abrir',
+      onClick: () => {
+        activeSubTab.value = 'ordens'
+        expandedOrderId.value = created.id
+      },
+    })
     if (props.createOnly) {
-      resetOsForm()
+      if (!continueQuickEntry || !quickKeepValues.value) resetOsForm()
       emit('created')
       return
     }
     if (continueQuickEntry) {
-      resetOsForm()
+      if (!quickKeepValues.value) resetOsForm()
       activeSubTab.value = 'nova'
       showNewForm.value = true
       osEntryMode.value = 'quick'
@@ -1543,7 +1780,7 @@ function loadOrderIntoEditForm(order) {
     motorEventForm.value = {
       ...emptyMotorEventForm(order),
       eventType: order.motorEventType === 'enrolar' ? 'enrolado' : (order.motorEventType || 'nenhum'),
-      eventDate: order.motorEventDate || order.requestDate || todayDate(),
+      eventDate: dateInputValue(order.motorEventDate || order.requestDate || todayDate()),
       performedBy: order.motorEventPerformedBy || order.maintenanceProfessional || '',
       toDestinationId: destinationIdForName(order.motorEventToDestination),
       toDestination: order.motorEventToDestination || '',
@@ -1555,9 +1792,8 @@ function loadOrderIntoEditForm(order) {
 async function startEditOS(order) {
   if (!canManageOs.value) return
   window.dispatchEvent(new CustomEvent('app-picker-open', { detail: 'edit-os' }))
-  osEntryMode.value = 'form'
+  activeSubTab.value = 'ordens'
   loadOrderIntoEditForm(order)
-  activeSubTab.value = 'nova'
   await nextTick()
 }
 
@@ -2007,6 +2243,54 @@ function matBackToStep2() {
                 Modo planilha: digite uma linha e use Enter, seta para baixo ou seta para cima para navegar.
               </p>
             </div>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                :class="quickKeepValues
+                  ? 'bg-primary-600 text-white hover:bg-primary-700'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700'"
+                @click="quickKeepValues = !quickKeepValues"
+              >
+                Manter dados
+              </button>
+              <div class="relative" data-quick-rows-menu>
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="quickRowsMenuOpen = !quickRowsMenuOpen"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5" />
+                  </svg>
+                  Linhas
+                </button>
+                <div
+                  v-if="quickRowsMenuOpen"
+                  class="absolute right-0 top-full z-[220] mt-2 w-64 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <button
+                    v-for="field in quickOptionalFieldControls"
+                    :key="field.key"
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    @click="toggleQuickFieldVisibility(field.key)"
+                  >
+                    <span
+                      class="flex h-4 w-4 items-center justify-center rounded border"
+                      :class="isQuickFieldVisible(field.key)
+                        ? 'border-primary-500 bg-primary-600 text-white'
+                        : 'border-gray-300 dark:border-gray-600'"
+                    >
+                      <svg v-if="isQuickFieldVisible(field.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    </span>
+                    {{ field.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
             <div class="grid grid-cols-1 border-b border-gray-100 dark:border-gray-800 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -2309,6 +2593,34 @@ function matBackToStep2() {
           </div>
         </div>
 
+        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+          <div class="mb-3 flex items-center gap-3">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">3</span>
+            <div>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Revisão</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Confira o básico antes de concluir.</p>
+            </div>
+          </div>
+          <div class="grid gap-3 text-sm md:grid-cols-4">
+            <div>
+              <span class="text-xs text-gray-400 dark:text-gray-500">Solicitante</span>
+              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.requestedBy || '-' }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400 dark:text-gray-500">{{ isMotorMode ? 'Motor' : 'Equipamento' }}</span>
+              <p class="font-medium text-gray-900 dark:text-gray-100">{{ isMotorMode ? (selectedOsMotor?.tag || osForm.equipment || '-') : (selectedDestinationLabel(osForm.destinationId) || '-') }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400 dark:text-gray-500">Execução</span>
+              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.maintenanceLocationType === 'externa' ? 'Externa' : 'Interna' }}</p>
+            </div>
+            <div>
+              <span class="text-xs text-gray-400 dark:text-gray-500">Data</span>
+              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.requestDate || '-' }} {{ osForm.requestTime || '' }}</p>
+            </div>
+          </div>
+        </div>
+
         <div class="flex items-center gap-2 pt-1">
           <button class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" @click="handleSubmitOS">{{ formSubmitLabel }}</button>
           <button class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" @click="cancelNewOsForm">Cancelar</button>
@@ -2316,15 +2628,15 @@ function matBackToStep2() {
       </div>
 
       <!-- Orders list -->
-      <div v-if="!createOnly && activeSubTab === 'ordens' && filteredOrders.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
-        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.251 2.251 0 011.65.762m-5.8 0c-.376.023-.75.05-1.124.08C8.845 4.013 8 4.974 8 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
-        <p class="text-sm">
-          {{ searchQuery
-            ? 'Nenhuma OS encontrada'
-            : (!isMotorMode ? (ordersStatusTab === 'finished' ? 'Nenhuma ordem finalizada' : 'Nenhuma ordem aberta') : emptyOrdersText)
-          }}
-        </p>
-      </div>
+      <EmptyState
+        v-if="!createOnly && activeSubTab === 'ordens' && filteredOrders.length === 0"
+        :title="searchQuery
+          ? 'Nenhuma OS encontrada'
+          : (!isMotorMode ? (ordersStatusTab === 'finished' ? 'Nenhuma ordem finalizada' : 'Nenhuma ordem aberta') : emptyOrdersText)"
+        :text="searchQuery ? 'Tente limpar a busca ou procurar por número, solicitante ou equipamento.' : 'Crie uma OS nova para iniciar o histórico deste fluxo.'"
+        :action-label="canManageOs ? 'Criar OS' : ''"
+        @action="switchSubTab('nova')"
+      />
 
       <div v-else-if="!createOnly && activeSubTab === 'ordens'" class="ds-list-panel">
         <div
@@ -2363,7 +2675,14 @@ function matBackToStep2() {
               {{ (order.items || []).length }} {{ (order.items || []).length === 1 ? 'material' : 'materiais' }}
             </span>
             <button
-              v-if="isMotorMode && isLoggedIn"
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+              @click.stop="activeSubTab = 'historico'; historySearch = String(order.number || '')"
+            >
+              Histórico
+            </button>
+            <button
+              v-if="isLoggedIn"
               type="button"
               class="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
               @click.stop="startEditOS(order)"
@@ -3017,10 +3336,13 @@ function matBackToStep2() {
           </button>
         </div>
 
-        <div v-if="historyOrders.length === 0" class="text-center py-12 text-gray-400 dark:text-gray-500">
-          <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-          <p class="text-sm">Nenhuma OS encontrada no histórico</p>
-        </div>
+        <EmptyState
+          v-if="historyOrders.length === 0"
+          title="Nenhuma OS encontrada no histórico"
+          text="Histórico aparece aqui conforme as ordens forem criadas ou quando filtros combinarem com registros existentes."
+          :action-label="historySearch || historyDateFrom || historyDateTo ? 'Limpar filtros' : ''"
+          @action="historySearch = ''; historyDateFrom = ''; historyDateTo = ''"
+        />
 
         <div v-else class="ds-table-wrap">
           <div class="overflow-x-auto">

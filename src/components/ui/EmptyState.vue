@@ -2,7 +2,10 @@
 defineProps({
   title: { type: String, default: 'Nenhum registro encontrado.' },
   text: { type: String, default: '' },
+  actionLabel: { type: String, default: '' },
 })
+
+defineEmits(['action'])
 </script>
 
 <template>
@@ -16,8 +19,16 @@ defineProps({
     </slot>
     <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ title }}</p>
     <p v-if="text" class="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">{{ text }}</p>
-    <div v-if="$slots.default" class="mt-4">
+    <div v-if="$slots.default || actionLabel" class="mt-4">
       <slot />
+      <button
+        v-if="actionLabel"
+        type="button"
+        class="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700"
+        @click="$emit('action')"
+      >
+        {{ actionLabel }}
+      </button>
     </div>
   </div>
 </template>

@@ -85,10 +85,18 @@ export function useDestinations() {
   async function editDestination(id, changes) {
     const d = destinations.value.find(d => d.id === id)
     if (!d) return { ok: false, error: 'Destino não encontrado.' }
-    if (changes.name !== undefined) {
-      const trimmed = changes.name.trim()
+    const nextParentId = changes.parentId !== undefined ? (changes.parentId || null) : (d.parentId || null)
+    if (nextParentId) {
+      const parent = destinations.value.find(x => x.id === nextParentId)
+      if (!parent) return { ok: false, error: 'Destino pai não encontrado.' }
+      if (parent.parentId) return { ok: false, error: 'Não é possível mover para dentro de um sub-destino.' }
+      if (nextParentId === id) return { ok: false, error: 'Destino não pode ser pai dele mesmo.' }
+    }
+    if (!d.parentId && nextParentId) return { ok: false, error: 'Destino principal não pode virar sub-destino.' }
+    if (changes.name !== undefined || changes.parentId !== undefined) {
+      const trimmed = (changes.name ?? d.name).trim()
       if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
-      const siblings = destinations.value.filter(x => (x.parentId || null) === (d.parentId || null))
+      const siblings = destinations.value.filter(x => (x.parentId || null) === nextParentId)
       if (siblings.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe um destino com esse nome neste nível.' }
       }

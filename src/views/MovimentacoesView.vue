@@ -11,6 +11,7 @@ import { useMovementHistory } from '../composables/useMovementHistory.js'
 import { useDestinationSummary } from '../composables/useDestinationSummary.js'
 import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -903,7 +904,7 @@ async function confirmQuickEntryQueue() {
       const updatedVar = variations.value.find(v => v.id === movement.variationId)
       if (updatedVar) updatedVar.stock = movement.stockAfter
     }
-    success(`${created.length} entrada${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
+    successWithHistoryAction(`${created.length} entrada${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
     quickEntryQueue.value = []
     nextTick(() => focusRef(quickEntrySearchInputEl))
   } catch (e) {
@@ -1095,7 +1096,7 @@ async function confirmQuickExitQueue() {
       const updatedVar = variations.value.find(v => v.id === movement.variationId)
       if (updatedVar) updatedVar.stock = movement.stockAfter
     }
-    success(`${created.length} saída${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
+    successWithHistoryAction(`${created.length} saída${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
     quickExitQueue.value = []
     nextTick(() => focusRef(quickExitSearchInputEl))
   } catch (e) {
@@ -1182,7 +1183,7 @@ async function confirmCurrentMovement() {
       }
     }
 
-    success(`${activeSubTab.value === 'entrada' ? 'Entrada' : 'Saida'} registrada com sucesso.`)
+    successWithHistoryAction(`${activeSubTab.value === 'entrada' ? 'Entrada' : 'Saida'} registrada com sucesso.`)
     resetCurrentItem()
   } catch (e) {
     error(e.message)
@@ -1239,6 +1240,15 @@ const {
   filteredMovements,
   histTotals,
 } = useMovementHistory(movements)
+
+function successWithHistoryAction(message) {
+  success(message, {
+    label: 'Ver histórico',
+    onClick: () => {
+      activeSubTab.value = 'historico'
+    },
+  })
+}
 
 watch(() => props.initialHistorySearch, search => {
   histSearch.value = search || ''
@@ -2825,17 +2835,22 @@ defineExpose({
         <div class="bg-white dark:bg-gray-900 flex flex-col">
 
           <!-- Empty state -->
-          <div v-if="movements.length === 0" class="py-20 text-center text-gray-400 dark:text-gray-500">
-            <svg class="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-            <p class="text-sm">Nenhuma movimentação registrada ainda.</p>
-          </div>
+          <EmptyState
+            v-if="movements.length === 0"
+            title="Nenhuma movimentação registrada ainda."
+            text="Entradas e saídas aparecem aqui depois do primeiro lançamento."
+            :action-label="isLoggedIn ? 'Registrar entrada' : ''"
+            @action="activeSubTab = 'entrada'"
+          />
 
           <!-- No filter results -->
-          <div v-else-if="filteredMovements.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
-            Nenhum resultado para os filtros selecionados.
-          </div>
+          <EmptyState
+            v-else-if="filteredMovements.length === 0"
+            title="Nenhum resultado para os filtros selecionados."
+            text="Limpe filtros ou ajuste a busca para encontrar movimentações."
+            action-label="Limpar filtros"
+            @action="clearHistFilters"
+          />
 
           <template v-else>
             <div class="overflow-x-auto">

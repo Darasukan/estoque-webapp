@@ -534,6 +534,38 @@ function openVariationSheet(v) {
   sheetVariationId.value = v.id
 }
 
+function openItemById(itemId) {
+  const item = items.value.find(row => row.id === itemId)
+  if (!item) return false
+  setActiveGroup(item.group || null)
+  setActiveCategory(item.category || null)
+  setActiveSubcategory(item.subcategory || null)
+  nextTick(() => openItem(item))
+  return true
+}
+
+function variationQueryText(variation) {
+  return Object.values({ ...(variation.values || {}), ...(variation.extras || {}) })
+    .filter(Boolean)
+    .join(' ')
+}
+
+function openVariationById(variationId) {
+  const variation = variations.value.find(row => row.id === variationId)
+  if (!variation) return false
+  const item = items.value.find(row => row.id === variation.itemId)
+  if (!item) return false
+  setActiveGroup(item.group || null)
+  setActiveCategory(item.category || null)
+  setActiveSubcategory(item.subcategory || null)
+  nextTick(() => {
+    openItem(item)
+    varSearchQuery.value = variationQueryText(variation)
+    nextTick(() => openVariationSheet(variation))
+  })
+  return true
+}
+
 function closeVariationSheet() {
   sheetVariationId.value = ''
 }
@@ -678,7 +710,7 @@ const searchedResults = computed(() => {
 })
 
 // ===== Auto-drill is now triggered only on Enter (triggerSearchDrill) =====
-defineExpose({ triggerSearchDrill })
+defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 </script>
 
 <template>

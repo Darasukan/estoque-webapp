@@ -17,7 +17,17 @@ const { toasts } = useToast()
             'border-red-500/25 bg-red-600 text-white dark:border-red-500/40 dark:bg-red-950 dark:text-red-100': toast.type === 'error'
           }"
         >
-          {{ toast.message }}
+          <div class="flex items-center gap-3">
+            <span class="min-w-0 flex-1">{{ toast.message }}</span>
+            <button
+              v-if="toast.action"
+              type="button"
+              class="rounded-md bg-white/20 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/30"
+              @click="toast.action.onClick"
+            >
+              {{ toast.action.label }}
+            </button>
+          </div>
         </div>
       </TransitionGroup>
     </div>

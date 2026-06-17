@@ -1,4 +1,4 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -110,9 +110,9 @@ function validateMaintenanceDates({
   const hasStartTime = !!clean(maintenanceStartTime)
   const hasEndDate = !!clean(maintenanceEndDate)
   const hasEndTime = !!clean(maintenanceEndTime)
-  if (hasStartDate !== hasStartTime) return 'Informe data e horário de início da manutenção'
-  if (hasEndDate !== hasEndTime) return 'Informe data e horário de término da manutenção'
-  if ((hasEndDate || hasEndTime) && !(hasStartDate && hasStartTime) && !allowEndWithoutStart) return 'Informe início/envio antes do término/retorno da manutenção'
+  if (hasStartTime && !hasStartDate) return 'Informe data de início da manutenção'
+  if (hasEndTime && !hasEndDate) return 'Informe data de término da manutenção'
+  if (hasEndDate && !hasStartDate && !allowEndWithoutStart) return 'Informe início/envio antes do término/retorno da manutenção'
   if (hasStartDate && hasEndDate) {
     const start = parseOrderDateTime(maintenanceStartDate, maintenanceStartTime)
     const end = parseOrderDateTime(maintenanceEndDate, maintenanceEndTime)
@@ -433,7 +433,6 @@ router.post('/', requireAuth, (req, res) => {
 
   if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
   if (!clean(requestDate)) return res.status(400).json({ error: 'Data é obrigatória' })
-  if (!clean(requestTime)) return res.status(400).json({ error: 'Horário é obrigatório' })
   if (!parseOrderDateTime(requestDate, requestTime)) return res.status(400).json({ error: 'Data ou horário inválido' })
 
   const parsedNumber = parseOrderNumber(rawNumber)
@@ -548,7 +547,7 @@ router.post('/', requireAuth, (req, res) => {
       })
     }
 
-    if (isMotorOrder && !(maintenanceEndDateValue && maintenanceEndTimeValue)) {
+    if (isMotorOrder && !maintenanceEndDateValue) {
       setMotorStatus(motor.id, 'em_manutencao')
       addWorkOrderEvent(id, 'atualizada', req, {
         eventDate: createdAt,
@@ -562,7 +561,7 @@ router.post('/', requireAuth, (req, res) => {
 
   res.json({
     id, number, title: titleValue,
-    motorId: clean(motorId), motorTag: motor?.tag || '', motorName: motor?.name || '', motorStatus: isMotorOrder && !(maintenanceEndDateValue && maintenanceEndTimeValue) ? 'em_manutencao' : (motor?.status || ''),
+    motorId: clean(motorId), motorTag: motor?.tag || '', motorName: motor?.name || '', motorStatus: isMotorOrder && !maintenanceEndDateValue ? 'em_manutencao' : (motor?.status || ''),
     destinationId: destinationIdValue, destinationName,
     equipment: equipmentValue, serviceType: serviceTypeValue,
     motorOriginDestinationId: originIdValue,
@@ -628,7 +627,6 @@ router.put('/:id', requireAuth, (req, res) => {
   const requestDateValue = requestDate !== undefined ? clean(requestDate) : (o.request_date || '')
   const requestTimeValue = requestTime !== undefined ? clean(requestTime) : (o.request_time || '')
   if (!requestDateValue) return res.status(400).json({ error: 'Data é obrigatória' })
-  if (!requestTimeValue) return res.status(400).json({ error: 'Horário é obrigatório' })
   if (!parseOrderDateTime(requestDateValue, requestTimeValue)) return res.status(400).json({ error: 'Data ou horário inválido' })
 
   const maintenanceLocation = buildMaintenanceLocation({
@@ -713,8 +711,8 @@ router.put('/:id', requireAuth, (req, res) => {
     maintenanceNote: maintenanceNoteValue,
   }
   const changes = collectWorkOrderChanges(o, nextValues)
-  const wasOpenEnded = !(o.maintenance_end_date && o.maintenance_end_time)
-  const isNowFinished = nextValues.maintenanceEndDate && nextValues.maintenanceEndTime
+  const wasOpenEnded = !o.maintenance_end_date
+  const isNowFinished = Boolean(nextValues.maintenanceEndDate)
 
   const tx = db.transaction(() => {
     db.prepare(`UPDATE work_orders SET
@@ -760,8 +758,8 @@ router.put('/:id', requireAuth, (req, res) => {
     }
     if (wasOpenEnded && isNowFinished) {
       addWorkOrderEvent(req.params.id, 'finalizada', req, {
-        toValue: `${nextValues.maintenanceEndDate} ${nextValues.maintenanceEndTime}`,
-        notes: 'Data e horario de termino da manutencao foram preenchidos.',
+        toValue: `${nextValues.maintenanceEndDate} ${nextValues.maintenanceEndTime || ''}`.trim(),
+        notes: 'Data de termino da manutencao foi preenchida.',
       })
       if (nextValues.motorId) {
         setMotorStatus(nextValues.motorId, 'ativo')
@@ -999,3 +997,4 @@ router.post('/:id/items/link', requireAuth, (req, res) => {
 })
 
 export default router
+

@@ -30,18 +30,18 @@ const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServi
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
 
 const { isDark, toggleTheme } = useTheme()
-const { uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
+const { items, variations, uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
 const { loadData: loadMovements } = useMovements()
 const { loadData: loadLocations } = useLocations()
-const { loadData: loadDestinations } = useDestinations()
-const { loadData: loadPeople } = usePeople()
+const { destinations, getDestFullName, loadData: loadDestinations } = useDestinations()
+const { activePeople, loadData: loadPeople } = usePeople()
 const { loadData: loadSuppliers } = useSuppliers()
 const { loadData: loadRoles } = useRoles()
 const { loadData: loadEpis } = useEpis()
 const { loadData: loadUsers } = useUsers()
 const { isAdmin, isLoggedIn, user, logout, checkSession, changeOwnPassword } = useAuth()
-const { loadData: loadWorkOrders } = useWorkOrders()
-const { loadData: loadMotors } = useMotors()
+const { workOrders, loadData: loadWorkOrders } = useWorkOrders()
+const { motors, loadData: loadMotors } = useMotors()
 const { loadData: loadClosings } = useClosings()
 const { success, error } = useToast()
 const localBrandFavicon = '/local-brand/favicon.png'
@@ -85,6 +85,13 @@ const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
 const requestedCadastrosTab = ref(savedUiState.cadastrosTab || 'hierarquia')
 const quickActionsOpen = ref(false)
+const globalCreateOpen = ref(false)
+const globalSearchOpen = ref(false)
+const globalSearchQuery = ref('')
+const globalSearchInputRef = ref(null)
+const globalCreateRootRef = ref(null)
+const accountMenuRootRef = ref(null)
+const quickActionsRootRef = ref(null)
 const quickActionToggleRef = ref(null)
 const quickEntryRef = ref(null)
 const quickExitRef = ref(null)
@@ -131,6 +138,8 @@ const navigationShortcuts = [
 
 const actionShortcuts = [
   { chord: '?', label: 'Abrir atalhos', always: true },
+  { chord: 'Ctrl K', label: 'Busca global', always: true },
+  { chord: 'Ctrl N', label: 'Novo registro', always: true },
   { chord: 'M', label: 'Abrir movimentação rápida', requiresQuickMovement: true },
   { chord: 'M E', label: 'Entrada rápida', requiresQuickMovement: true },
   { chord: 'M S', label: 'Saída rápida', requiresQuickMovement: true },
@@ -143,6 +152,118 @@ const visibleNavigationShortcuts = computed(() =>
 const visibleActionShortcuts = computed(() =>
   actionShortcuts.filter(shortcut => shortcut.always || !shortcut.requiresQuickMovement || showQuickMovementActions.value)
 )
+
+const createActions = computed(() => [
+  { id: 'entrada', label: 'Entrada', hint: 'Registrar material chegando', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
+  { id: 'saida', label: 'Saida', hint: 'Retirar material do estoque', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
+  { id: 'os', label: 'Nova OS', hint: 'Abrir ordem de servico', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
+  { id: 'pessoa', label: 'Pessoa', hint: 'Cadastrar funcionario ou solicitante', target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true } },
+  { id: 'destino', label: 'Destino', hint: 'Cadastrar maquina, local ou destino', target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true } },
+  { id: 'item', label: 'Item', hint: 'Abrir cadastro do catalogo', target: { tab: 'cadastros', subTab: 'hierarquia', requiresAuth: true } },
+])
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function variationSearchLabel(item, variation) {
+  const attrs = Object.entries({ ...(variation.values || {}), ...(variation.extras || {}) })
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' / ')
+  return attrs ? `${item.name} - ${attrs}` : item.name
+}
+
+function resultMatches(parts, query) {
+  const text = normalizeSearchText(parts.filter(Boolean).join(' '))
+  return !query || text.includes(query)
+}
+
+const globalSearchResults = computed(() => {
+  const q = normalizeSearchText(globalSearchQuery.value.trim())
+  if (!q) return []
+  const results = []
+
+  for (const order of workOrders.value) {
+    if (results.length >= 8) break
+    if (!resultMatches([order.number, order.title, order.requestedBy, order.equipment, order.destinationName, order.motorTag], q)) continue
+    results.push({
+      id: `os:${order.id}`,
+      type: 'OS',
+      title: `OS #${order.number}`,
+      subtitle: order.title || order.equipment || order.destinationName || 'Ordem de servico',
+      target: { tab: 'ordens', subTab: 'ordens', orderId: order.id },
+    })
+  }
+
+  for (const motor of motors.value) {
+    if (results.length >= 12) break
+    if (!resultMatches([motor.tag, motor.name, motor.model, motor.locationName, motor.status], q)) continue
+    results.push({
+      id: `motor:${motor.id}`,
+      type: 'Motor',
+      title: motor.tag || motor.name || 'Motor',
+      subtitle: [motor.name, motor.locationName, motor.status].filter(Boolean).join(' - '),
+      target: { tab: 'motores' },
+    })
+  }
+
+  for (const person of activePeople.value) {
+    if (results.length >= 16) break
+    if (!resultMatches([person.name, person.role], q)) continue
+    results.push({
+      id: `pessoa:${person.id}`,
+      type: 'Pessoa',
+      title: person.name,
+      subtitle: person.role || 'Cadastro de pessoa',
+      target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true },
+    })
+  }
+
+  for (const dest of destinations.value) {
+    if (results.length >= 20) break
+    const fullName = getDestFullName(dest.id)
+    if (!resultMatches([dest.name, fullName, dest.description], q)) continue
+    results.push({
+      id: `destino:${dest.id}`,
+      type: 'Destino',
+      title: fullName || dest.name,
+      subtitle: 'Cadastro de destinos',
+      target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true },
+    })
+  }
+
+  for (const item of items.value) {
+    if (results.length >= 26) break
+    if (!resultMatches([item.name, item.group, item.category, item.subcategory], q)) continue
+    results.push({
+      id: `item:${item.id}`,
+      type: 'Item',
+      title: item.name,
+      subtitle: [item.group, item.category, item.subcategory].filter(Boolean).join(' > '),
+      target: { tab: 'catalogo', itemId: item.id, search: item.name },
+    })
+  }
+
+  for (const variation of variations.value) {
+    if (results.length >= 30) break
+    const item = items.value.find(row => row.id === variation.itemId)
+    if (!item) continue
+    const label = variationSearchLabel(item, variation)
+    if (!resultMatches([label, variation.location], q)) continue
+    results.push({
+      id: `var:${variation.id}`,
+      type: 'Variacao',
+      title: label,
+      subtitle: `Estoque: ${variation.stock ?? 0} ${item.unit || 'un'}`,
+      target: { tab: 'catalogo', itemId: item.id, variationId: variation.id, search: item.name },
+    })
+  }
+
+  return results.slice(0, 12)
+})
 
 // Load all data from API
 async function loadAllData() {
@@ -182,11 +303,13 @@ onMounted(async () => {
   if (savedUiState.catalogGroup) activeGroup.value = savedUiState.catalogGroup
   window.addEventListener('app:data-invalidated', loadAllData)
   window.addEventListener('keydown', handleGlobalShortcutKeydown)
+  window.addEventListener('mousedown', handleGlobalPointerDown, true)
 })
 
 onUnmounted(() => {
   window.removeEventListener('app:data-invalidated', loadAllData)
   window.removeEventListener('keydown', handleGlobalShortcutKeydown)
+  window.removeEventListener('mousedown', handleGlobalPointerDown, true)
   clearShortcutPrefix()
 })
 
@@ -259,6 +382,82 @@ function openMovementTab(tab, prefill = null) {
   })
 }
 
+function openGlobalSearch() {
+  globalSearchOpen.value = true
+  globalCreateOpen.value = false
+  shortcutHelpOpen.value = false
+  quickActionsOpen.value = false
+  clearShortcutPrefix()
+  nextTick(() => globalSearchInputRef.value?.focus())
+}
+
+function closeGlobalSearch() {
+  globalSearchOpen.value = false
+  globalSearchQuery.value = ''
+}
+
+function openGlobalCreate() {
+  if (!isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
+  globalCreateOpen.value = !globalCreateOpen.value
+  shortcutHelpOpen.value = false
+  quickActionsOpen.value = false
+  clearShortcutPrefix()
+}
+
+function runCreateAction(action) {
+  globalCreateOpen.value = false
+  navigateTab(action.target)
+}
+
+function closeTopPopup() {
+  if (globalSearchOpen.value) {
+    closeGlobalSearch()
+    return true
+  }
+  if (globalCreateOpen.value) {
+    globalCreateOpen.value = false
+    return true
+  }
+  if (shortcutHelpOpen.value) {
+    closeShortcutHelp()
+    return true
+  }
+  if (quickActionsOpen.value) {
+    closeQuickActions()
+    return true
+  }
+  if (passwordModalOpen.value) {
+    closePasswordModal()
+    return true
+  }
+  if (accountMenuOpen.value) {
+    accountMenuOpen.value = false
+    return true
+  }
+  if (showLoginModal.value) {
+    showLoginModal.value = false
+    return true
+  }
+  return false
+}
+
+function handleGlobalPointerDown(event) {
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (globalCreateOpen.value && !globalCreateRootRef.value?.contains(target)) {
+    globalCreateOpen.value = false
+  }
+  if (accountMenuOpen.value && !accountMenuRootRef.value?.contains(target)) {
+    accountMenuOpen.value = false
+  }
+  if (quickActionsOpen.value && !quickActionsRootRef.value?.contains(target)) {
+    quickActionsOpen.value = false
+  }
+}
+
 function isEditableTarget(target) {
   const tagName = String(target?.tagName || '').toLowerCase()
   return Boolean(target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName))
@@ -310,6 +509,24 @@ function runNavigationShortcut(shortcut) {
   closeShortcutHelp()
   quickActionsOpen.value = false
   navigateTab(shortcut.target)
+}
+
+function openGlobalSearchResult(result) {
+  if (!result) return
+  closeGlobalSearch()
+  if (result.target?.search) {
+    catalogSearch.value = result.target.search
+  }
+  navigateTab(result.target)
+  if (result.target?.tab === 'catalogo') {
+    nextTick(() => {
+      if (result.target.variationId) {
+        catalogRef.value?.openVariationById?.(result.target.variationId)
+      } else if (result.target.itemId) {
+        catalogRef.value?.openItemById?.(result.target.itemId)
+      }
+    })
+  }
 }
 
 function openInventoryQuickMovement(payload) {
@@ -394,6 +611,15 @@ function navigateTab(target) {
     })
     return
   }
+  if (tab === 'cadastros' && target?.subTab) {
+    if (!isLoggedIn.value) {
+      showLoginModal.value = true
+      return
+    }
+    requestedCadastrosTab.value = target.subTab
+    activeTab.value = 'cadastros'
+    return
+  }
   if (tab === 'ordens') {
     requestedOrdersTab.value = ''
     requestedOrderFocusId.value = ''
@@ -408,26 +634,31 @@ function navigateTab(target) {
 }
 
 function handleGlobalShortcutKeydown(event) {
-  if (event.altKey || event.ctrlKey || event.metaKey) return
-  if (isEditableTarget(event.target)) return
   const key = String(event.key || '').toLowerCase()
-  if (key === '?' || (key === '/' && event.shiftKey)) {
-    event.preventDefault()
-    toggleShortcutHelp()
-    return
-  }
   if (key === 'escape') {
-    if (shortcutHelpOpen.value) {
+    if (closeTopPopup()) {
       event.preventDefault()
-      closeShortcutHelp()
-      return
-    }
-    if (quickActionsOpen.value) {
-      event.preventDefault()
-      closeQuickActions()
+      event.stopPropagation()
       return
     }
     clearShortcutPrefix()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && key === 'k') {
+    event.preventDefault()
+    openGlobalSearch()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && key === 'n') {
+    event.preventDefault()
+    openGlobalCreate()
+    return
+  }
+  if (event.altKey || event.ctrlKey || event.metaKey) return
+  if (isEditableTarget(event.target)) return
+  if (key === '?' || (key === '/' && event.shiftKey)) {
+    event.preventDefault()
+    toggleShortcutHelp()
     return
   }
   if (shortcutPrefix.value === 'g') {
@@ -539,7 +770,47 @@ function handleGlobalShortcutKeydown(event) {
 
           <!-- Auth + Theme -->
           <div class="flex items-center gap-1">
-          <div v-if="isLoggedIn" class="relative">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            title="Busca global (Ctrl+K)"
+            @click="openGlobalSearch"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
+            </svg>
+            Buscar
+          </AppButton>
+          <div ref="globalCreateRootRef" class="relative">
+            <AppButton
+              variant="primary"
+              size="sm"
+              title="Novo registro (Ctrl+N)"
+              :aria-expanded="globalCreateOpen"
+              @click="openGlobalCreate"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Novo
+            </AppButton>
+            <div
+              v-if="globalCreateOpen"
+              class="absolute right-0 mt-2 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+            >
+              <button
+                v-for="action in createActions"
+                :key="action.id"
+                type="button"
+                class="block w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                @click="runCreateAction(action)"
+              >
+                <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ action.label }}</span>
+                <span class="block text-xs text-gray-500 dark:text-gray-400">{{ action.hint }}</span>
+              </button>
+            </div>
+          </div>
+          <div v-if="isLoggedIn" ref="accountMenuRootRef" class="relative">
             <AppButton
               variant="ghost"
               size="sm"
@@ -665,6 +936,55 @@ function handleGlobalShortcutKeydown(event) {
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />
 
     <div
+      v-if="globalSearchOpen"
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-4 pt-[12vh]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Busca global"
+      @click.self="closeGlobalSearch"
+      @keydown.escape="closeGlobalSearch"
+    >
+      <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
+        <div class="border-b border-gray-200 p-3 dark:border-white/[0.08]">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
+            </svg>
+            <input
+              ref="globalSearchInputRef"
+              v-model="globalSearchQuery"
+              type="text"
+              class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+              placeholder="Buscar item, OS, motor, pessoa ou destino..."
+              @keydown.enter.prevent="openGlobalSearchResult(globalSearchResults[0])"
+            />
+          </div>
+        </div>
+        <div class="max-h-[26rem] overflow-auto p-2">
+          <button
+            v-for="result in globalSearchResults"
+            :key="result.id"
+            type="button"
+            class="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+            @click="openGlobalSearchResult(result)"
+          >
+            <span class="mt-0.5 rounded-md bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ result.type }}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ result.title }}</span>
+              <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ result.subtitle }}</span>
+            </span>
+          </button>
+          <div v-if="globalSearchQuery && !globalSearchResults.length" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Nenhum resultado encontrado.
+          </div>
+          <div v-if="!globalSearchQuery" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Digite para procurar em OS, catalogo, motores, pessoas e destinos.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
       v-if="passwordModalOpen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
       role="dialog"
@@ -764,7 +1084,7 @@ function handleGlobalShortcutKeydown(event) {
       {{ shortcutPrefix.toUpperCase() }}...
     </div>
 
-    <div v-if="showQuickMovementActions" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+    <div v-if="showQuickMovementActions" ref="quickActionsRootRef" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
       <div
         v-if="quickActionsOpen"
         id="quick-movement-menu"

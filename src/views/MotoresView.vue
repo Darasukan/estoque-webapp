@@ -742,7 +742,7 @@ function formatLocationPeriod(entry) {
 }
 
 function workOrderStatusLabel(order) {
-  return order.maintenanceEndDate && order.maintenanceEndTime ? 'Finalizada' : 'Aberta'
+  return order.maintenanceEndDate ? 'Finalizada' : 'Aberta'
 }
 
 function workOrderMotorEventLabel(order) {
@@ -1151,7 +1151,7 @@ function workOrderEndLabel(order) {
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
               <span class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">Motor {{ wo.motorTag || wo.equipment || '-' }}</span>
-              <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
               <span v-if="workOrderMotorEventLabel(wo)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
                 {{ workOrderMotorEventLabel(wo) }}
               </span>
@@ -1400,7 +1400,7 @@ function workOrderEndLabel(order) {
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ wo.number }}</span>
-                      <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="wo.maintenanceEndDate ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
                       <span v-if="workOrderMotorEventLabel(wo)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
                         {{ workOrderMotorEventLabel(wo) }}
                       </span>
@@ -1444,7 +1444,7 @@ function workOrderEndLabel(order) {
                 <div class="flex items-center justify-between gap-2 px-2">
                   <p class="text-sm font-medium text-gray-900 dark:text-gray-100">OS #{{ wo.number }}</p>
                   <div class="flex flex-wrap justify-end gap-1">
-                    <span class="text-[11px] rounded-full px-2 py-0.5" :class="wo.maintenanceEndDate && wo.maintenanceEndTime ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
+                    <span class="text-[11px] rounded-full px-2 py-0.5" :class="wo.maintenanceEndDate ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(wo) }}</span>
                     <span v-if="workOrderMotorEventLabel(wo)" class="text-[11px] rounded-full px-2 py-0.5 bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
                       {{ workOrderMotorEventLabel(wo) }}
                     </span>
