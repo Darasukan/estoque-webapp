@@ -114,6 +114,8 @@ const ordersStatusTab = ref(savedOsFilterState.ordersStatusTab || 'open')
 const historySearch = ref(savedOsFilterState.historySearch || '')
 const historyDateFrom = ref(savedOsFilterState.historyDateFrom || '')
 const historyDateTo = ref(savedOsFilterState.historyDateTo || '')
+const historyWho = ref(savedOsFilterState.historyWho || '')
+const historyWhere = ref(savedOsFilterState.historyWhere || '')
 const expandedOrderId = ref(null)
 const showNewForm = ref(false)
 const editingOrderId = ref(null)
@@ -121,6 +123,8 @@ const confirmDeleteId = ref(null)
 const quickOsFieldRefs = ref([])
 const quickSuggestionIndex = ref(0)
 const quickSuggestionFieldKey = ref('')
+const quickSuggestionNavigated = ref(false)
+const quickExplicitNewValues = ref({})
 const quickInvalidFieldKey = ref('')
 const osEntryMode = ref('form')
 const quickRowsMenuOpen = ref(false)
@@ -150,13 +154,15 @@ watch(quickKeepValues, (keep) => {
   localStorage.setItem(QUICK_OS_KEEP_VALUES_KEY, keep ? 'true' : 'false')
 })
 
-watch([searchQuery, ordersStatusTab, historySearch, historyDateFrom, historyDateTo], () => {
+watch([searchQuery, ordersStatusTab, historySearch, historyDateFrom, historyDateTo, historyWho, historyWhere], () => {
   localStorage.setItem(OS_FILTER_STATE_KEY.value, JSON.stringify({
     searchQuery: searchQuery.value,
     ordersStatusTab: ordersStatusTab.value,
     historySearch: historySearch.value,
     historyDateFrom: historyDateFrom.value,
     historyDateTo: historyDateTo.value,
+    historyWho: historyWho.value,
+    historyWhere: historyWhere.value,
   }))
 })
 
@@ -619,18 +625,32 @@ function quickSuggestionOptions(field) {
     ? isRegisteredRequester(value)
     : Boolean(findDestinationIdByEquipment(value))
   if (exact) return []
-  return quickAutocompleteCandidates(field, value).slice(0, 6)
+  const suggestions = quickAutocompleteCandidates(field, value).slice(0, 6)
+  if (!quickAutoCreateRegistries) return suggestions
+  return [
+    ...suggestions,
+    {
+      type: 'new',
+      option: value,
+      label: `${field.type === 'person' ? 'Nova pessoa' : 'Novo destino'}: ${value}`,
+      normalized: normalizeText(value),
+      score: -1,
+    },
+  ]
 }
 
 function openQuickSuggestions(field) {
   if (!['person', 'destination'].includes(field.type)) return
+  if (quickSuggestionFieldKey.value === field.key) return
   quickSuggestionFieldKey.value = field.key
   quickSuggestionIndex.value = 0
+  quickSuggestionNavigated.value = false
 }
 
 function closeQuickSuggestions({ blur = false } = {}) {
   quickSuggestionFieldKey.value = ''
   quickSuggestionIndex.value = 0
+  quickSuggestionNavigated.value = false
   if (blur && document.activeElement instanceof HTMLElement) {
     document.activeElement.blur()
   }
@@ -670,10 +690,18 @@ onBeforeUnmount(() => {
 
 function applyQuickSuggestion(field, option, index) {
   if (!option) return
-  osForm.value[field.key] = option
+  const value = typeof option === 'string' ? option : option.option
+  if (!value) return
+  osForm.value[field.key] = value
   closeQuickSuggestions()
+  if (typeof option === 'object' && option.type === 'new') {
+    quickExplicitNewValues.value[field.key] = value
+    if (field.type === 'destination') osForm.value.destinationId = ''
+    return
+  }
+  delete quickExplicitNewValues.value[field.key]
   if (field.type === 'destination') {
-    osForm.value.destinationId = findDestinationIdByEquipment(option)
+    osForm.value.destinationId = findDestinationIdByEquipment(value)
   }
 }
 
@@ -687,6 +715,7 @@ function moveQuickSuggestion(field, direction) {
   if (!options.length) return
   const next = quickSuggestionIndex.value + direction
   quickSuggestionIndex.value = Math.max(0, Math.min(next, options.length - 1))
+  quickSuggestionNavigated.value = true
 }
 
 function syncQuickDestinationFromText(uniqueOnly = false) {
@@ -701,6 +730,8 @@ function syncQuickDestinationFromText(uniqueOnly = false) {
 function handleQuickAutocompleteInput(field) {
   openQuickSuggestions(field)
   quickSuggestionIndex.value = 0
+  quickSuggestionNavigated.value = false
+  delete quickExplicitNewValues.value[field.key]
   if (field.type !== 'destination') return
   if (!osForm.value.equipment.trim()) {
     osForm.value.destinationId = ''
@@ -717,7 +748,11 @@ function commitQuickAutocomplete(field, index) {
     const suggestions = quickSuggestionOptions(field)
     if (suggestions.length) {
       const selectedSuggestion = suggestions[quickSuggestionIndex.value] || suggestions[0]
-      if (isStrongQuickAutocompleteMatch(selectedSuggestion, value)) {
+      if (quickSuggestionNavigated.value) {
+        chooseQuickSuggestion(field, selectedSuggestion, index)
+        return
+      }
+      if (selectedSuggestion.type !== 'new' && isStrongQuickAutocompleteMatch(selectedSuggestion, value)) {
         chooseQuickSuggestion(field, selectedSuggestion.option, index)
         return
       }
@@ -758,6 +793,11 @@ function commitQuickAutocomplete(field, index) {
 function handleQuickAutocompleteDown(field) {
   openQuickSuggestions(field)
   if (quickSuggestionOptions(field).length) {
+    if (!quickSuggestionNavigated.value) {
+      quickSuggestionNavigated.value = true
+      quickSuggestionIndex.value = 0
+      return
+    }
     moveQuickSuggestion(field, 1)
     return
   }
@@ -765,11 +805,22 @@ function handleQuickAutocompleteDown(field) {
 
 function handleQuickAutocompleteUp(field, index) {
   openQuickSuggestions(field)
-  if (quickSuggestionOptions(field).length && quickSuggestionIndex.value > 0) {
-    moveQuickSuggestion(field, -1)
+  const options = quickSuggestionOptions(field)
+  if (options.length) {
+    if (!quickSuggestionNavigated.value) {
+      quickSuggestionNavigated.value = true
+      quickSuggestionIndex.value = options.length - 1
+      return
+    }
+    if (quickSuggestionIndex.value > 0) {
+      moveQuickSuggestion(field, -1)
+      return
+    }
+  }
+  if (!options.length || !quickSuggestionNavigated.value) {
+    handleQuickOsBack(field, index)
     return
   }
-  handleQuickOsBack(field, index)
 }
 
 const baseQuickOsFields = [
@@ -1011,13 +1062,15 @@ function isRegisteredRequester(name) {
 async function ensureQuickPersonRegistered(key, label) {
   const name = String(osForm.value[key] || '').trim()
   if (!name || isRegisteredRequester(name)) return true
-  if (strongQuickAutocompleteCandidates({ type: 'person' }, name).length) return true
+  const explicitNew = quickExplicitNewValues.value[key] === name
+  if (!explicitNew && strongQuickAutocompleteCandidates({ type: 'person' }, name).length) return true
   const result = await addPerson(name)
   if (!result.ok) {
     showError(result.error || `Nao foi possivel cadastrar ${label}.`)
     return false
   }
   osForm.value[key] = result.person?.name || name
+  delete quickExplicitNewValues.value[key]
   return true
 }
 
@@ -1029,7 +1082,8 @@ async function ensureQuickDestinationRegistered() {
     osForm.value.destinationId = existingId
     return true
   }
-  if (strongQuickAutocompleteCandidates({ type: 'destination' }, name).length) return true
+  const explicitNew = quickExplicitNewValues.value.equipment === name
+  if (!explicitNew && strongQuickAutocompleteCandidates({ type: 'destination' }, name).length) return true
   const result = await addDestination(name)
   if (!result.ok) {
     showError(result.error || 'Nao foi possivel cadastrar o destino.')
@@ -1037,6 +1091,7 @@ async function ensureQuickDestinationRegistered() {
   }
   osForm.value.destinationId = result.destination?.id || ''
   osForm.value.equipment = result.destination?.name || name
+  delete quickExplicitNewValues.value.equipment
   return Boolean(osForm.value.destinationId)
 }
 
@@ -1381,7 +1436,9 @@ const filteredOrders = computed(() => {
 })
 
 const historyOrders = computed(() => {
-  const q = historySearch.value.trim().toLowerCase()
+  const q = normalizeText(historySearch.value)
+  const who = normalizeText(historyWho.value)
+  const where = normalizeText(historyWhere.value)
   const from = historyDateFrom.value ? new Date(`${historyDateFrom.value}T00:00:00`) : null
   const to = historyDateTo.value ? new Date(`${historyDateTo.value}T23:59:59`) : null
 
@@ -1390,6 +1447,28 @@ const historyOrders = computed(() => {
       const requestDate = o.requestDate ? orderDateTime(o.requestDate) : null
       if (from && requestDate && requestDate < from) return false
       if (to && requestDate && requestDate > to) return false
+
+      if (who) {
+        const whoHaystack = [
+          o.requestedBy,
+          o.maintenanceProfessional,
+        ].join(' ')
+        if (!normalizeText(whoHaystack).includes(who)) return false
+      }
+
+      if (where) {
+        const whereHaystack = [
+          orderDisplayTitle(o),
+          o.destinationName,
+          o.motorOriginDestinationName,
+          o.maintenanceLocationName,
+          o.maintenanceDestinationName,
+          o.maintenanceExternalLocation,
+          o.motorTag,
+          o.motorName,
+        ].join(' ')
+        if (!normalizeText(whereHaystack).includes(where)) return false
+      }
 
       if (!q) return true
       const haystack = [
@@ -1409,8 +1488,8 @@ const historyOrders = computed(() => {
         o.maintenanceProfessional,
         o.maintenanceMaterials,
         o.maintenanceNote,
-      ].join(' ').toLowerCase()
-      return haystack.includes(q)
+      ].join(' ')
+      return normalizeText(haystack).includes(q)
     })
     .sort((a, b) => {
       const bDate = b.createdAt || `${b.requestDate || ''} ${b.requestTime || ''}`
@@ -1418,6 +1497,18 @@ const historyOrders = computed(() => {
       return bDate.localeCompare(aDate)
     })
 })
+
+const hasHistoryFilters = computed(() =>
+  Boolean(historySearch.value || historyDateFrom.value || historyDateTo.value || historyWho.value || historyWhere.value)
+)
+
+function clearHistoryFilters() {
+  historySearch.value = ''
+  historyDateFrom.value = ''
+  historyDateTo.value = ''
+  historyWho.value = ''
+  historyWhere.value = ''
+}
 
 function csvCell(value) {
   const text = String(value ?? '').replace(/\r?\n/g, ' ').trim()
@@ -2064,6 +2155,12 @@ function orderDisplayTitle(order) {
   return order.equipment || order.destinationName || order.title || 'Sem equipamento'
 }
 
+function orderHistoryLocationLabel(order) {
+  const label = order.motorId ? maintenanceLocationLabel(order) : order.destinationName
+  if (!label || label === '-') return ''
+  return normalizeText(label) === normalizeText(orderDisplayTitle(order)) ? '' : label
+}
+
 function variationLabel(v) {
   const vals = v.variationValues || v.values || {}
   const parts = Object.entries(vals).map(([k, val]) => `${k}: ${val}`).filter(Boolean)
@@ -2354,13 +2451,16 @@ function matBackToStep2() {
                 >
                   <button
                     v-for="(suggestion, suggestionIndex) in quickSuggestionOptions(field)"
-                    :key="suggestion.option"
+                    :key="`${suggestion.type || 'existing'}:${suggestion.option}`"
                     type="button"
                     class="block w-full truncate px-3 py-2 text-left text-gray-700 dark:text-gray-200"
-                    :class="suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
-                    @mousedown.prevent="chooseQuickSuggestion(field, suggestion.option, index)"
+                    :class="[
+                      suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800',
+                      suggestion.type === 'new' ? 'border-t border-gray-100 font-semibold text-primary-700 dark:border-gray-800 dark:text-primary-300' : ''
+                    ]"
+                    @mousedown.prevent="chooseQuickSuggestion(field, suggestion, index)"
                   >
-                    {{ suggestion.option }}
+                    {{ suggestion.label || suggestion.option }}
                   </button>
                 </div>
                 <p
@@ -3264,14 +3364,36 @@ function matBackToStep2() {
     <!-- TAB: Histórico de Ordens de Serviço -->
     <template v-if="activeSubTab === 'historico'">
       <div class="space-y-3">
-        <div class="ds-toolbar flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div class="relative flex-1">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+        <div class="ds-toolbar grid gap-3 lg:grid-cols-[minmax(14rem,1fr)_minmax(11rem,0.7fr)_minmax(11rem,0.7fr)_auto] lg:items-end">
+          <div class="relative">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Buscar</label>
+            <svg class="absolute left-3 top-[2.1rem] w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
             <input
               v-model="historySearch"
               type="text"
               :placeholder="isMotorMode ? 'Buscar por número, solicitante, motor, oficina ou observação...' : 'Buscar por número, solicitante, equipamento ou observação...'"
               class="ds-input pl-9"
+            />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Quem</label>
+            <input
+              v-model="historyWho"
+              type="text"
+              list="os-people-options"
+              placeholder="Solicitante ou profissional"
+              class="ds-input"
+            />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Onde</label>
+            <input
+              v-model="historyWhere"
+              type="text"
+              :placeholder="isMotorMode ? 'Motor, destino ou oficina' : 'Equipamento ou destino'"
+              class="ds-input"
             />
           </div>
 
@@ -3318,11 +3440,17 @@ function matBackToStep2() {
         </div>
 
         <div
-          v-if="historySearch || historyDateFrom || historyDateTo"
+          v-if="hasHistoryFilters"
           class="flex flex-wrap items-center gap-2"
         >
           <span v-if="historySearch" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
             Busca: {{ historySearch }}
+          </span>
+          <span v-if="historyWho" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
+            Quem: {{ historyWho }}
+          </span>
+          <span v-if="historyWhere" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
+            Onde: {{ historyWhere }}
           </span>
           <span v-if="historyDateFrom || historyDateTo" class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">
             Período: {{ historyDateFrom ? formatDateOnly(historyDateFrom) : 'início' }} - {{ historyDateTo ? formatDateOnly(historyDateTo) : 'hoje' }}
@@ -3330,7 +3458,7 @@ function matBackToStep2() {
           <button
             type="button"
             class="text-xs font-medium text-primary-700 dark:text-primary-400 hover:underline"
-            @click="historySearch = ''; historyDateFrom = ''; historyDateTo = ''"
+            @click="clearHistoryFilters"
           >
             Limpar filtros
           </button>
@@ -3340,8 +3468,8 @@ function matBackToStep2() {
           v-if="historyOrders.length === 0"
           title="Nenhuma OS encontrada no histórico"
           text="Histórico aparece aqui conforme as ordens forem criadas ou quando filtros combinarem com registros existentes."
-          :action-label="historySearch || historyDateFrom || historyDateTo ? 'Limpar filtros' : ''"
-          @action="historySearch = ''; historyDateFrom = ''; historyDateTo = ''"
+          :action-label="hasHistoryFilters ? 'Limpar filtros' : ''"
+          @action="clearHistoryFilters"
         />
 
         <div v-else class="ds-table-wrap">
@@ -3377,12 +3505,11 @@ function matBackToStep2() {
                   </td>
                   <td class="px-4 py-3 align-top">
                     <div class="font-medium text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</div>
-                    <div v-if="order.motorTag || order.destinationName" class="mt-0.5 flex flex-wrap gap-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div v-if="order.motorTag || orderHistoryLocationLabel(order)" class="mt-0.5 flex flex-wrap gap-1 text-xs text-gray-500 dark:text-gray-400">
                       <span v-if="order.motorTag" class="rounded-full bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 text-primary-700 dark:text-primary-300">
                         {{ order.motorTag }}
                       </span>
-                      <span v-if="isMotorMode">{{ maintenanceLocationLabel(order) }}</span>
-                      <span v-else-if="order.destinationName">{{ order.destinationName }}</span>
+                      <span v-if="orderHistoryLocationLabel(order)">{{ orderHistoryLocationLabel(order) }}</span>
                     </div>
                   </td>
                   <td class="px-4 py-3 align-top text-gray-600 dark:text-gray-300">
