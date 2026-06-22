@@ -1,0 +1,208 @@
+@layer components {
+  .ds-button {
+    border: 1px solid transparent;
+    border-radius: var(--ds-radius-control);
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 1px 1px rgba(31, 36, 41, 0.04);
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .ds-button-primary {
+    background: var(--ds-brand);
+    color: var(--ds-primary-text);
+  }
+
+  .ds-button-primary:hover { background: var(--ds-brand-hover); }
+
+  .ds-button-secondary {
+    border-color: var(--ds-border);
+    background: var(--ds-surface);
+    color: var(--ds-text);
+  }
+
+  .ds-button-secondary:hover { background: var(--ds-surface-hover); }
+
+  .ds-button-ghost {
+    background: transparent;
+    color: var(--ds-text-muted);
+    box-shadow: none;
+  }
+
+  .ds-button-ghost:hover {
+    background: color-mix(in srgb, var(--ds-surface-hover) 70%, transparent);
+    color: var(--ds-text);
+  }
+
+  :root:not(.dark) .ds-nav .ds-button-ghost {
+    color: rgba(255, 255, 255, 0.82);
+  }
+
+  :root:not(.dark) .ds-nav .ds-button-ghost:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  .ds-button-danger,
+  .ds-button-warning,
+  .ds-button-success {
+    border-color: color-mix(in srgb, currentColor 24%, transparent);
+    background: color-mix(in srgb, currentColor 10%, var(--ds-panel));
+  }
+
+  .ds-button-danger { color: var(--ds-danger); }
+  .ds-button-warning { color: var(--ds-warning); }
+  .ds-button-success { color: var(--ds-success); }
+
+  .ds-button-danger:hover,
+  .ds-button-warning:hover,
+  .ds-button-success:hover {
+    background: color-mix(in srgb, currentColor 16%, var(--ds-panel));
+  }
+
+  .ds-button-danger-solid {
+    background: var(--ds-danger);
+    color: #ffffff;
+  }
+
+  .ds-button-danger-solid:hover { filter: brightness(1.08); }
+
+  .ds-button-xs,
+  .ds-button-sm {
+    min-height: 2.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .ds-button-md {
+    min-height: 2.5rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+
+  .ds-button-lg {
+    min-height: 2.75rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .ds-button-icon {
+    width: 2.5rem;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+  }
+
+  .ds-context-nav {
+    min-height: 2.75rem;
+    padding-block: 0.25rem;
+    background: color-mix(in srgb, var(--ds-nav-bg) 94%, #ffffff);
+  }
+
+  .ds-context-tab {
+    position: relative;
+    min-height: 2.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--ds-radius-control);
+  }
+
+  .ds-context-tab-active {
+    background: rgba(255, 255, 255, 0.10);
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .ds-context-tab-active::after {
+    content: "";
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0;
+    left: 0.75rem;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--ds-brand);
+  }
+
+  .ds-segmented {
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-color: var(--ds-border);
+    border-radius: 8px;
+    background: var(--ds-surface);
+  }
+
+  .ds-segmented-item {
+    min-height: 2.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--ds-radius-control);
+    color: var(--ds-text-muted);
+    font-weight: 550;
+  }
+
+  .ds-segmented-item-active {
+    background: var(--ds-panel);
+    color: var(--ds-text);
+    box-shadow: 0 0 0 1px var(--ds-border-subtle), 0 1px 2px rgba(31, 36, 41, 0.06);
+  }
+
+  .ds-table-wrap {
+    border-radius: var(--ds-radius-card);
+    box-shadow: var(--ds-shadow-panel);
+  }
+
+  .ds-table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ds-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .ds-table th {
+    height: 2.75rem;
+    padding: 0.625rem 0.875rem;
+    color: var(--ds-text-soft) !important;
+    letter-spacing: 0.035em;
+  }
+
+  .ds-table td {
+    min-height: 2.75rem;
+    padding: 0.625rem 0.875rem;
+  }
+
+  .ds-table tbody tr:last-child td { border-bottom: 0; }
+
+  .ds-table td button[title] {
+    min-width: 2rem;
+    min-height: 2rem;
+    border-radius: var(--ds-radius-control);
+  }
+
+  .ds-page :where(table:not(.ds-table)) {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ds-page :where(table:not(.ds-table) thead) {
+    background: var(--ds-table-head);
+  }
+
+  .ds-page :where(table:not(.ds-table) tbody tr) {
+    border-color: var(--ds-border-subtle);
+  }
+
+  .ds-page :where(table:not(.ds-table) tbody tr:hover) {
+    background: color-mix(in srgb, var(--ds-surface-hover) 35%, transparent);
+  }
+
+  .ds-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    border-radius: var(--ds-radius-control);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-button { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+}

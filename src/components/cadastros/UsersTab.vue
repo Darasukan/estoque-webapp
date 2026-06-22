@@ -131,8 +131,8 @@ async function onDeleteUser(u) {
       </div>
 
       <!-- Users table -->
-      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <table v-if="users.length" class="w-full text-sm">
+      <div class="ds-table-wrap overflow-x-auto">
+        <table v-if="users.length" class="ds-table min-w-[640px]">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>

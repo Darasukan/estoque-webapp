@@ -43,16 +43,14 @@ watch(isAdmin, admin => {
 
 <template>
   <!-- Sub-tab bar -->
-  <div class="mb-6 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-900">
-    <nav class="flex min-w-max gap-1">
+  <div class="mb-5 overflow-x-auto">
+    <nav class="ds-segmented min-w-max" aria-label="Seções de administração">
       <button
         v-for="tab in cadastroTabs"
         :key="tab.id"
         type="button"
-        class="rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors whitespace-nowrap"
-        :class="activeSubTab === tab.id
-          ? 'bg-primary-600 text-white shadow-sm'
-          : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100'"
+        class="ds-segmented-item"
+        :class="activeSubTab === tab.id ? 'ds-segmented-item-active' : ''"
         @click="activeSubTab = tab.id"
       >{{ tab.label }}</button>
     </nav>

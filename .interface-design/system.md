@@ -35,8 +35,9 @@ Assinatura do produto: ficha de circulacao que conecta material, saldo, local ou
 
 ## Padroes reutilizaveis
 
-- Botao primario: 36-44 px de altura, raio de 6-8 px, peso 600, texto por `--ds-primary-text`.
-- Abas segmentadas: recipiente com borda discreta; aba ativa com fundo primario e contraste semantico.
+- Botoes: `xs/sm` com 36 px, `md` com 40 px, `lg` com 44 px e icone com 40 px; primario reservado a acao principal e perigo solido apenas para confirmacao destrutiva.
+- Abas: navegacao principal, contexto e controle segmentado sao camadas distintas; segmentado usa recipiente discreto e aba ativa elevada sobre a superficie.
+- Tabelas: cabecalho fixo, linhas de 44 px, numeros tabulares, acoes na ultima coluna e rolagem horizontal quando necessario.
 - Selecao em listas: fundo ativo, texto contrastante, icone e contador herdando a cor do estado.
 - Tag de atributo: compacta, borda discreta, chave com peso 600 e valor com peso regular.
 - Filtros laterais: busca no topo, hierarquia progressiva e uma unica selecao evidente.

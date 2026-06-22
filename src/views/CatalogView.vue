@@ -804,9 +804,9 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
       </div>
 
       <!-- Variations table — condensed -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="ds-table-wrap">
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="ds-table min-w-[760px]">
             <thead>
               <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
                 <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Variação</th>

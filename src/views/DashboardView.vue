@@ -88,7 +88,7 @@ const rankingMovements = computed(() => {
 })
 
 const openOrders = computed(() =>
-  workOrders.value.filter(o => !(o.maintenanceEndDate && o.maintenanceEndTime))
+  workOrders.value.filter(o => !o.maintenanceEndDate)
 )
 
 const motorsInMaintenance = computed(() =>
