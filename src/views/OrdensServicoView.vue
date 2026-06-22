@@ -116,6 +116,11 @@ const historyDateFrom = ref(savedOsFilterState.historyDateFrom || '')
 const historyDateTo = ref(savedOsFilterState.historyDateTo || '')
 const historyWho = ref(savedOsFilterState.historyWho || '')
 const historyWhere = ref(savedOsFilterState.historyWhere || '')
+const ORDERS_PAGE_SIZE = 10
+const HISTORY_PAGE_SIZE = 10
+const openOrdersPage = ref(1)
+const finishedOrdersPage = ref(1)
+const historyPage = ref(1)
 const expandedOrderId = ref(null)
 const showNewForm = ref(false)
 const editingOrderId = ref(null)
@@ -1435,6 +1440,19 @@ const filteredOrders = computed(() => {
   )
 })
 
+const ordersPage = computed({
+  get: () => ordersStatusTab.value === 'finished' ? finishedOrdersPage.value : openOrdersPage.value,
+  set: page => {
+    if (ordersStatusTab.value === 'finished') finishedOrdersPage.value = page
+    else openOrdersPage.value = page
+  },
+})
+const ordersTotalPages = computed(() => Math.max(1, Math.ceil(filteredOrders.value.length / ORDERS_PAGE_SIZE)))
+const paginatedOrders = computed(() => {
+  const start = (ordersPage.value - 1) * ORDERS_PAGE_SIZE
+  return filteredOrders.value.slice(start, start + ORDERS_PAGE_SIZE)
+})
+
 const historyOrders = computed(() => {
   const q = normalizeText(historySearch.value)
   const who = normalizeText(historyWho.value)
@@ -1501,6 +1519,29 @@ const historyOrders = computed(() => {
 const hasHistoryFilters = computed(() =>
   Boolean(historySearch.value || historyDateFrom.value || historyDateTo.value || historyWho.value || historyWhere.value)
 )
+
+const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyOrders.value.length / HISTORY_PAGE_SIZE)))
+const paginatedHistoryOrders = computed(() => {
+  const start = (historyPage.value - 1) * HISTORY_PAGE_SIZE
+  return historyOrders.value.slice(start, start + HISTORY_PAGE_SIZE)
+})
+
+watch(searchQuery, () => {
+  openOrdersPage.value = 1
+  finishedOrdersPage.value = 1
+}, { flush: 'sync' })
+
+watch([historySearch, historyDateFrom, historyDateTo, historyWho, historyWhere], () => {
+  historyPage.value = 1
+})
+
+watch(ordersTotalPages, total => {
+  if (ordersPage.value > total) ordersPage.value = total
+})
+
+watch(historyTotalPages, total => {
+  if (historyPage.value > total) historyPage.value = total
+})
 
 function clearHistoryFilters() {
   historySearch.value = ''
@@ -2175,13 +2216,22 @@ function toggleOrder(id) {
   expandedOrderId.value = expandedOrderId.value === id ? null : id
 }
 
+function revealOrder(order) {
+  activeSubTab.value = 'ordens'
+  searchQuery.value = ''
+  ordersStatusTab.value = isOrderFinished(order) ? 'finished' : 'open'
+  const orderIndex = filteredOrders.value.findIndex(item => item.id === order.id)
+  ordersPage.value = orderIndex < 0 ? 1 : Math.floor(orderIndex / ORDERS_PAGE_SIZE) + 1
+  expandedOrderId.value = order.id
+  nextTick(() => document.getElementById(`os-${order.id}`)?.scrollIntoView({ block: 'center' }))
+}
+
 function openOrderFromHistory(order) {
   if (canManageOs.value && isMotorMode.value && !order.maintenanceEndDate && !order.maintenanceEndTime) {
     startEditOS(order)
     return
   }
-  activeSubTab.value = 'ordens'
-  expandedOrderId.value = order.id
+  revealOrder(order)
 }
 
 function editFocusedOrder(orderId) {
@@ -2192,8 +2242,7 @@ function editFocusedOrder(orderId) {
     startEditOS(order)
     return
   }
-  activeSubTab.value = 'ordens'
-  expandedOrderId.value = order.id
+  revealOrder(order)
 }
 
 function cancelNewOsForm() {
@@ -2740,8 +2789,9 @@ function matBackToStep2() {
 
       <div v-else-if="!createOnly && activeSubTab === 'ordens'" class="ds-list-panel">
         <div
-          v-for="order in filteredOrders"
+          v-for="order in paginatedOrders"
           :key="order.id"
+          :id="`os-${order.id}`"
           class="ds-list-row"
         >
           <div
@@ -3358,6 +3408,16 @@ function matBackToStep2() {
           </div>
         </div>
 
+        <div v-if="ordersTotalPages > 1" class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          <span>
+            {{ (ordersPage - 1) * ORDERS_PAGE_SIZE + 1 }}-{{ Math.min(ordersPage * ORDERS_PAGE_SIZE, filteredOrders.length) }} de {{ filteredOrders.length }} OS
+          </span>
+          <div class="flex items-center gap-2">
+            <AppButton variant="ghost" size="xs" :disabled="ordersPage === 1" @click="ordersPage--">Anterior</AppButton>
+            <span class="min-w-14 text-center font-semibold text-gray-700 dark:text-gray-200">{{ ordersPage }} / {{ ordersTotalPages }}</span>
+            <AppButton variant="ghost" size="xs" :disabled="ordersPage === ordersTotalPages" @click="ordersPage++">Próxima</AppButton>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -3488,7 +3548,7 @@ function matBackToStep2() {
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                 <tr
-                  v-for="order in historyOrders"
+                  v-for="order in paginatedHistoryOrders"
                   :key="order.id"
                   class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
                   title="Abrir detalhes da OS"
@@ -3531,8 +3591,15 @@ function matBackToStep2() {
               </tbody>
             </table>
           </div>
-          <div class="border-t border-gray-200 dark:border-gray-700 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-            {{ historyOrders.length }} OS no histórico
+          <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <span>
+              {{ (historyPage - 1) * HISTORY_PAGE_SIZE + 1 }}-{{ Math.min(historyPage * HISTORY_PAGE_SIZE, historyOrders.length) }} de {{ historyOrders.length }} OS no histórico
+            </span>
+            <div v-if="historyTotalPages > 1" class="flex items-center gap-2">
+              <AppButton variant="ghost" size="xs" :disabled="historyPage === 1" @click="historyPage--">Anterior</AppButton>
+              <span class="min-w-14 text-center font-semibold text-gray-700 dark:text-gray-200">{{ historyPage }} / {{ historyTotalPages }}</span>
+              <AppButton variant="ghost" size="xs" :disabled="historyPage === historyTotalPages" @click="historyPage++">Próxima</AppButton>
+            </div>
           </div>
         </div>
       </div>
