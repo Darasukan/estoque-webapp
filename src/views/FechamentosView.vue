@@ -3,9 +3,10 @@ import { computed, inject, ref, watch } from 'vue'
 import { useClosings } from '../composables/useClosings.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
+import AppModal from '../components/ui/AppModal.vue'
 
 const isAdmin = inject('isAdmin')
-const { closings, closingDetails, createClosing, deleteClosing, loadClosing } = useClosings()
+const { closings, closingDetails, createClosing, deleteClosing, loadClosing, previewClosing } = useClosings()
 const { getDestFullName } = useDestinations()
 const { success, error } = useToast()
 
@@ -17,6 +18,9 @@ const selectedClosingId = ref('')
 const loading = ref(false)
 const deletingId = ref('')
 const exporting = ref(false)
+const preview = ref(null)
+const previewOpen = ref(false)
+const previewLoading = ref(false)
 
 const MONTHS = [
   { value: 1, label: 'Janeiro' },
@@ -47,6 +51,23 @@ const selectedDetail = computed(() => {
   if (!selectedClosing.value) return null
   return closingDetails.value[selectedClosing.value.id] || selectedClosing.value
 })
+
+const existingPeriodClosing = computed(() => closings.value.find(closing =>
+  closing.year === selectedYear.value && closing.month === selectedMonth.value
+) || null)
+
+async function handlePreview() {
+  if (!isAdmin?.value || previewLoading.value) return
+  previewLoading.value = true
+  try {
+    preview.value = await previewClosing(selectedYear.value, selectedMonth.value)
+    previewOpen.value = true
+  } catch (e) {
+    error(e.message)
+  } finally {
+    previewLoading.value = false
+  }
+}
 
 const attentionRows = computed(() => {
   const rows = selectedDetail.value?.data?.rows || []
@@ -91,9 +112,12 @@ async function handleCreate() {
       year: selectedYear.value,
       month: selectedMonth.value,
       notes: notes.value,
+      expectedMovementCount: preview.value?.movementCount,
     })
     selectedClosingId.value = created.id
     notes.value = ''
+    previewOpen.value = false
+    preview.value = null
     success(`Fechamento ${formatMonth(created)} salvo.`)
   } catch (e) {
     error(e.message)
@@ -252,10 +276,10 @@ async function handleExportDetails() {
         </label>
         <button
           class="ds-segmented-item ds-segmented-item-active min-h-[38px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="!isAdmin || loading"
-          @click="handleCreate"
+          :disabled="!isAdmin || loading || previewLoading"
+          @click="handlePreview"
         >
-          {{ loading ? 'Salvando...' : 'Salvar fechamento' }}
+          {{ previewLoading ? 'Calculando...' : 'Revisar fechamento' }}
         </button>
       </div>
       <p v-if="!isAdmin" class="text-xs ds-muted">Somente admin pode salvar ou excluir fechamentos.</p>
@@ -363,5 +387,35 @@ async function handleExportDetails() {
         Selecione ou salve um fechamento para ver os detalhes.
       </section>
     </div>
+
+    <AppModal
+      :visible="previewOpen"
+      :title="`Confirmar fechamento ${String(selectedMonth).padStart(2, '0')}/${selectedYear}`"
+      :confirm-loading="loading"
+      :confirm-disabled="!preview"
+      :persistent="loading"
+      @close="previewOpen = false"
+      @confirm="handleCreate"
+    >
+      <div v-if="preview" class="space-y-4">
+        <p v-if="existingPeriodClosing" class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+          Este período já foi fechado em {{ formatDate(existingPeriodClosing.closedAt) }}. Confirmar substituirá a fotografia existente.
+        </p>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="ds-metric"><p class="ds-metric-label">Entradas</p><p class="ds-metric-value text-green-500">{{ preview.monthEntradas }}</p></div>
+          <div class="ds-metric"><p class="ds-metric-label">Saídas</p><p class="ds-metric-value text-red-500">{{ preview.monthSaidas }}</p></div>
+          <div class="ds-metric"><p class="ds-metric-label">Sem estoque</p><p class="ds-metric-value text-red-500">{{ preview.zeroStock }}</p></div>
+          <div class="ds-metric"><p class="ds-metric-label">Abaixo do mínimo</p><p class="ds-metric-value text-amber-500">{{ preview.belowMin }}</p></div>
+        </div>
+        <dl class="grid grid-cols-2 gap-2 text-xs ds-muted">
+          <div><dt>Movimentações</dt><dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ preview.movementCount }}</dd></div>
+          <div><dt>Materiais</dt><dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ preview.items }}</dd></div>
+          <div><dt>Variações</dt><dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ preview.variations }}</dd></div>
+          <div><dt>Último fechamento</dt><dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ formatMonth(closings[0]) }}</dd></div>
+        </dl>
+        <p class="text-xs ds-subtle">O fechamento será reconstruído pelas movimentações registradas até o fim do período.</p>
+      </div>
+      <template #confirmLabel>{{ existingPeriodClosing ? 'Substituir fechamento' : 'Confirmar fechamento' }}</template>
+    </AppModal>
   </div>
 </template>

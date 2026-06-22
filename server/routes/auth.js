@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
 import { getAuthToken } from '../utils/authToken.js'
+import { passwordChangeError } from '../utils/authPolicy.js'
 
 const router = Router()
 const AUTH_COOKIE = 'auth_token'
@@ -36,7 +37,15 @@ router.post('/login', (req, res) => {
   db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, user.id)
 
   res.cookie(AUTH_COOKIE, token, cookieOptions(req))
-  res.json({ token, user: { id: user.id, name: user.name, role: user.role } })
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      mustChangePassword: Boolean(user.must_change_password),
+    },
+  })
 })
 
 // POST /api/auth/logout
@@ -53,27 +62,37 @@ router.get('/me', (req, res) => {
   if (!token) return res.status(401).json({ error: 'Não autenticado' })
 
   const session = db.prepare(`
-    SELECT u.id, u.name, u.role FROM sessions s
+    SELECT u.id, u.name, u.role, u.must_change_password FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ? AND u.active = 1
   `).get(token)
 
   if (!session) return res.status(401).json({ error: 'Sessão inválida' })
-  res.json(session)
+  res.json({
+    id: session.id,
+    name: session.name,
+    role: session.role,
+    mustChangePassword: Boolean(session.must_change_password),
+  })
 })
 
 // ===== User management (admin only) =====
 
 // GET /api/auth/users
 router.get('/users', requireAuth, requireRole('admin'), (req, res) => {
-  const users = db.prepare('SELECT id, name, role, active FROM users ORDER BY name').all()
-  res.json(users)
+  const users = db.prepare('SELECT id, name, role, active, must_change_password FROM users ORDER BY name').all()
+  res.json(users.map(({ must_change_password, ...user }) => ({
+    ...user,
+    mustChangePassword: Boolean(must_change_password),
+  })))
 })
 
 // POST /api/auth/users — { name, role, pin }
 router.post('/users', requireAuth, requireRole('admin'), (req, res) => {
   const { name, role, pin } = req.body
   if (!name || !role || !pin) return res.status(400).json({ error: 'Nome, papel e PIN obrigatórios' })
+  const pinError = passwordChangeError(pin)
+  if (pinError) return res.status(400).json({ error: pinError })
   if (!['admin', 'operador', 'visitante'].includes(role)) return res.status(400).json({ error: 'Papel inválido' })
 
   const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name)
@@ -81,9 +100,9 @@ router.post('/users', requireAuth, requireRole('admin'), (req, res) => {
 
   const id = 'user_' + crypto.randomBytes(6).toString('hex')
   const pin_hash = bcryptjs.hashSync(pin, 10)
-  db.prepare('INSERT INTO users (id, name, role, pin_hash) VALUES (?, ?, ?, ?)').run(id, name, role, pin_hash)
+  db.prepare('INSERT INTO users (id, name, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, 1)').run(id, name, role, pin_hash)
 
-  res.json({ id, name, role, active: 1 })
+  res.json({ id, name, role, active: 1, mustChangePassword: true })
 })
 
 // PUT /api/auth/users/:id — { name?, role?, pin?, active? }
@@ -97,8 +116,9 @@ router.put('/users/:id', requireAuth, (req, res) => {
   const isAdmin = req.user?.role === 'admin'
   const hasProfileChanges = name !== undefined || role !== undefined || active !== undefined
 
-  if (pin !== undefined && (!String(pin).trim())) {
-    return res.status(400).json({ error: 'Senha obrigatória.' })
+  if (pin !== undefined) {
+    const pinError = passwordChangeError(pin, bcryptjs.compareSync(String(pin).trim(), user.pin_hash))
+    if (pinError) return res.status(400).json({ error: pinError })
   }
   if (pin !== undefined && !isSelf && !isMasterAdmin) {
     return res.status(403).json({ error: 'Somente o admin mestre pode alterar senha de outro usuário.' })
@@ -126,7 +146,12 @@ router.put('/users/:id', requireAuth, (req, res) => {
   const params = []
   if (name !== undefined) { updates.push('name = ?'); params.push(name) }
   if (role !== undefined) { updates.push('role = ?'); params.push(role) }
-  if (pin !== undefined) { updates.push('pin_hash = ?'); params.push(bcryptjs.hashSync(String(pin).trim(), 10)) }
+  if (pin !== undefined) {
+    updates.push('pin_hash = ?')
+    params.push(bcryptjs.hashSync(String(pin).trim(), 10))
+    updates.push('must_change_password = ?')
+    params.push(isSelf ? 0 : 1)
+  }
   if (active !== undefined) { updates.push('active = ?'); params.push(active ? 1 : 0) }
 
   if (updates.length) {
@@ -134,8 +159,9 @@ router.put('/users/:id', requireAuth, (req, res) => {
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params)
   }
 
-  const updated = db.prepare('SELECT id, name, role, active FROM users WHERE id = ?').get(req.params.id)
-  res.json(updated)
+  const updated = db.prepare('SELECT id, name, role, active, must_change_password FROM users WHERE id = ?').get(req.params.id)
+  const { must_change_password, ...safeUpdated } = updated
+  res.json({ ...safeUpdated, mustChangePassword: Boolean(must_change_password) })
 })
 
 // DELETE /api/auth/users/:id

@@ -315,6 +315,10 @@ export async function getClosing(id) {
   return request(`/closings/${id}`)
 }
 
+export async function getClosingPreview(year, month) {
+  return request(`/closings/preview?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`)
+}
+
 export async function createClosing(data) {
   return request('/closings', { method: 'POST', body: JSON.stringify(data) })
 }

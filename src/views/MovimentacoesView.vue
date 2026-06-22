@@ -61,9 +61,9 @@ const visibleSubTabs = computed(() => {
   const all = [
     { id: 'entrada',   label: 'Entrada',   icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6' },
     { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
-    { id: 'rapida',    label: 'Rápida',    icon: 'M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3' },
+    { id: 'rapida',    label: 'Vários itens', icon: 'M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3' },
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
-    { id: 'resumo',    label: 'Resumo por Destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
+    { id: 'resumo',    label: 'Relatório por destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
   ]
   return isLoggedIn.value ? all : all.filter(t => t.id === 'historico' || t.id === 'resumo')
 })
@@ -2897,7 +2897,7 @@ defineExpose({
                         <span
                           v-for="(val, key) in m.variationValues"
                           :key="key"
-                          class="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300"
+                          class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px]"
                         >
                           <span class="opacity-60">{{ key }}:</span>{{ val }}
                         </span>

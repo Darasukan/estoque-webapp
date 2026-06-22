@@ -5,8 +5,8 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
 // Init DB (creates file + tables on first run)
-import db from './db.js'
-import { startBackupScheduler } from './backup.js'
+import db, { DB_PATH, ENV_FILE } from './db.js'
+import { getBackupSettings, startBackupScheduler } from './backup.js'
 
 import { requireAuth, requireRole } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
@@ -74,8 +74,10 @@ function getLocalIp() {
 app.listen(PORT, '0.0.0.0', () => {
   startBackupScheduler(db)
   const ip = getLocalIp();
+  const backup = getBackupSettings()
   console.log(`✔ Servidor rodando em http://localhost:${PORT}`)
   console.log(`  Acesso na rede: http://${ip}:${PORT}`)
-  console.log(`  Banco de dados: server/estoque.db`)
-  console.log(`  Login padrão: admin / admin123`)
+  console.log(`  Ambiente: ${ENV_FILE}`)
+  console.log(`  Banco de dados: ${DB_PATH}`)
+  console.log(`  Backups: ${backup.enabled ? `${backup.dir} (a cada ${backup.intervalHours}h, mantém ${backup.keep})` : 'desativados'}`)
 })

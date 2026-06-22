@@ -1,5 +1,7 @@
 import db, { DB_PATH } from '../db.js'
 import { generateSeedData } from '../../src/data/seedData.js'
+import { createBackup } from '../backup.js'
+import { assertResetAllowed, isProductionEnv } from '../utils/maintenanceGuard.js'
 
 function argValue(name, fallback = '') {
   const prefix = `--${name}=`
@@ -171,6 +173,14 @@ function populateSeed() {
 }
 
 const mode = argValue('mode', 'seed')
+const envFile = argValue('env', '.env')
+assertResetAllowed({ mode, envFile, confirmation: argValue('confirm') })
+
+let backupPath = ''
+if (mode === 'reset' && isProductionEnv(envFile)) {
+  backupPath = await createBackup(db)
+  console.log(`Backup criado antes do reset: ${backupPath}`)
+}
 
 const run = db.transaction(() => {
   resetBusinessData()
@@ -178,5 +188,5 @@ const run = db.transaction(() => {
 })
 
 const result = run()
-console.log(JSON.stringify({ ok: true, mode, dbPath: DB_PATH, ...result }, null, 2))
+console.log(JSON.stringify({ ok: true, mode, dbPath: DB_PATH, backupPath, ...result }, null, 2))
 db.close()

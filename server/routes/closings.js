@@ -47,9 +47,11 @@ function buildClosingData(year, month) {
   }
 
   const monthTotalsByVariation = new Map()
+  let movementCount = 0
   for (const movement of movements) {
     const date = new Date(movement.date)
     if (date < from || date >= to) continue
+    movementCount += 1
     const current = monthTotalsByVariation.get(movement.variation_id) || { entradas: 0, saidas: 0 }
     if (movement.type === 'entrada') current.entradas += movement.qty
     else current.saidas += movement.qty
@@ -102,6 +104,7 @@ function buildClosingData(year, month) {
     totalStockAtClose: rows.reduce((sum, row) => sum + row.stockAtClose, 0),
     monthEntradas: rows.reduce((sum, row) => sum + row.monthEntradas, 0),
     monthSaidas: rows.reduce((sum, row) => sum + row.monthSaidas, 0),
+    movementCount,
     zeroStock: rows.filter(row => row.stockAtClose <= 0).length,
     belowMin: rows.filter(row => row.minStock > 0 && row.stockAtClose > 0 && row.stockAtClose <= row.minStock).length,
     groups: Object.values(groupTotals).sort((a, b) => a.group.localeCompare(b.group)),
@@ -113,6 +116,14 @@ function buildClosingData(year, month) {
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM monthly_closings ORDER BY year DESC, month DESC').all()
   res.json(rows.map(row => parseClosing(row)))
+})
+
+router.get('/preview', requireAuth, requireRole('admin'), (req, res) => {
+  const year = Number(req.query.year)
+  const month = Number(req.query.month)
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return res.status(400).json({ error: 'Ano invalido' })
+  if (!Number.isInteger(month) || month < 1 || month > 12) return res.status(400).json({ error: 'Mes invalido' })
+  res.json(buildClosingData(year, month).summary)
 })
 
 router.get('/:id', (req, res) => {
@@ -129,6 +140,10 @@ router.post('/', requireAuth, requireRole('admin'), (req, res) => {
 
   const id = `close_${year}_${String(month).padStart(2, '0')}`
   const data = buildClosingData(year, month)
+  const expectedMovementCount = Number(req.body.expectedMovementCount)
+  if (Number.isInteger(expectedMovementCount) && expectedMovementCount !== data.summary.movementCount) {
+    return res.status(409).json({ error: 'As movimentações mudaram desde a prévia. Revise o fechamento novamente.' })
+  }
   const closedAt = nowIso()
 
   db.prepare(`INSERT INTO monthly_closings (

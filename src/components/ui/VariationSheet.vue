@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { stockAlertStatus } from '../../composables/useItems.js'
 import { useDestinations } from '../../composables/useDestinations.js'
 
@@ -7,19 +7,27 @@ const props = defineProps({
   item: { type: Object, required: true },
   variation: { type: Object, required: true },
   movements: { type: Array, default: () => [] },
+  workOrders: { type: Array, default: () => [] },
   canManage: { type: Boolean, default: false },
   canAdjust: { type: Boolean, default: false },
   canEditDetails: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['close', 'quick-movement', 'adjust-stock', 'update-extras'])
+const emit = defineEmits(['close', 'quick-movement', 'adjust-stock', 'update-extras', 'open-work-order'])
 const { getDestFullName } = useDestinations()
 
 const activeTab = ref('info')
+const dialogRef = ref(null)
 const adjustOpen = ref(false)
 const adjustValue = ref('')
 const editingExtras = ref(false)
 const extraRows = ref([])
+
+onMounted(async () => {
+  await nextTick()
+  if (dialogRef.value && !dialogRef.value.open) dialogRef.value.showModal()
+})
+onUnmounted(() => dialogRef.value?.close())
 
 const status = computed(() => stockAlertStatus(props.variation, props.item))
 
@@ -84,6 +92,10 @@ const linkedDestinations = computed(() =>
     .map(id => getDestFullName(id))
     .filter(Boolean)
 )
+
+const relatedOrders = computed(() => props.workOrders.filter(order =>
+  (order.items || []).some(row => row.variationId === props.variation.id)
+))
 
 const extraInfoRows = computed(() =>
   Object.entries(props.variation.extras || {})
@@ -164,7 +176,14 @@ function saveExtras() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="emit('close')">
+  <dialog
+    ref="dialogRef"
+    class="fixed inset-0 z-50 m-0 h-screen w-screen max-w-none bg-transparent p-0 backdrop:bg-black/50"
+    aria-modal="true"
+    aria-label="Ficha operacional da variação"
+    @cancel.prevent="emit('close')"
+  >
+    <div class="flex min-h-full items-center justify-center p-4" @click.self="emit('close')">
     <section class="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
       <header class="flex items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-700">
         <div class="min-w-0">
@@ -175,7 +194,7 @@ function saveExtras() {
             <span
               v-for="tag in variationTags"
               :key="`${tag.key}:${tag.value}`"
-              class="inline-flex items-center gap-0.5 rounded border border-primary-100 bg-primary-50 px-2 py-0.5 text-[11px] text-primary-700 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300"
+              class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
             >
               <span class="font-medium opacity-60">{{ tag.key }}:</span>
               <span>{{ tag.value }}</span>
@@ -185,7 +204,7 @@ function saveExtras() {
         </div>
         <button
           type="button"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          class="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
           title="Fechar"
           @click="emit('close')"
         >
@@ -218,22 +237,22 @@ function saveExtras() {
             <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formatCurrency(lastUnitCost) }}</p>
           </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-            <p class="text-xs text-gray-500 dark:text-gray-400">Média custos</p>
-            <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ formatCurrency(averageUnitCost) }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">OS vinculadas</p>
+            <p class="mt-1 truncate text-xl font-semibold text-gray-900 dark:text-gray-100">{{ relatedOrders.length }}</p>
           </div>
         </section>
 
         <section v-if="canManage" class="flex flex-wrap items-center gap-2 border-b border-gray-200 p-4 dark:border-gray-700">
           <button
             type="button"
-            class="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+            class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700"
             @click="emit('quick-movement', 'entrada')"
           >
             Entrada
           </button>
           <button
             type="button"
-            class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+            class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
             @click="emit('quick-movement', 'saida')"
           >
             Saída
@@ -308,7 +327,27 @@ function saveExtras() {
                   <dt class="text-gray-500 dark:text-gray-400">Última</dt>
                   <dd class="font-medium text-gray-900 dark:text-gray-100">{{ sortedMovements[0] ? formatDate(sortedMovements[0].date) : '-' }}</dd>
                 </div>
+                <div class="flex justify-between gap-3">
+                  <dt class="text-gray-500 dark:text-gray-400">Média de custos</dt>
+                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ formatCurrency(averageUnitCost) }}</dd>
+                </div>
               </dl>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ordens relacionadas</h3>
+              <div v-if="relatedOrders.length" class="mt-2 space-y-1">
+                <button
+                  v-for="order in relatedOrders.slice(0, 5)"
+                  :key="order.id"
+                  type="button"
+                  class="min-h-11 w-full rounded-md px-2 py-2 text-left text-xs transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+                  @click="emit('open-work-order', order)"
+                >
+                  <span class="block font-semibold text-gray-900 dark:text-gray-100">OS #{{ order.number }}</span>
+                  <span class="mt-0.5 block truncate text-gray-500 dark:text-gray-400">{{ order.title || order.destinationName || 'Manutenção' }}</span>
+                </button>
+              </div>
+              <p v-else class="mt-2 text-xs text-gray-500 dark:text-gray-400">Nenhuma OS usou esta variação.</p>
             </div>
           </aside>
 
@@ -422,5 +461,6 @@ function saveExtras() {
         </section>
       </div>
     </section>
-  </div>
+    </div>
+  </dialog>
 </template>

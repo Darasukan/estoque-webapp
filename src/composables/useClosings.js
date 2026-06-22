@@ -24,6 +24,10 @@ export function useClosings() {
     return created
   }
 
+  async function previewClosing(year, month) {
+    return api.getClosingPreview(year, month)
+  }
+
   async function deleteClosing(id) {
     await api.deleteClosing(id)
     closings.value = closings.value.filter(c => c.id !== id)
@@ -38,6 +42,7 @@ export function useClosings() {
     loadData,
     loadClosing,
     createClosing,
+    previewClosing,
     deleteClosing,
   }
 }

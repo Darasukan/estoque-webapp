@@ -5,6 +5,7 @@ import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
 import AppButton from './components/ui/AppButton.vue'
+import AppModal from './components/ui/AppModal.vue'
 import DashboardView from './views/DashboardView.vue'
 import { useTheme } from './composables/useTheme.js'
 import { useItems } from './composables/useItems.js'
@@ -21,6 +22,8 @@ import { useWorkOrders } from './composables/useWorkOrders.js'
 import { useMotors } from './composables/useMotors.js'
 import { useClosings } from './composables/useClosings.js'
 import { useToast } from './composables/useToast.js'
+import { buildGlobalSearchResults } from './utils/globalSearch.js'
+import { failedSourceNames } from './utils/sync.js'
 
 const CatalogView = defineAsyncComponent(() => import('./views/CatalogView.vue'))
 const CadastrosView = defineAsyncComponent(() => import('./views/CadastrosView.vue'))
@@ -63,6 +66,15 @@ function saveUiState(patch) {
   localStorage.setItem(UI_STATE_KEY, JSON.stringify({ ...current, ...patch }))
 }
 
+function loadStoredList(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
 const savedUiState = loadUiState()
 const savedActiveTab = ['dashboard', 'catalogo', 'inventario', 'movimentacoes', 'ordens', 'motores', 'cadastros'].includes(savedUiState.activeTab)
   ? savedUiState.activeTab
@@ -89,6 +101,12 @@ const globalCreateOpen = ref(false)
 const globalSearchOpen = ref(false)
 const globalSearchQuery = ref('')
 const globalSearchInputRef = ref(null)
+const globalSearchDialogRef = ref(null)
+const globalSearchActiveIndex = ref(0)
+const GLOBAL_SEARCH_RECENTS_KEY = 'estoque_global_search_recents_v1'
+const globalSearchRecentIds = ref(loadStoredList(GLOBAL_SEARCH_RECENTS_KEY))
+const syncFailures = ref([])
+const syncing = ref(false)
 const globalCreateRootRef = ref(null)
 const accountMenuRootRef = ref(null)
 const quickActionsRootRef = ref(null)
@@ -102,7 +120,12 @@ const passwordModalOpen = ref(false)
 const ownPassword = ref('')
 const ownPasswordConfirm = ref('')
 const changingOwnPassword = ref(false)
+const mustChangePassword = computed(() => Boolean(user.value?.mustChangePassword))
 let shortcutPrefixTimer = null
+
+watch(mustChangePassword, required => {
+  if (required) passwordModalOpen.value = true
+}, { immediate: true })
 
 const showCatalogSidebar = computed(() =>
   activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
@@ -115,31 +138,50 @@ const showQuickMovementActions = computed(() =>
   isLoggedIn.value && activeTab.value !== 'movimentacoes'
 )
 
-const allTabs = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'catalogo', label: 'Catálogo' },
-  { id: 'inventario', label: 'Inventário' },
-  { id: 'movimentacoes', label: 'Movimentações' },
-  { id: 'ordens', label: 'Ordens de Serviço' },
-  { id: 'motores', label: 'Motores' },
-  { id: 'cadastros', label: 'Cadastros', authOnly: true }
+const navigationGroups = [
+  { id: 'inicio', label: 'Início', defaultTab: 'dashboard', tabs: [{ id: 'dashboard', label: 'Início' }] },
+  {
+    id: 'materiais',
+    label: 'Materiais',
+    defaultTab: 'catalogo',
+    tabs: [
+      { id: 'catalogo', label: 'Consultar materiais' },
+      { id: 'inventario', label: 'Controle de estoque' },
+    ],
+  },
+  { id: 'movimentacoes', label: 'Entradas e saídas', defaultTab: 'movimentacoes', tabs: [{ id: 'movimentacoes', label: 'Entradas e saídas' }] },
+  {
+    id: 'manutencao',
+    label: 'Manutenção',
+    defaultTab: 'ordens',
+    tabs: [
+      { id: 'ordens', label: 'Ordens de serviço' },
+      { id: 'motores', label: 'Motores' },
+    ],
+  },
+  { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAuth: true },
 ]
-const tabs = computed(() => allTabs.filter(t => !t.authOnly || isLoggedIn.value))
+const activeNavigationGroup = computed(() =>
+  navigationGroups.find(group => group.tabs.some(tab => tab.id === activeTab.value))?.id || 'inicio'
+)
+const contextualTabs = computed(() =>
+  navigationGroups.find(group => group.id === activeNavigationGroup.value)?.tabs || []
+)
 
 const navigationShortcuts = [
-  { chord: 'G D', key: 'd', label: 'Dashboard', target: { tab: 'dashboard' } },
-  { chord: 'G C', key: 'c', label: 'Catálogo', target: { tab: 'catalogo' } },
-  { chord: 'G I', key: 'i', label: 'Inventário', target: { tab: 'inventario' } },
-  { chord: 'G V', key: 'v', label: 'Movimentações', target: { tab: 'movimentacoes' } },
+  { chord: 'G D', key: 'd', label: 'Início', target: { tab: 'dashboard' } },
+  { chord: 'G C', key: 'c', label: 'Consultar materiais', target: { tab: 'catalogo' } },
+  { chord: 'G I', key: 'i', label: 'Controle de estoque', target: { tab: 'inventario' } },
+  { chord: 'G V', key: 'v', label: 'Entradas e saídas', target: { tab: 'movimentacoes' } },
   { chord: 'G O', key: 'o', label: 'Ordens de Serviço', target: { tab: 'ordens' } },
   { chord: 'G M', key: 'm', label: 'Motores', target: { tab: 'motores' } },
-  { chord: 'G A', key: 'a', label: 'Cadastros', target: { tab: 'cadastros', requiresAuth: true } },
+  { chord: 'G A', key: 'a', label: 'Administração', target: { tab: 'cadastros', requiresAuth: true } },
 ]
 
 const actionShortcuts = [
   { chord: '?', label: 'Abrir atalhos', always: true },
   { chord: 'Ctrl K', label: 'Busca global', always: true },
-  { chord: 'Ctrl N', label: 'Novo registro', always: true },
+  { chord: 'Ctrl N', label: 'Registrar ou cadastrar', always: true },
   { chord: 'M', label: 'Abrir movimentação rápida', requiresQuickMovement: true },
   { chord: 'M E', label: 'Entrada rápida', requiresQuickMovement: true },
   { chord: 'M S', label: 'Saída rápida', requiresQuickMovement: true },
@@ -154,136 +196,69 @@ const visibleActionShortcuts = computed(() =>
 )
 
 const createActions = computed(() => [
-  { id: 'entrada', label: 'Entrada', hint: 'Registrar material chegando', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
-  { id: 'saida', label: 'Saida', hint: 'Retirar material do estoque', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
-  { id: 'os', label: 'Nova OS', hint: 'Abrir ordem de servico', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
-  { id: 'pessoa', label: 'Pessoa', hint: 'Cadastrar funcionario ou solicitante', target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true } },
-  { id: 'destino', label: 'Destino', hint: 'Cadastrar maquina, local ou destino', target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true } },
-  { id: 'item', label: 'Item', hint: 'Abrir cadastro do catalogo', target: { tab: 'cadastros', subTab: 'hierarquia', requiresAuth: true } },
+  { id: 'entrada', label: 'Registrar entrada', hint: 'Material chegando ao estoque', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
+  { id: 'saida', label: 'Registrar saída', hint: 'Retirar material do estoque', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
+  { id: 'os', label: 'Nova ordem de serviço', hint: 'Abrir uma atividade de manutenção', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
+  { id: 'pessoa', label: 'Cadastrar pessoa', hint: 'Funcionário ou solicitante', target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true } },
+  { id: 'destino', label: 'Cadastrar destino', hint: 'Máquina, local ou destino', target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true } },
+  { id: 'item', label: 'Cadastrar material', hint: 'Abrir organização dos materiais', target: { tab: 'cadastros', subTab: 'hierarquia', requiresAuth: true } },
 ])
 
-function normalizeSearchText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-}
+const globalSearchCommands = computed(() => [
+  { id: 'command:entrada', type: 'Ação', title: 'Registrar entrada', subtitle: 'Material chegando ao estoque', keywords: 'receber adicionar', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
+  { id: 'command:saida', type: 'Ação', title: 'Registrar saída', subtitle: 'Retirar material para pessoa ou destino', keywords: 'retirar entregar', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
+  { id: 'command:os', type: 'Ação', title: 'Nova ordem de serviço', subtitle: 'Abrir atividade de manutenção', keywords: 'manutenção nova os', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
+  { id: 'command:estoque', type: 'Ação', title: 'Consultar estoque', subtitle: 'Quantidades, locais e alertas', keywords: 'inventário material', target: { tab: 'inventario', section: 'estoque' } },
+  { id: 'command:historico', type: 'Ação', title: 'Ver histórico de movimentações', subtitle: 'Entradas e saídas registradas', keywords: 'auditoria rastrear', target: { tab: 'movimentacoes', subTab: 'historico' } },
+  { id: 'command:fechamento', type: 'Ação', title: 'Fazer fechamento mensal', subtitle: 'Salvar a posição oficial do estoque', keywords: 'mês relatório', target: { tab: 'inventario', section: 'fechamentos', requiresAuth: true } },
+].filter(command => !command.target.requiresAuth || isLoggedIn.value))
 
-function variationSearchLabel(item, variation) {
-  const attrs = Object.entries({ ...(variation.values || {}), ...(variation.extras || {}) })
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(' / ')
-  return attrs ? `${item.name} - ${attrs}` : item.name
-}
+const globalSearchResults = computed(() => buildGlobalSearchResults({
+  query: globalSearchQuery.value,
+  commands: globalSearchCommands.value,
+  recentIds: globalSearchRecentIds.value,
+  workOrders: workOrders.value,
+  motors: motors.value,
+  people: activePeople.value,
+  destinations: destinations.value,
+  items: items.value,
+  variations: variations.value,
+  getDestinationName: getDestFullName,
+}))
 
-function resultMatches(parts, query) {
-  const text = normalizeSearchText(parts.filter(Boolean).join(' '))
-  return !query || text.includes(query)
-}
-
-const globalSearchResults = computed(() => {
-  const q = normalizeSearchText(globalSearchQuery.value.trim())
-  if (!q) return []
-  const results = []
-
-  for (const order of workOrders.value) {
-    if (results.length >= 8) break
-    if (!resultMatches([order.number, order.title, order.requestedBy, order.equipment, order.destinationName, order.motorTag], q)) continue
-    results.push({
-      id: `os:${order.id}`,
-      type: 'OS',
-      title: `OS #${order.number}`,
-      subtitle: order.title || order.equipment || order.destinationName || 'Ordem de servico',
-      target: { tab: 'ordens', subTab: 'ordens', orderId: order.id },
-    })
-  }
-
-  for (const motor of motors.value) {
-    if (results.length >= 12) break
-    if (!resultMatches([motor.tag, motor.name, motor.model, motor.locationName, motor.status], q)) continue
-    results.push({
-      id: `motor:${motor.id}`,
-      type: 'Motor',
-      title: motor.tag || motor.name || 'Motor',
-      subtitle: [motor.name, motor.locationName, motor.status].filter(Boolean).join(' - '),
-      target: { tab: 'motores' },
-    })
-  }
-
-  for (const person of activePeople.value) {
-    if (results.length >= 16) break
-    if (!resultMatches([person.name, person.role], q)) continue
-    results.push({
-      id: `pessoa:${person.id}`,
-      type: 'Pessoa',
-      title: person.name,
-      subtitle: person.role || 'Cadastro de pessoa',
-      target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true },
-    })
-  }
-
-  for (const dest of destinations.value) {
-    if (results.length >= 20) break
-    const fullName = getDestFullName(dest.id)
-    if (!resultMatches([dest.name, fullName, dest.description], q)) continue
-    results.push({
-      id: `destino:${dest.id}`,
-      type: 'Destino',
-      title: fullName || dest.name,
-      subtitle: 'Cadastro de destinos',
-      target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true },
-    })
-  }
-
-  for (const item of items.value) {
-    if (results.length >= 26) break
-    if (!resultMatches([item.name, item.group, item.category, item.subcategory], q)) continue
-    results.push({
-      id: `item:${item.id}`,
-      type: 'Item',
-      title: item.name,
-      subtitle: [item.group, item.category, item.subcategory].filter(Boolean).join(' > '),
-      target: { tab: 'catalogo', itemId: item.id, search: item.name },
-    })
-  }
-
-  for (const variation of variations.value) {
-    if (results.length >= 30) break
-    const item = items.value.find(row => row.id === variation.itemId)
-    if (!item) continue
-    const label = variationSearchLabel(item, variation)
-    if (!resultMatches([label, variation.location], q)) continue
-    results.push({
-      id: `var:${variation.id}`,
-      type: 'Variacao',
-      title: label,
-      subtitle: `Estoque: ${variation.stock ?? 0} ${item.unit || 'un'}`,
-      target: { tab: 'catalogo', itemId: item.id, variationId: variation.id, search: item.name },
-    })
-  }
-
-  return results.slice(0, 12)
+watch(globalSearchQuery, () => { globalSearchActiveIndex.value = 0 })
+watch(globalSearchOpen, async open => {
+  await nextTick()
+  const dialog = globalSearchDialogRef.value
+  if (!dialog) return
+  if (open && !dialog.open) dialog.showModal()
+  if (!open && dialog.open) dialog.close()
 })
 
 // Load all data from API
 async function loadAllData() {
-  const results = await Promise.allSettled([
-    loadItems(),
-    loadMovements(),
-    loadLocations(),
-    loadDestinations(),
-    loadPeople(),
-    loadSuppliers(),
-    loadRoles(),
-    loadEpis(),
-    loadWorkOrders(),
-    loadMotors(),
-    loadClosings(),
-  ])
-  const failed = results.filter(r => r.status === 'rejected')
-  if (failed.length) console.error('Erro ao carregar dados:', failed.map(r => r.reason))
-  // Users requires admin auth — load separately, ignore failure
-  try { await loadUsers() } catch {}
+  const sources = [
+    ['materiais', loadItems],
+    ['movimentações', loadMovements],
+    ['locais', loadLocations],
+    ['destinos', loadDestinations],
+    ['pessoas', loadPeople],
+    ['fornecedores', loadSuppliers],
+    ['cargos', loadRoles],
+    ['EPIs', loadEpis],
+    ['ordens de serviço', loadWorkOrders],
+    ['motores', loadMotors],
+    ['fechamentos', loadClosings],
+  ]
+  syncing.value = true
+  try {
+    const results = await Promise.allSettled(sources.map(([, load]) => load()))
+    syncFailures.value = failedSourceNames(sources, results)
+    if (syncFailures.value.length) console.error('Erro ao carregar dados:', syncFailures.value)
+    try { await loadUsers() } catch {}
+  } finally {
+    syncing.value = false
+  }
 }
 
 async function loadLocalBrand() {
@@ -345,6 +320,7 @@ function openPasswordModal() {
 }
 
 function closePasswordModal() {
+  if (mustChangePassword.value) return
   passwordModalOpen.value = false
   ownPassword.value = ''
   ownPasswordConfirm.value = ''
@@ -361,6 +337,7 @@ async function submitOwnPassword() {
   if (!result.ok) { error(result.error); return }
   success('Senha alterada.')
   closePasswordModal()
+  await loadAllData()
 }
 
 function logoutFromMenu() {
@@ -388,12 +365,27 @@ function openGlobalSearch() {
   shortcutHelpOpen.value = false
   quickActionsOpen.value = false
   clearShortcutPrefix()
+  globalSearchActiveIndex.value = 0
   nextTick(() => globalSearchInputRef.value?.focus())
 }
 
 function closeGlobalSearch() {
   globalSearchOpen.value = false
   globalSearchQuery.value = ''
+}
+
+function handleGlobalSearchKeydown(event) {
+  if (!globalSearchResults.value.length) return
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    globalSearchActiveIndex.value = (globalSearchActiveIndex.value + 1) % globalSearchResults.value.length
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    globalSearchActiveIndex.value = (globalSearchActiveIndex.value - 1 + globalSearchResults.value.length) % globalSearchResults.value.length
+  } else if (event.key === 'Enter') {
+    event.preventDefault()
+    openGlobalSearchResult(globalSearchResults.value[globalSearchActiveIndex.value])
+  }
 }
 
 function openGlobalCreate() {
@@ -513,6 +505,10 @@ function runNavigationShortcut(shortcut) {
 
 function openGlobalSearchResult(result) {
   if (!result) return
+  if (!result.id.startsWith('command:')) {
+    globalSearchRecentIds.value = [result.id, ...globalSearchRecentIds.value.filter(id => id !== result.id)].slice(0, 6)
+    localStorage.setItem(GLOBAL_SEARCH_RECENTS_KEY, JSON.stringify(globalSearchRecentIds.value))
+  }
   closeGlobalSearch()
   if (result.target?.search) {
     catalogSearch.value = result.target.search
@@ -529,19 +525,7 @@ function openGlobalSearchResult(result) {
   }
 }
 
-function openInventoryQuickMovement(payload) {
-  if (!payload?.variationId || !payload?.itemId) {
-    if (payload?.targetType && payload?.targetKey) {
-      openMovementTab(payload?.type || 'saida', payload)
-      return
-    }
-    openMovementTab(payload?.type || 'saida')
-    return
-  }
-  openMovementTab(payload.type, payload)
-}
-
-function openCadastroQuickMovement(payload) {
+function openContextQuickMovement(payload) {
   if (!payload?.variationId || !payload?.itemId) {
     if (payload?.targetType && payload?.targetKey) {
       openMovementTab(payload?.type || 'saida', payload)
@@ -562,6 +546,15 @@ function selectMainTab(tabId) {
     loadAllData()
   }
   activeTab.value = tabId
+}
+
+function selectNavigationGroup(group) {
+  if (group.requiresAuth && !isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
+  const currentTabBelongsToGroup = group.tabs.some(tab => tab.id === activeTab.value)
+  selectMainTab(currentTabBelongsToGroup ? activeTab.value : group.defaultTab)
 }
 
 function navigateTab(target) {
@@ -740,36 +733,37 @@ function handleGlobalShortcutKeydown(event) {
 
     <!-- Main content -->
     <div
-      class="transition-all duration-300 flex flex-col min-h-screen"
+      class="ds-app-main transition-all duration-300 flex flex-col min-h-screen"
       :class="anySidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
     >
       <!-- Navbar -->
       <nav class="sticky top-0 z-30 ds-nav">
-        <div class="flex items-center justify-between px-5 h-12">
-          <!-- Tabs -->
-          <div class="flex items-center gap-1">
-            <div class="mr-2 flex items-center gap-2 border-r border-gray-200 pr-3 dark:border-white/[0.08]">
-              <img
-                :src="localBrandFavicon"
-                :alt="localBrandName"
-                class="h-8 w-8 rounded-md bg-white object-contain p-0.5 shadow-sm"
-                @error="$event.currentTarget.style.display = 'none'"
-              />
-              <span class="hidden text-sm font-semibold text-gray-800 dark:text-gray-100 sm:inline">{{ localBrandName }}</span>
-            </div>
+        <div class="ds-nav-shell">
+          <button class="ds-nav-brand" type="button" title="Ir para o início" @click="selectMainTab('dashboard')">
+            <img
+              :src="localBrandFavicon"
+              :alt="localBrandName"
+              class="h-8 w-8 rounded-md bg-white object-contain p-0.5"
+              @error="$event.currentTarget.style.display = 'none'"
+            />
+            <span class="ds-nav-brand-name text-sm font-semibold text-white">{{ localBrandName }}</span>
+          </button>
+
+          <div class="ds-nav-tabs" aria-label="Navegação principal">
             <button
-              v-for="tab in tabs"
-              :key="tab.id"
+              v-for="group in navigationGroups"
+              :key="group.id"
               class="ds-tab"
-              :class="activeTab === tab.id ? 'ds-tab-active' : ''"
-              @click="selectMainTab(tab.id)"
+              :class="activeNavigationGroup === group.id ? 'ds-tab-active' : ''"
+              :title="group.requiresAuth && !isLoggedIn ? 'Entre para acessar a administração' : group.label"
+              @click="selectNavigationGroup(group)"
             >
-              {{ tab.label }}
+              {{ group.label }}
             </button>
           </div>
 
           <!-- Auth + Theme -->
-          <div class="flex items-center gap-1">
+          <div class="ds-nav-actions">
           <AppButton
             variant="ghost"
             size="sm"
@@ -779,20 +773,20 @@ function handleGlobalShortcutKeydown(event) {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
             </svg>
-            Buscar
+            <span class="hidden sm:inline">Buscar</span>
           </AppButton>
           <div ref="globalCreateRootRef" class="relative">
             <AppButton
               variant="primary"
               size="sm"
-              title="Novo registro (Ctrl+N)"
+              title="Registrar ou cadastrar (Ctrl+N)"
               :aria-expanded="globalCreateOpen"
               @click="openGlobalCreate"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              Novo
+              <span class="hidden sm:inline">Registrar</span>
             </AppButton>
             <div
               v-if="globalCreateOpen"
@@ -821,22 +815,22 @@ function handleGlobalShortcutKeydown(event) {
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
               </svg>
-              {{ user.name }}
+              <span class="hidden lg:inline">{{ user.name }}</span>
             </AppButton>
             <div
               v-if="accountMenuOpen"
-              class="absolute right-0 mt-2 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+              class="ds-account-menu absolute right-0 mt-2 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
             >
               <button
                 type="button"
-                class="w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                class="ds-account-menu-action w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
                 @click="openPasswordModal"
               >
                 Trocar senha
               </button>
               <button
                 type="button"
-                class="w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                class="ds-account-menu-danger w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
                 @click="logoutFromMenu"
               >
                 Sair
@@ -853,7 +847,7 @@ function handleGlobalShortcutKeydown(event) {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
             </svg>
-            Entrar
+            <span class="hidden sm:inline">Entrar</span>
           </AppButton>
           <AppButton
             variant="ghost"
@@ -870,10 +864,38 @@ function handleGlobalShortcutKeydown(event) {
           </AppButton>
           </div>
         </div>
+        <div v-if="contextualTabs.length > 1" class="ds-context-nav" aria-label="Seções da área atual">
+          <button
+            v-for="tab in contextualTabs"
+            :key="tab.id"
+            type="button"
+            class="ds-context-tab"
+            :class="activeTab === tab.id ? 'ds-context-tab-active' : ''"
+            @click="selectMainTab(tab.id)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
       </nav>
 
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
+        <div
+          v-if="syncFailures.length"
+          class="mb-4 flex flex-col gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          role="alert"
+        >
+          <div>
+            <p class="font-semibold text-amber-800 dark:text-amber-200">Alguns dados não foram atualizados</p>
+            <p class="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
+              Falha em {{ syncFailures.join(', ') }}. Os demais dados continuam disponíveis.
+            </p>
+          </div>
+          <AppButton variant="secondary" size="sm" :loading="syncing" @click="loadAllData">
+            Tentar novamente
+          </AppButton>
+        </div>
+
         <KeepAlive>
           <DashboardView v-if="activeTab === 'dashboard'" @go="navigateTab" />
         </KeepAlive>
@@ -884,7 +906,8 @@ function handleGlobalShortcutKeydown(event) {
           ref="catalogRef"
           :search="catalogSearch"
           @update:search="v => catalogSearch = v"
-          @quick-movement="openInventoryQuickMovement"
+          @quick-movement="openContextQuickMovement"
+          @open-work-order="order => navigateTab({ tab: 'ordens', subTab: 'ordens', orderId: order.id })"
         />
 
         <!-- Cadastros tab -->
@@ -892,7 +915,7 @@ function handleGlobalShortcutKeydown(event) {
           v-if="activeTab === 'cadastros'"
           :initial-tab="requestedCadastrosTab"
           @update:tab="v => requestedCadastrosTab = v"
-          @quick-movement="openCadastroQuickMovement"
+          @quick-movement="openContextQuickMovement"
         />
 
         <!-- Inventário tab -->
@@ -904,7 +927,8 @@ function handleGlobalShortcutKeydown(event) {
           @update:section="v => requestedInventorySection = v"
           @update:status="v => requestedInventoryStatus = v"
           @update:search="v => requestedInventorySearch = v"
-          @quick-movement="openInventoryQuickMovement"
+          @quick-movement="openContextQuickMovement"
+          @open-work-order="order => navigateTab({ tab: 'ordens', subTab: 'ordens', orderId: order.id })"
         />
 
         <!-- Movimentações tab -->
@@ -935,15 +959,14 @@ function handleGlobalShortcutKeydown(event) {
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />
 
-    <div
-      v-if="globalSearchOpen"
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-4 pt-[12vh]"
-      role="dialog"
+    <dialog
+      ref="globalSearchDialogRef"
+      class="fixed inset-0 z-50 m-0 h-screen w-screen max-w-none bg-transparent p-0 backdrop:bg-black/45"
       aria-modal="true"
       aria-label="Busca global"
-      @click.self="closeGlobalSearch"
-      @keydown.escape="closeGlobalSearch"
+      @cancel.prevent="closeGlobalSearch"
     >
+      <div class="flex min-h-full items-start justify-center p-4 pt-[12vh]" @click.self="closeGlobalSearch">
       <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
         <div class="border-b border-gray-200 p-3 dark:border-white/[0.08]">
           <div class="relative">
@@ -955,17 +978,25 @@ function handleGlobalShortcutKeydown(event) {
               v-model="globalSearchQuery"
               type="text"
               class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
-              placeholder="Buscar item, OS, motor, pessoa ou destino..."
-              @keydown.enter.prevent="openGlobalSearchResult(globalSearchResults[0])"
+              placeholder="Buscar ou executar uma ação..."
+              role="combobox"
+              aria-controls="global-search-results"
+              :aria-activedescendant="globalSearchResults[globalSearchActiveIndex] ? `global-result-${globalSearchActiveIndex}` : undefined"
+              @keydown="handleGlobalSearchKeydown"
             />
           </div>
         </div>
-        <div class="max-h-[26rem] overflow-auto p-2">
+        <div id="global-search-results" class="max-h-[26rem] overflow-auto p-2" role="listbox">
           <button
-            v-for="result in globalSearchResults"
+            v-for="(result, index) in globalSearchResults"
             :key="result.id"
+            :id="`global-result-${index}`"
             type="button"
             class="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+            :class="index === globalSearchActiveIndex ? 'bg-gray-100 dark:bg-white/[0.06]' : ''"
+            role="option"
+            :aria-selected="index === globalSearchActiveIndex"
+            @mouseenter="globalSearchActiveIndex = index"
             @click="openGlobalSearchResult(result)"
           >
             <span class="mt-0.5 rounded-md bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">{{ result.type }}</span>
@@ -977,27 +1008,24 @@ function handleGlobalShortcutKeydown(event) {
           <div v-if="globalSearchQuery && !globalSearchResults.length" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             Nenhum resultado encontrado.
           </div>
-          <div v-if="!globalSearchQuery" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            Digite para procurar em OS, catalogo, motores, pessoas e destinos.
+          <div v-if="!globalSearchQuery && !globalSearchResults.length" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Ações frequentes e registros abertos recentemente aparecem aqui.
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </dialog>
 
-    <div
-      v-if="passwordModalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Trocar senha"
-      @click.self="closePasswordModal"
-      @keydown.escape="closePasswordModal"
+    <AppModal
+      :visible="passwordModalOpen"
+      :title="mustChangePassword ? 'Defina sua senha' : 'Trocar senha'"
+      :persistent="mustChangePassword"
+      :show-actions="false"
+      @close="closePasswordModal"
     >
-      <div class="ds-panel w-full max-w-sm p-5" @click.stop>
-        <div class="mb-4">
-          <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Trocar senha</h2>
-          <p class="text-xs text-gray-500 dark:text-gray-400">Conta: {{ user?.name }}</p>
-        </div>
+      <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+        {{ mustChangePassword ? 'A senha inicial precisa ser substituída antes de continuar.' : `Conta: ${user?.name}` }}
+      </p>
         <form class="space-y-3" @submit.prevent="submitOwnPassword">
           <input
             v-model="ownPassword"
@@ -1015,12 +1043,11 @@ function handleGlobalShortcutKeydown(event) {
             placeholder="Confirmar nova senha"
           />
           <div class="flex justify-end gap-2 pt-1">
-            <AppButton type="button" variant="secondary" @click="closePasswordModal">Cancelar</AppButton>
+            <AppButton v-if="!mustChangePassword" type="button" variant="secondary" @click="closePasswordModal">Cancelar</AppButton>
             <AppButton type="submit" variant="primary" :loading="changingOwnPassword">Salvar senha</AppButton>
           </div>
         </form>
-      </div>
-    </div>
+    </AppModal>
 
     <div
       v-if="shortcutHelpOpen"

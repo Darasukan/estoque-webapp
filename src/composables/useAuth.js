@@ -36,6 +36,8 @@ export function useAuth() {
     if (!pin || String(pin).trim().length < 4) return { ok: false, error: 'Senha deve ter ao menos 4 caracteres.' }
     try {
       await api.updateUser(user.value.id, { pin: String(pin).trim() })
+      user.value = { ...user.value, mustChangePassword: false }
+      localStorage.setItem('auth_user', JSON.stringify(user.value))
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e.message }

@@ -12,6 +12,15 @@ function envInt(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
+export function getBackupSettings() {
+  return {
+    enabled: process.env.BACKUP_ENABLED !== 'false',
+    dir: process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR,
+    keep: envInt('BACKUP_KEEP', 14),
+    intervalHours: envInt('BACKUP_INTERVAL_HOURS', 24),
+  }
+}
+
 function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
@@ -28,8 +37,9 @@ async function cleanupOldBackups(dir, keep) {
 }
 
 export async function createBackup(db, options = {}) {
-  const dir = options.dir || process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR
-  const keep = options.keep || envInt('BACKUP_KEEP', 14)
+  const settings = getBackupSettings()
+  const dir = options.dir || settings.dir
+  const keep = options.keep || settings.keep
   await mkdir(dir, { recursive: true })
 
   const finalPath = join(dir, `${BACKUP_PREFIX}${timestamp()}${BACKUP_EXT}`)
@@ -43,12 +53,13 @@ export async function createBackup(db, options = {}) {
 }
 
 export function startBackupScheduler(db) {
-  if (process.env.BACKUP_ENABLED === 'false') {
+  const settings = getBackupSettings()
+  if (!settings.enabled) {
     console.log('Backups automaticos desativados por BACKUP_ENABLED=false')
     return null
   }
 
-  const intervalHours = envInt('BACKUP_INTERVAL_HOURS', 24)
+  const intervalHours = settings.intervalHours
   const intervalMs = intervalHours * 60 * 60 * 1000
 
   const run = () => {

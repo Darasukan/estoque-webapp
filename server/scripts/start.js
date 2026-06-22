@@ -1,38 +1,24 @@
-import { spawn, spawnSync } from 'child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 
-const target = String(process.argv[2] || 'prod').toLowerCase()
-const envByTarget = {
-  dev: { file: '.env.dev', mode: 'dev' },
-  desenvolvimento: { file: '.env.dev', mode: 'dev' },
-  master: { file: '.env.prod', mode: 'prod' },
-  prod: { file: '.env.prod', mode: 'prod' },
-  producao: { file: '.env.prod', mode: 'prod' },
-  production: { file: '.env.prod', mode: 'prod' },
-}
-
-const envConfig = envByTarget[target]
-
-if (!envConfig) {
-  console.error('Ambiente invalido. Use: npm start dev | npm start master | npm start prod')
+const envFile = '.env.prod'
+if (!existsSync(envFile)) {
+  console.error('Arquivo .env.prod não encontrado. Copie .env.example e ajuste DB_PATH antes de iniciar produção.')
   process.exit(1)
 }
+console.log(`Build + servidor usando ${envFile}`)
 
-const envFile = envConfig.file
-
-console.log(`Build + server usando ${envFile}`)
-
-const build = spawnSync('npm', ['run', 'build', '--', '--mode', envConfig.mode], {
+const build = spawnSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build', '--mode', 'prod'], {
   stdio: 'inherit',
-  shell: true,
 })
 
 if (build.status !== 0) {
   process.exit(build.status || 1)
 }
 
-const server = spawn('node', ['server/index.js', `--env=${envFile}`], {
+const server = spawn(process.execPath, ['server/index.js', `--env=${envFile}`], {
   stdio: 'inherit',
-  shell: true,
 })
 
 server.on('exit', (code) => {

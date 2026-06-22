@@ -1181,7 +1181,7 @@ function workOrderEndLabel(order) {
           variant="primary"
           size="sm"
           @click="startNewMotor"
-        >Novo</AppButton>
+        >Cadastrar motor</AppButton>
       </div>
 
       <div class="ds-toolbar grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-2">

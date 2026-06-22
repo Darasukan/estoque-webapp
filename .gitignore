@@ -32,6 +32,7 @@ server/*.db-shm
 server/*.db-wal
 server/backups/
 public/local-brand/
+graphify-out/
 
 # Notas de features futuras
 features.md

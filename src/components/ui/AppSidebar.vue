@@ -242,7 +242,7 @@ function toggleSection(key) {
 /* Thin elegant scrollbar */
 .sidebar-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.35) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ds-text-subtle) 45%, transparent) transparent;
 }
 .sidebar-scroll::-webkit-scrollbar {
   width: 5px;
@@ -251,20 +251,11 @@ function toggleSection(key) {
   background: transparent;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.35);
+  background: color-mix(in srgb, var(--ds-text-subtle) 45%, transparent);
   border-radius: 9999px;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.55);
-}
-:is(.dark) .sidebar-scroll {
-  scrollbar-color: rgba(107, 114, 128, 0.4) transparent;
-}
-:is(.dark) .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(107, 114, 128, 0.4);
-}
-:is(.dark) .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.6);
+  background: color-mix(in srgb, var(--ds-text-subtle) 65%, transparent);
 }
 
 </style>

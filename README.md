@@ -27,8 +27,11 @@ Scripts úteis:
 # Popular banco dev com seed
 npm run db:seed:dev
 
-# Limpar banco prod
-npm run db:reset:prod
+# Limpar banco dev
+npm run db:reset:dev
+
+# Produção exige confirmação explícita e cria backup antes de apagar
+npm run db:reset:prod -- --confirm=APAGAR_PRODUCAO
 ```
 
 ## Instalação
@@ -39,10 +42,9 @@ cd estoque-webapp
 npm install
 ```
 
-Crie seus arquivos de ambiente a partir do exemplo:
+O primeiro `npm run dev` cria `.env.dev` automaticamente a partir do exemplo. Para produção, crie e revise o arquivo explicitamente:
 
 ```powershell
-copy .env.example .env.dev
 copy .env.example .env.prod
 ```
 
@@ -50,15 +52,10 @@ Ajuste `DB_PATH` em cada arquivo para apontar para bancos diferentes.
 
 ## Rodando o sistema
 
-### Desenvolvimento com Vite
-
-Use dois terminais:
+### Desenvolvimento
 
 ```powershell
-# Terminal 1: API usando banco dev
-npm run server:dev
-
-# Terminal 2: frontend Vite
+# API com reinício automático + frontend Vite
 npm run dev
 ```
 
@@ -71,18 +68,10 @@ http://localhost:5173
 ### Produção/local estável
 
 ```powershell
-npm start master
+npm start
 ```
 
-Também existem aliases:
-
-```powershell
-npm run start:master
-npm run start:prod
-npm run start:dev
-```
-
-Observação: `npm start master` faz build e inicia o servidor usando `.env.prod`. `npm start dev` faz build e inicia usando `.env.dev`.
+`npm start` faz o build e inicia o servidor usando `.env.prod`. `npm run start:prod` é um alias explícito do mesmo comando.
 
 ## Autenticação e permissões
 
@@ -94,11 +83,13 @@ Observação: `npm start master` faz build e inicia o servidor usando `.env.prod
 - Usuário logado pode alterar a própria senha.
 - Admin comum não pode excluir outro admin.
 
-Login padrão em banco novo:
+Primeiro acesso em banco novo:
 
 ```text
 admin / admin123
 ```
+
+O sistema exige a troca de `admin123` antes de liberar ações protegidas.
 
 ## Funcionalidades principais
 
@@ -125,9 +116,11 @@ Botões de `Popular` e `Limpar` aparecem somente quando:
 VITE_ENABLE_SEED_TOOLS=true
 ```
 
-Isso deve ficar ligado no ambiente dev e desligado no ambiente master.
+Isso deve ficar ligado no ambiente dev e desligado em produção.
 
-Mesmo se a branch `dev` for mesclada na `master`, a exibição desses botões depende do `.env` usado no build.
+As rotas destrutivas também são bloqueadas pelo servidor fora de `.env.dev`; esconder os botões não é a única proteção.
+
+A exibição desses botões depende do `.env` usado no build, independentemente da branch.
 
 ## Estrutura
 
@@ -182,14 +175,12 @@ src/
 ## Scripts
 
 ```powershell
-npm run dev             # Vite em modo dev
+npm run dev             # API com watch + Vite em modo dev
 npm run build           # build frontend
-npm run server          # API usando .env
-npm run server:dev      # API usando .env.dev
-npm run server:prod     # API usando .env.prod
-npm start dev           # build + servidor dev
-npm start master        # build + servidor prod/master
+npm start               # build + servidor usando .env.prod
+npm run start:prod      # alias explícito de produção
 npm run db:seed:dev     # popula banco dev com seed
-npm run db:reset:prod   # limpa banco prod
+npm run db:reset:dev    # limpa banco dev
+npm run db:reset:prod -- --confirm=APAGAR_PRODUCAO  # backup + reset protegido
 npm test                # testes node:test
 ```

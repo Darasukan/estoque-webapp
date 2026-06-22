@@ -1,8 +1,16 @@
 import { Router } from 'express'
-import db from '../db.js'
+import db, { ENV_FILE } from '../db.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
+import { seedMutationAllowed } from '../utils/maintenanceGuard.js'
 
 const router = Router()
+
+function requireSeedEnvironment(req, res, next) {
+  if (!seedMutationAllowed(ENV_FILE, process.env.ENABLE_SEED_ROUTES === 'true')) {
+    return res.status(403).json({ error: 'Ferramentas de seed desativadas neste ambiente.' })
+  }
+  next()
+}
 
 function nowIso() {
   return new Date().toISOString()
@@ -21,7 +29,7 @@ router.put('/order', requireAuth, (req, res) => {
 })
 
 // POST /api/seed/populate - load seed data (admin only)
-router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/populate', requireAuth, requireRole('admin'), requireSeedEnvironment, (req, res) => {
   const {
     items: seedItems,
     variations: seedVars,
@@ -198,7 +206,7 @@ router.post('/populate', requireAuth, requireRole('admin'), (req, res) => {
 })
 
 // POST /api/seed/reset - clear all data (admin only)
-router.post('/reset', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/reset', requireAuth, requireRole('admin'), requireSeedEnvironment, (req, res) => {
   db.exec(`
     DELETE FROM work_order_events;
     DELETE FROM work_order_items;

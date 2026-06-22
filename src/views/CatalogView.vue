@@ -5,7 +5,15 @@ import { useMovements } from '../composables/useMovements.js'
 import { useToast } from '../composables/useToast.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useLocations } from '../composables/useLocations.js'
+import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { generateSeedData } from '../data/seedData.js'
+import {
+  emptyVariationForm,
+  extrasListToObject,
+  validateVariationForm,
+  variationFormForEdit,
+  variationFormForItem,
+} from '../utils/variationForm.js'
 import VariationSheet from '../components/ui/VariationSheet.vue'
 
 const isAdmin = inject('isAdmin')
@@ -14,7 +22,7 @@ const isLoggedIn = inject('isLoggedIn')
 const props = defineProps({
   search: { type: String, default: '' }
 })
-const emit = defineEmits(['update:search', 'quick-movement'])
+const emit = defineEmits(['update:search', 'quick-movement', 'open-work-order'])
 
 const {
   items, variations,
@@ -29,6 +37,7 @@ const {
 
 const { success, error } = useToast()
 const { movements, addMovement } = useMovements()
+const { workOrders } = useWorkOrders()
 const { activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activeLocais, groupedLocais, getFullName } = useLocations()
 const showSeedTools = import.meta.env.VITE_ENABLE_SEED_TOOLS === 'true'
@@ -202,7 +211,7 @@ const totalStock = computed(() => {
 // ===== Variation CRUD =====
 const addingVariation = ref(false)
 const editingVariationId = ref(null)
-const varForm = ref({ values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] })
+const varForm = ref(emptyVariationForm())
 const directVariationMode = ref(false)
 const directVariationGroup = ref('')
 const directVariationCategory = ref('')
@@ -261,37 +270,13 @@ function syncDirectVariationSingleModel() {
   }
 }
 
-function _extrasObjToList(obj) {
-  return Object.entries(obj || {}).map(([key, value]) => ({ key, value }))
-}
-function _extrasListToObj(list) {
-  const obj = {}
-  for (const e of list) {
-    const k = (e.key || '').trim()
-    if (k) obj[k] = e.value || ''
-  }
-  return obj
-}
 function addExtraField() { varForm.value.extrasList.push({ key: '', value: '' }) }
 function removeExtraField(i) { varForm.value.extrasList.splice(i, 1) }
-
-function blankVariationFormForItem(item) {
-  const values = {}
-  for (const attr of item?.attributes || []) values[attr] = ''
-  return {
-    values,
-    stock: 0,
-    minStock: item?.minStock || 0,
-    extrasList: [],
-    location: item?.location || '',
-    destinations: [],
-  }
-}
 
 function startAddVariation() {
   if (!viewingItem.value) return
   directVariationMode.value = false
-  varForm.value = blankVariationFormForItem(viewingItem.value)
+  varForm.value = variationFormForItem(viewingItem.value)
   addingVariation.value = true
   editingVariationId.value = null
   nextTick(() => {
@@ -302,17 +287,14 @@ function startAddVariation() {
 
 function startEditVariation(v) {
   directVariationMode.value = false
-  const attrs = viewingItem.value?.attributes || []
-  const values = {}
-  for (const a of attrs) values[a] = v.values[a] || ''
-  varForm.value = { values, stock: v.stock, minStock: v.minStock || 0, extrasList: _extrasObjToList(v.extras), location: v.location || '', destinations: [...(v.destinations || [])] }
+  varForm.value = variationFormForEdit(viewingItem.value, v)
   editingVariationId.value = v.id
   addingVariation.value = false
 }
 
 function resetDirectVariationForm() {
   directVariationItemId.value = ''
-  varForm.value = { values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] }
+  varForm.value = emptyVariationForm()
 }
 
 function startDirectVariation() {
@@ -351,7 +333,7 @@ watch(directVariationItems, syncDirectVariationSingleModel)
 
 watch(directVariationItem, item => {
   if (!directVariationMode.value || !item || editingVariationId.value) return
-  varForm.value = blankVariationFormForItem(item)
+  varForm.value = variationFormForItem(item)
   nextTick(() => {
     const el = document.querySelector('.var-form-input')
     if (el) el.focus()
@@ -364,27 +346,18 @@ async function saveVariation() {
     error('Selecione o modelo de item.')
     return
   }
-  const hasValue = Object.values(varForm.value.values).some(v => String(v || '').trim())
-  if (!hasValue && (targetItem?.attributes?.length || 0) > 0) {
-    error('Preencha ao menos um atributo.')
-    return
-  }
-  const stockNum = Number(varForm.value.stock)
-  if (!isFinite(stockNum) || isNaN(stockNum)) {
-    error('Quantidade deve ser um número válido.')
-    return
-  }
-  if (stockNum < 0) {
-    error('Quantidade não pode ser negativa.')
+  const validationError = validateVariationForm(targetItem, varForm.value)
+  if (validationError) {
+    error(validationError)
     return
   }
   if (editingVariationId.value) {
-    const result = await editVariation(editingVariationId.value, { values: { ...varForm.value.values }, stock: varForm.value.stock, minStock: varForm.value.minStock, extras: _extrasListToObj(varForm.value.extrasList), location: varForm.value.location, destinations: varForm.value.destinations })
+    const result = await editVariation(editingVariationId.value, { values: { ...varForm.value.values }, stock: varForm.value.stock, minStock: varForm.value.minStock, extras: extrasListToObject(varForm.value.extrasList), location: varForm.value.location, destinations: varForm.value.destinations })
     if (!result.ok) { error(result.error); return }
     editingVariationId.value = null
     success('Variação atualizada!')
   } else {
-    const result = await addVariation(targetItem.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, _extrasListToObj(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
+    const result = await addVariation(targetItem.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, extrasListToObject(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
     if (!result.ok) { error(result.error); return }
     success('Variação adicionada!')
     if (directVariationMode.value) openItem(targetItem)
@@ -1222,6 +1195,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
     :item="viewingItem"
     :variation="sheetVariation"
     :movements="movements"
+    :work-orders="workOrders"
     :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
     :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
     :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
@@ -1229,6 +1203,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
     @quick-movement="quickSheetMovement"
     @adjust-stock="adjustSheetStock"
     @update-extras="updateSheetExtras"
+    @open-work-order="order => emit('open-work-order', order)"
   />
 
   <!-- ===== Variation Add/Edit Modal ===== -->

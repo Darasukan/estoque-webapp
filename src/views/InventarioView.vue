@@ -28,7 +28,7 @@ const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
 const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const canAccessEpiControl = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
-const emit = defineEmits(['quick-movement', 'update:section', 'update:status', 'update:search'])
+const emit = defineEmits(['quick-movement', 'open-work-order', 'update:section', 'update:status', 'update:search'])
 
 const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory, editVariation } = useItems()
 const { movements, addMovement } = useMovements()
@@ -41,11 +41,11 @@ const columnMenuOpen = ref(false)
 const visibleColumns = ref({
   variation: true,
   location: true,
-  destinations: true,
+  destinations: false,
   current: true,
-  min: true,
+  min: false,
   status: true,
-  history: true,
+  history: false,
   adjust: true,
 })
 
@@ -896,7 +896,7 @@ function exportCSV() {
     <!-- Header -->
     <div class="ds-page-header">
       <div>
-        <h1 class="ds-page-title">Inventário</h1>
+        <h1 class="ds-page-title">Controle de estoque</h1>
         <p class="ds-page-subtitle">
           <template v-if="filterStatus === 'all'">
             Todas as variações cadastradas
@@ -976,7 +976,7 @@ function exportCSV() {
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5" />
             </svg>
-            Colunas
+            Mais detalhes
           </button>
           <div
             v-if="columnMenuOpen"
@@ -1360,7 +1360,7 @@ function exportCSV() {
                     <template v-for="attr in (row.item.attributes || [])" :key="attr">
                       <span
                         v-if="row.variation.values && row.variation.values[attr]"
-                        class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-100 dark:border-primary-800"
+                        class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
                       >
                         <span class="font-medium opacity-60">{{ attr }}:</span>
                         <span>{{ row.variation.values[attr] }}</span>
@@ -1497,7 +1497,7 @@ function exportCSV() {
                         <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
                       </svg>
                     </button>
-                    <div class="rounded-lg p-[1px] bg-[linear-gradient(90deg,#16a34a_0_50%,#dc2626_50%_100%)]">
+                    <div class="ds-split-action rounded-lg">
                       <button
                         type="button"
                         class="inline-flex h-8 w-8 items-center justify-center rounded-[7px] bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
@@ -1623,6 +1623,7 @@ function exportCSV() {
       :item="sheetRow.item"
       :variation="sheetRow.variation"
       :movements="movements"
+      :work-orders="workOrders"
       :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
       :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
       :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
@@ -1630,6 +1631,7 @@ function exportCSV() {
       @quick-movement="quickSheetMovement"
       @adjust-stock="adjustSheetStock"
       @update-extras="updateSheetExtras"
+      @open-work-order="order => emit('open-work-order', order)"
     />
 
     <div
@@ -1647,7 +1649,7 @@ function exportCSV() {
               <template v-for="attr in (historyRow.item.attributes || [])" :key="attr">
                 <span
                   v-if="historyRow.variation.values && historyRow.variation.values[attr]"
-                  class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-100 dark:border-primary-800"
+                  class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
                 >
                   <span class="font-medium opacity-60">{{ attr }}:</span>
                   <span>{{ historyRow.variation.values[attr] }}</span>

@@ -172,7 +172,7 @@ const {
           <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Grupos</p>
           <button
             v-if="uniqueGroups.length && !searchQ"
-            class="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-500 transition-colors hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+            class="rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/90 transition-colors hover:bg-white/20 hover:text-white"
             title="Organizar grupos em ordem alfabetica"
             @click="organizeGroupsAlphabetically"
           >

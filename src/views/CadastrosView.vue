@@ -18,8 +18,8 @@ const emit = defineEmits(['quick-movement', 'update:tab'])
 const validTabs = ['hierarquia', 'destinos', 'locais', 'pessoas', 'fornecedores', 'cargos', 'epis', 'operadores']
 const activeSubTab = ref(validTabs.includes(props.initialTab) ? props.initialTab : 'hierarquia')
 const cadastroTabs = computed(() => [
-  { id: 'hierarquia', label: 'Hierarquia' },
-  { id: 'destinos', label: 'Destinos' },
+  { id: 'hierarquia', label: 'Materiais' },
+  { id: 'destinos', label: 'Destinos e máquinas' },
   { id: 'locais', label: 'Locais' },
   { id: 'pessoas', label: 'Pessoas' },
   { id: 'fornecedores', label: 'Fornecedores' },

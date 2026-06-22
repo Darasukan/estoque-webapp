@@ -167,6 +167,8 @@ export function useItems() {
     if (itemsRes.status === 'fulfilled') items.value = sortItems(itemsRes.value)
     if (varsRes.status === 'fulfilled') variations.value = sortVariations(varsRes.value)
     if (orderRes.status === 'fulfilled') orderData.value = orderRes.value || {}
+    const failed = [itemsRes, varsRes, orderRes].filter(result => result.status === 'rejected')
+    if (failed.length) throw new AggregateError(failed.map(result => result.reason), 'Falha ao carregar materiais')
   }
 
   // ===== CRUD =====

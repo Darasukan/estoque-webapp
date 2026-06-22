@@ -5,10 +5,11 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+const envArg = process.argv.find(arg => arg.startsWith('--env='))
+export const ENV_FILE = envArg ? envArg.slice('--env='.length) : '.env'
+
 function loadEnvFile() {
-  const envArg = process.argv.find(arg => arg.startsWith('--env='))
-  const envFile = envArg ? envArg.slice('--env='.length) : '.env'
-  const envPath = resolve(process.cwd(), envFile)
+  const envPath = resolve(process.cwd(), ENV_FILE)
   if (!existsSync(envPath)) return
   const lines = readFileSync(envPath, 'utf8').split(/\r?\n/)
   for (const line of lines) {
@@ -42,7 +43,8 @@ db.exec(`
     name TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL CHECK(role IN ('admin','operador','visitante')),
     pin_hash TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -298,6 +300,11 @@ if (!destinationCols.includes('material_rules')) {
   db.prepare("ALTER TABLE destinations ADD COLUMN material_rules TEXT NOT NULL DEFAULT '[]'").run()
 }
 
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name)
+if (!userCols.includes('must_change_password')) {
+  db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run()
+}
+
 const peopleCols = db.prepare("PRAGMA table_info(people)").all().map(c => c.name)
 if (!peopleCols.includes('status')) {
   db.prepare("ALTER TABLE people ADD COLUMN status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','inativo','demitido','afastado'))").run()
@@ -390,7 +397,12 @@ import bcryptjs from 'bcryptjs'
 const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c
 if (userCount === 0) {
   const hash = bcryptjs.hashSync('admin123', 10)
-  db.prepare('INSERT INTO users (id, name, role, pin_hash) VALUES (?, ?, ?, ?)').run('user_admin', 'admin', 'admin', hash)
+  db.prepare('INSERT INTO users (id, name, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, 1)').run('user_admin', 'admin', 'admin', hash)
+} else {
+  const defaultAdmin = db.prepare('SELECT pin_hash FROM users WHERE id = ?').get('user_admin')
+  if (defaultAdmin && bcryptjs.compareSync('admin123', defaultAdmin.pin_hash)) {
+    db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run('user_admin')
+  }
 }
 
 export default db

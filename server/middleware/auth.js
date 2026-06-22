@@ -1,5 +1,6 @@
 import db from '../db.js'
 import { getAuthToken } from '../utils/authToken.js'
+import { isOwnPasswordChangeRequest } from '../utils/authPolicy.js'
 
 // Middleware: require valid session token
 export function requireAuth(req, res, next) {
@@ -7,7 +8,7 @@ export function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Token não fornecido' })
 
   const session = db.prepare(`
-    SELECT s.user_id, u.name, u.role, u.active
+    SELECT s.user_id, u.name, u.role, u.active, u.must_change_password
     FROM sessions s JOIN users u ON s.user_id = u.id
     WHERE s.token = ?
   `).get(token)
@@ -15,7 +16,20 @@ export function requireAuth(req, res, next) {
   if (!session) return res.status(401).json({ error: 'Sessão inválida' })
   if (!session.active) return res.status(403).json({ error: 'Usuário desativado' })
 
-  req.user = { id: session.user_id, name: session.name, role: session.role }
+  const changingOwnPassword = isOwnPasswordChangeRequest(req, session.user_id)
+  if (session.must_change_password && !changingOwnPassword) {
+    return res.status(403).json({
+      error: 'Troque a senha inicial antes de continuar.',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+    })
+  }
+
+  req.user = {
+    id: session.user_id,
+    name: session.name,
+    role: session.role,
+    mustChangePassword: Boolean(session.must_change_password),
+  }
   next()
 }
 
