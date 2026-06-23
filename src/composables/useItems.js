@@ -27,6 +27,20 @@ const activeFilters = ref({})
 const viewingItemId = ref(null) // item currently open in detail view
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
 
+const variationIndex = computed(() => {
+  const byItem = new Map()
+  const stockByItem = new Map()
+  for (const variation of variations.value) {
+    if (!byItem.has(variation.itemId)) byItem.set(variation.itemId, [])
+    byItem.get(variation.itemId).push(variation)
+    stockByItem.set(variation.itemId, (stockByItem.get(variation.itemId) || 0) + variation.stock)
+  }
+  for (const [itemId, itemVariations] of byItem) {
+    byItem.set(itemId, sortVariations(itemVariations))
+  }
+  return { byItem, stockByItem }
+})
+
 function compareText(a, b) {
   return collator.compare(String(a || ''), String(b || ''))
 }
@@ -76,7 +90,7 @@ function _sameStructureName(a, b) {
 }
 
 function _itemHasVariations(itemId) {
-  return variations.value.some(v => v.itemId === itemId)
+  return variationIndex.value.byItem.has(itemId)
 }
 
 function _isHierarchyModelItem(item) {
@@ -224,7 +238,7 @@ export function useItems() {
 
   // ===== Variations CRUD =====
   function getVariationsForItem(itemId) {
-    return sortVariations(variations.value.filter(v => v.itemId === itemId))
+    return variationIndex.value.byItem.get(itemId) || []
   }
 
   /**
@@ -283,9 +297,7 @@ export function useItems() {
   }
 
   function getTotalStock(itemId) {
-    return variations.value
-      .filter(v => v.itemId === itemId)
-      .reduce((sum, v) => sum + v.stock, 0)
+    return variationIndex.value.stockByItem.get(itemId) || 0
   }
 
   // ===== Seed (mass data) =====
@@ -702,7 +714,7 @@ export function useItems() {
     if (Object.keys(hierarchy).length) r = r.filter(i => _itemMatchesH(i, hierarchy))
     if (Object.keys(attrs).length) {
       r = r.filter(item => {
-        const vs = variations.value.filter(v => v.itemId === item.id)
+        const vs = variationIndex.value.byItem.get(item.id) || []
         return vs.some(v => _varMatchesA(v, attrs))
       })
     }
@@ -719,7 +731,7 @@ export function useItems() {
     if (viewingItemId.value) {
       const item = items.value.find(i => i.id === viewingItemId.value)
       if (!item) return []
-      const itemVars = variations.value.filter(v => v.itemId === item.id)
+      const itemVars = variationIndex.value.byItem.get(item.id) || []
       for (const an of (item.attributes || [])) {
         const fk = `attr:${an}`
         const counts = {}
@@ -756,7 +768,7 @@ export function useItems() {
       if (Object.keys(oH).length) c = c.filter(i => _itemMatchesH(i, oH))
       if (Object.keys(aF).length) {
         c = c.filter(item => {
-          const vs = variations.value.filter(v => v.itemId === item.id)
+          const vs = variationIndex.value.byItem.get(item.id) || []
           return vs.some(v => _varMatchesA(v, aF))
         })
       }
@@ -779,7 +791,7 @@ export function useItems() {
       const counts = {}
       for (const item of c) {
         if (!item.attributes?.includes(an)) continue
-        for (const v of variations.value.filter(v => v.itemId === item.id)) {
+        for (const v of variationIndex.value.byItem.get(item.id) || []) {
           if (Object.keys(oA).length && !_varMatchesA(v, oA)) continue
           const val = v.values?.[an] || ''
           if (val) counts[val] = (counts[val] || 0) + 1

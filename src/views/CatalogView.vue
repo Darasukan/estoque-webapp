@@ -47,15 +47,20 @@ const searchQuery = computed({
   get: () => props.search,
   set: (v) => emit('update:search', v)
 })
-const searchNorm = computed(() => props.search.trim().toLowerCase())
+const searchNorm = ref(props.search.trim().toLowerCase())
+watch(() => props.search, (value, _, onCleanup) => {
+  const timer = setTimeout(() => { searchNorm.value = value.trim().toLowerCase() }, 250)
+  onCleanup(() => clearTimeout(timer))
+})
 
 // Reset search only when user manually navigates (not auto-drill)
 const autoDrilling = ref(false)
 
 // Auto-drill triggered by Enter key from sidebar search
 function triggerSearchDrill() {
-  const q = searchNorm.value
+  const q = props.search.trim().toLowerCase()
   if (!q) return
+  searchNorm.value = q
 
   // Reset navigation to root first
   if (viewingItem.value) closeItem()
@@ -114,18 +119,16 @@ const categorySubcategories = computed(() =>
 
 // Grid stat helpers
 function categoryCount(cat) {
-  return items.value.filter(i => i.group === activeGroup.value && i.category === cat).length
+  return catalogIndex.value.categories.get(`${activeGroup.value}\0${cat}`)?.items.length || 0
 }
 function categoryStock(cat) {
-  const ids = new Set(items.value.filter(i => i.group === activeGroup.value && i.category === cat).map(i => i.id))
-  return variations.value.filter(v => ids.has(v.itemId)).reduce((s, v) => s + v.stock, 0)
+  return catalogIndex.value.categories.get(`${activeGroup.value}\0${cat}`)?.stock || 0
 }
 function subcategoryCount(sub) {
-  return items.value.filter(i => i.group === activeGroup.value && i.category === activeCategory.value && i.subcategory === sub).length
+  return catalogIndex.value.subcategories.get(`${activeGroup.value}\0${activeCategory.value}\0${sub}`)?.items.length || 0
 }
 function subcategoryStock(sub) {
-  const ids = new Set(items.value.filter(i => i.group === activeGroup.value && i.category === activeCategory.value && i.subcategory === sub).map(i => i.id))
-  return variations.value.filter(v => ids.has(v.itemId)).reduce((s, v) => s + v.stock, 0)
+  return catalogIndex.value.subcategories.get(`${activeGroup.value}\0${activeCategory.value}\0${sub}`)?.stock || 0
 }
 
 // ===== Item detail =====
@@ -482,13 +485,33 @@ function onDeleteVariation(v) {
 }
 
 // ===== Overview helpers =====
+const catalogIndex = computed(() => {
+  const groups = new Map()
+  const categories = new Map()
+  const subcategories = new Map()
+
+  function add(map, key, item, stock) {
+    const entry = map.get(key) || { items: [], stock: 0 }
+    entry.items.push(item)
+    entry.stock += stock
+    map.set(key, entry)
+  }
+
+  for (const item of items.value) {
+    const stock = getTotalStock(item.id)
+    add(groups, item.group, item, stock)
+    if (item.category) add(categories, `${item.group}\0${item.category}`, item, stock)
+    if (item.subcategory) add(subcategories, `${item.group}\0${item.category}\0${item.subcategory}`, item, stock)
+  }
+  return { groups, categories, subcategories }
+})
+
 function groupItemCount(g) {
-  return items.value.filter(i => i.group === g).length
+  return catalogIndex.value.groups.get(g)?.items.length || 0
 }
 
 function groupStockTotal(g) {
-  const ids = new Set(items.value.filter(i => i.group === g).map(i => i.id))
-  return variations.value.filter(v => ids.has(v.itemId)).reduce((s, v) => s + v.stock, 0)
+  return catalogIndex.value.groups.get(g)?.stock || 0
 }
 
 // ===== Seed / Clear (dev-only UI, controlled by VITE_ENABLE_SEED_TOOLS) =====
@@ -616,7 +639,7 @@ const searchedGroups = computed(() => {
   const q = searchNorm.value
   return uniqueGroups.value.filter(g => {
     if (g.toLowerCase().includes(q)) return true
-    const gItems = items.value.filter(i => i.group === g)
+    const gItems = catalogIndex.value.groups.get(g)?.items || []
     return gItems.some(i => itemMatchesSearch(i, q))
   })
 })
@@ -627,7 +650,7 @@ const searchedCategories = computed(() => {
   const q = searchNorm.value
   return groupCategories.value.filter(cat => {
     if (cat.toLowerCase().includes(q)) return true
-    const catItems = items.value.filter(i => i.group === activeGroup.value && i.category === cat)
+    const catItems = catalogIndex.value.categories.get(`${activeGroup.value}\0${cat}`)?.items || []
     return catItems.some(i => itemMatchesSearch(i, q))
   })
 })
@@ -638,7 +661,7 @@ const searchedSubcategories = computed(() => {
   const q = searchNorm.value
   return categorySubcategories.value.filter(sub => {
     if (sub.toLowerCase().includes(q)) return true
-    const subItems = items.value.filter(i => i.group === activeGroup.value && i.category === activeCategory.value && i.subcategory === sub)
+    const subItems = catalogIndex.value.subcategories.get(`${activeGroup.value}\0${activeCategory.value}\0${sub}`)?.items || []
     return subItems.some(i => itemMatchesSearch(i, q))
   })
 })
@@ -653,8 +676,7 @@ const searchedGroupItems = computed(() => {
 // Search-filtered direct models under the selected group.
 const searchedGroupDirectItems = computed(() => {
   if (!activeGroup.value) return []
-  const scoped = items.value
-    .filter(item => item.group === activeGroup.value)
+  const scoped = (catalogIndex.value.groups.get(activeGroup.value)?.items || [])
     .filter(item => !item.category && !item.subcategory)
     .filter(item => !isHierarchyModelItem(item))
   if (!searchNorm.value) return scoped
@@ -665,9 +687,7 @@ const searchedGroupDirectItems = computed(() => {
 // Search-filtered direct models under the selected subgroup/family.
 const searchedCategoryDirectItems = computed(() => {
   if (!activeGroup.value || !activeCategory.value) return []
-  const scoped = items.value
-    .filter(item => item.group === activeGroup.value)
-    .filter(item => item.category === activeCategory.value)
+  const scoped = (catalogIndex.value.categories.get(`${activeGroup.value}\0${activeCategory.value}`)?.items || [])
     .filter(item => !item.subcategory)
     .filter(item => !isHierarchyModelItem(item))
   if (!searchNorm.value) return scoped
