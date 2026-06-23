@@ -213,7 +213,7 @@ defineExpose({ focus })
               <span class="truncate">{{ group.parent.name }}</span>
               <span v-if="linkedIds.includes(group.parent.id)" class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Vinculado</span>
             </span>
-            <span v-if="group.children.length" class="block text-[11px] text-gray-500 dark:text-gray-400">{{ group.children.length }} subnível(is)</span>
+            <span v-if="group.children.length" class="block text-[11px] text-gray-500 dark:text-gray-400">{{ group.children.length }} descendente(s)</span>
           </button>
           <div v-else class="min-w-0 flex-1 px-2 py-2">
             <span class="block truncate text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ group.parent.name }}</span>
@@ -230,7 +230,7 @@ defineExpose({ focus })
             @click="selectDestination(child)"
           >
             <span class="h-px w-3 bg-gray-300 dark:bg-gray-700"></span>
-            <span class="min-w-0 truncate">{{ child.name }}</span>
+            <span class="min-w-0 truncate">{{ getDestFullName(child.id) }}</span>
             <span v-if="linkedIds.includes(child.id)" class="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Vinculado</span>
           </button>
         </div>

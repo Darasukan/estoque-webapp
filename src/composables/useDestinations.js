@@ -12,6 +12,46 @@ function sortByName(list) {
   )
 }
 
+export function destinationMoveError(list, id, parentId) {
+  const destination = list.find(d => d.id === id)
+  if (!destination) return 'Destino não encontrado.'
+  if (!parentId) return ''
+
+  const byId = new Map(list.map(destination => [destination.id, destination]))
+  const seen = new Set()
+  let parent = byId.get(parentId)
+  if (!parent) return 'Destino pai não encontrado.'
+  while (parent) {
+    if (parent.id === id) return 'Destino não pode ser movido para dentro dele mesmo ou de um descendente.'
+    if (seen.has(parent.id)) return 'A hierarquia de destinos contém um ciclo.'
+    seen.add(parent.id)
+    parent = parent.parentId ? byId.get(parent.parentId) : null
+  }
+  return ''
+}
+
+export function destinationDescendants(list, parentId) {
+  const result = []
+  const byParent = new Map()
+  for (const destination of list) {
+    const children = byParent.get(destination.parentId) || []
+    children.push(destination)
+    byParent.set(destination.parentId, children)
+  }
+  const queue = [parentId]
+  const seen = new Set(queue)
+  while (queue.length) {
+    const id = queue.shift()
+    for (const destination of byParent.get(id) || []) {
+      if (seen.has(destination.id)) continue
+      seen.add(destination.id)
+      result.push(destination)
+      queue.push(destination.id)
+    }
+  }
+  return result
+}
+
 export function useDestinations() {
   async function loadData() {
     destinations.value = sortByName(await api.getDestinations())
@@ -37,19 +77,32 @@ export function useDestinations() {
     return sortByName(destinations.value.filter(d => d.parentId === parentId && d.active))
   }
 
+  function getDestDescendants(parentId, activeOnly = false) {
+    return destinationDescendants(
+      activeOnly ? destinations.value.filter(destination => destination.active) : destinations.value,
+      parentId,
+    )
+  }
+
   function getDestFullName(idOrName) {
     if (!idOrName) return ''
-    const dest = destinations.value.find(d => d.id === idOrName)
-    if (!dest) return idOrName
-    if (!dest.parentId) return dest.name
-    const parent = destinations.value.find(d => d.id === dest.parentId)
-    return parent ? `${parent.name} > ${dest.name}` : dest.name
+    const byId = new Map(destinations.value.map(destination => [destination.id, destination]))
+    let destination = byId.get(idOrName)
+    if (!destination) return idOrName
+    const names = []
+    const seen = new Set()
+    while (destination && !seen.has(destination.id)) {
+      seen.add(destination.id)
+      names.unshift(destination.name)
+      destination = destination.parentId ? byId.get(destination.parentId) : null
+    }
+    return names.join(' > ')
   }
 
   const groupedDestinations = computed(() => {
     const result = []
     for (const p of activeTopLevelDest.value) {
-      const children = getActiveDestChildren(p.id)
+      const children = getDestDescendants(p.id, true)
       result.push({ parent: p, children })
     }
     return result
@@ -62,7 +115,6 @@ export function useDestinations() {
     if (parentId) {
       const parent = destinations.value.find(d => d.id === parentId)
       if (!parent) return { ok: false, error: 'Destino pai não encontrado.' }
-      if (parent.parentId) return { ok: false, error: 'Não é possível criar sub-destino de um sub-destino (máximo 2 níveis).' }
     }
 
     const siblings = destinations.value.filter(d => (d.parentId || null) === (parentId || null))
@@ -86,13 +138,8 @@ export function useDestinations() {
     const d = destinations.value.find(d => d.id === id)
     if (!d) return { ok: false, error: 'Destino não encontrado.' }
     const nextParentId = changes.parentId !== undefined ? (changes.parentId || null) : (d.parentId || null)
-    if (nextParentId) {
-      const parent = destinations.value.find(x => x.id === nextParentId)
-      if (!parent) return { ok: false, error: 'Destino pai não encontrado.' }
-      if (parent.parentId) return { ok: false, error: 'Não é possível mover para dentro de um sub-destino.' }
-      if (nextParentId === id) return { ok: false, error: 'Destino não pode ser pai dele mesmo.' }
-    }
-    if (!d.parentId && nextParentId) return { ok: false, error: 'Destino principal não pode virar sub-destino.' }
+    const moveError = destinationMoveError(destinations.value, id, nextParentId)
+    if (moveError) return { ok: false, error: moveError }
     if (changes.name !== undefined || changes.parentId !== undefined) {
       const trimmed = (changes.name ?? d.name).trim()
       if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
@@ -115,8 +162,9 @@ export function useDestinations() {
   }
 
   async function deleteDestination(id) {
+    const removedIds = new Set([id, ...getDestDescendants(id).map(destination => destination.id)])
     await api.deleteDestination(id)
-    destinations.value = destinations.value.filter(d => d.id !== id && d.parentId !== id)
+    destinations.value = destinations.value.filter(destination => !removedIds.has(destination.id))
   }
 
   function getDestinationById(id) {
@@ -136,6 +184,7 @@ export function useDestinations() {
     groupedDestinations,
     getDestChildren,
     getActiveDestChildren,
+    getDestDescendants,
     getDestFullName,
     addDestination,
     editDestination,

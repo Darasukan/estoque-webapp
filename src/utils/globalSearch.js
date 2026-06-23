@@ -1,8 +1,23 @@
-function normalizeSearchText(value) {
+export function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+}
+
+export function filterDestinations(destinations, query) {
+  const normalizedQuery = normalizeSearchText(query.trim())
+  if (!normalizedQuery) return destinations.filter(destination => !destination.parentId)
+  return destinations.filter(destination =>
+    matches([destination.name, destination.description], normalizedQuery)
+  )
+}
+
+export function findExactDestination(destinations, query) {
+  const normalizedQuery = normalizeSearchText(query.trim())
+  if (!normalizedQuery) return null
+  const exact = destinations.filter(destination => normalizeSearchText(destination.name) === normalizedQuery)
+  return exact.length === 1 ? exact[0] : null
 }
 
 function matches(parts, query) {

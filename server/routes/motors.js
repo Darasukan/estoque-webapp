@@ -2,6 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
+import { getDestinationFullName } from '../utils/destinations.js'
 
 const router = Router()
 
@@ -41,12 +42,7 @@ function nowIso() {
 }
 
 function resolveDestinationName(destinationId) {
-  if (!destinationId) return ''
-  const dest = db.prepare('SELECT * FROM destinations WHERE id = ?').get(destinationId)
-  if (!dest) return ''
-  if (!dest.parent_id) return dest.name
-  const parent = db.prepare('SELECT name FROM destinations WHERE id = ?').get(dest.parent_id)
-  return parent ? `${parent.name} > ${dest.name}` : dest.name
+  return destinationId ? getDestinationFullName(db, destinationId) : ''
 }
 
 function mapMotor(row) {

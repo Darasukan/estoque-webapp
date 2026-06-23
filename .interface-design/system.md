@@ -41,7 +41,8 @@ Assinatura do produto: ficha de circulacao que conecta material, saldo, local ou
 - Selecao em listas: fundo ativo, texto contrastante, icone e contador herdando a cor do estado.
 - Tag de atributo: compacta, borda discreta, chave com peso 600 e valor com peso regular.
 - Filtros laterais: busca no topo, hierarquia progressiva e uma unica selecao evidente.
-- Acao flutuante `Movimentar`: alto contraste, rotulo explicito e alvo de toque minimo de 44 px.
+- Destinos: arvore de profundidade livre com breadcrumb e bloqueio de ciclos; cada filho abre ficha propria e pode receber novos filhos; clique direito abre `Mover`, `Renomear` e `Excluir`.
+- Motores: `Consultar motores` navega um nivel por vez em cards, com breadcrumb: destino pai, filhos e por fim motores; clicar no motor abre a ficha existente.
 - Todos os acessos de entrada e saida abrem o mesmo fluxo de movimentacao rapida.
 - `Ctrl+K`: acoes frequentes primeiro quando vazio; resultados equilibrados por dominio e registros recentes.
 - Falha de sincronizacao: aviso persistente com fontes afetadas e acao `Tentar novamente`.

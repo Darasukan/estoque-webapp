@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildGlobalSearchResults } from '../src/utils/globalSearch.js'
+import { buildGlobalSearchResults, filterDestinations, findExactDestination } from '../src/utils/globalSearch.js'
 import { failedSourceNames } from '../src/utils/sync.js'
+import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
+import { buildMotorDestinationTree, motorMatchesSearch } from '../src/composables/useMotors.js'
+import { getDestinationFullName } from '../server/utils/destinations.js'
 import {
   extrasListToObject,
   validateVariationForm,
@@ -49,9 +52,81 @@ test('global search shows commands and balances result types', () => {
   assert.deepEqual(results.slice(0, 4).map(result => result.id), ['command:x', 'os:0', 'motor:motor-x', 'item:item-x'])
 })
 
+test('destination search returns and opens child destinations', () => {
+  const destinations = [
+    { id: 'machines', name: 'Máquinas', parentId: null },
+    { id: 'machine-1', name: 'Super Máquina 1', parentId: 'machines' },
+    { id: 'machine-2', name: 'Outra Máquina', parentId: 'machines' },
+  ]
+
+  assert.deepEqual(filterDestinations(destinations, 'super maquina').map(destination => destination.id), ['machine-1'])
+  assert.equal(findExactDestination(destinations, 'Super Maquina 1')?.id, 'machine-1')
+})
+
 test('sync failures identify only stale data sources', () => {
   assert.deepEqual(failedSourceNames(
     [['materiais'], ['movimentações'], ['motores']],
     [{ status: 'fulfilled' }, { status: 'rejected' }, { status: 'fulfilled' }]
   ), ['movimentações'])
+})
+
+test('destination hierarchy supports any depth and blocks cycles', () => {
+  const destinations = [
+    { id: 'a', name: 'A', parentId: null },
+    { id: 'a1', name: 'A1', parentId: 'a' },
+    { id: 'a11', name: 'A11', parentId: 'a1' },
+    { id: 'b', name: 'B', parentId: null },
+  ]
+
+  assert.deepEqual(destinationDescendants(destinations, 'a').map(destination => destination.id), ['a1', 'a11'])
+  assert.equal(destinationMoveError(destinations, 'a', 'b'), '')
+  assert.match(destinationMoveError(destinations, 'a', 'a11'), /descendente/)
+  assert.equal(destinationMoveError(destinations, 'a11', 'b'), '')
+  assert.match(destinationMoveError(destinations, 'b', 'b'), /dele mesmo/)
+})
+
+test('server resolves destination names at any depth', () => {
+  const rows = new Map([
+    ['a', { id: 'a', name: 'A', parent_id: null }],
+    ['a1', { id: 'a1', name: 'A1', parent_id: 'a' }],
+    ['a11', { id: 'a11', name: 'A11', parent_id: 'a1' }],
+  ])
+  const db = { prepare: () => ({ get: id => rows.get(id) }) }
+  assert.equal(getDestinationFullName(db, 'a11'), 'A > A1 > A11')
+})
+
+test('motor search combines fields and ignores accents', () => {
+  const motor = {
+    tag: 'M-001',
+    serial: 'ABC123',
+    name: 'Motor principal',
+    manufacturer: 'WEG',
+    power: '5 CV',
+    voltage: '380 V',
+    rpm: '1750',
+    status: 'em_manutencao',
+    notes: 'Revisão preventiva',
+  }
+
+  assert.equal(motorMatchesSearch(motor, 'weg super manutencao', 'Máquinas > Super Máquina 1'), true)
+  assert.equal(motorMatchesSearch(motor, 'siemens'), false)
+})
+
+test('motor catalog nests motors under parent and child destinations', () => {
+  const destinations = [
+    { id: 'machines', name: 'Máquinas' },
+    { id: 'machine-1', name: 'Super Máquina 1', parentId: 'machines' },
+    { id: 'sector-a', name: 'Setor A', parentId: 'machine-1' },
+  ]
+  const motors = [
+    { id: 'm1', tag: 'M-001', destinationId: 'sector-a' },
+    { id: 'm2', tag: 'M-002', destinationId: '' },
+  ]
+
+  const tree = buildMotorDestinationTree(motors, destinations)
+  assert.equal(tree[0].name, 'Máquinas')
+  assert.equal(tree[0].motorCount, 1)
+  assert.equal(tree[0].children[0].name, 'Super Máquina 1')
+  assert.deepEqual(tree[0].children[0].children[0].motors.map(motor => motor.id), ['m1'])
+  assert.deepEqual(tree[1].motors.map(motor => motor.id), ['m2'])
 })

@@ -37,18 +37,7 @@ export function useDestinationSummary({ destinations, movements, getDestFullName
   const expandedSummaryDestId = ref(null)
 
   const orderedRegisteredDestinations = computed(() => {
-    const list = []
-    const parents = destinations.value.filter(d => !d.parentId).sort((a, b) => compareText(a.name, b.name))
-    for (const parent of parents) {
-      list.push(parent)
-      const children = destinations.value
-        .filter(d => d.parentId === parent.id)
-        .sort((a, b) => compareText(a.name, b.name))
-      for (const child of children) {
-        list.push(child)
-      }
-    }
-    return list
+    return [...destinations.value].sort((a, b) => compareText(getDestFullName(a.id), getDestFullName(b.id)))
   })
 
   function destinationMatchesValue(dest, value) {

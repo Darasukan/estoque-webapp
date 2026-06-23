@@ -44,11 +44,18 @@ function toDestination(r) {
   }
 }
 
-function validateParent(parentId) {
+function validateParent(parentId, destinationId = '') {
   if (!parentId) return { ok: true, parentId: null }
-  const parent = db.prepare('SELECT parent_id FROM destinations WHERE id = ?').get(parentId)
-  if (!parent) return { ok: false, error: 'Destino pai nao encontrado' }
-  if (parent.parent_id) return { ok: false, error: 'Maximo 2 niveis' }
+  const seen = new Set()
+  let currentId = parentId
+  while (currentId) {
+    if (currentId === destinationId) return { ok: false, error: 'Destino nao pode ser movido para dentro dele mesmo ou de um descendente.' }
+    if (seen.has(currentId)) return { ok: false, error: 'A hierarquia de destinos contem um ciclo.' }
+    seen.add(currentId)
+    const current = db.prepare('SELECT parent_id FROM destinations WHERE id = ?').get(currentId)
+    if (!current) return { ok: false, error: 'Destino pai nao encontrado' }
+    currentId = current.parent_id
+  }
   return { ok: true, parentId }
 }
 
@@ -97,10 +104,9 @@ router.put('/:id', requireAuth, (req, res) => {
   const description = clean(req.body.description ?? current.description)
   const active = req.body.active !== undefined ? req.body.active !== false : !!current.active
   const requestedParentId = req.body.parentId !== undefined ? req.body.parentId || null : current.parent_id
-  const parent = validateParent(requestedParentId)
+  const parent = validateParent(requestedParentId, req.params.id)
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
   if (!parent.ok) return res.status(400).json({ error: parent.error })
-  if (parent.parentId === req.params.id) return res.status(400).json({ error: 'Destino nao pode ser pai dele mesmo.' })
   if (destinationDuplicate(name, parent.parentId, req.params.id)) {
     return res.status(409).json({ error: 'Ja existe um destino com esse nome neste nivel.' })
   }
@@ -114,7 +120,6 @@ router.put('/:id', requireAuth, (req, res) => {
 
 // DELETE /api/destinations/:id
 router.delete('/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM destinations WHERE parent_id = ?').run(req.params.id)
   db.prepare('DELETE FROM destinations WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

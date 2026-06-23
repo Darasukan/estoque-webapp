@@ -405,7 +405,7 @@ const destDisplayList = computed(() => {
   for (const g of groupedDestinations.value) {
     list.push({ id: g.parent.id, label: g.parent.name, indent: false })
     for (const c of g.children) {
-      list.push({ id: c.id, label: `${g.parent.name} > ${c.name}`, indent: true })
+      list.push({ id: c.id, label: getDestFullName(c.id), indent: true })
     }
   }
   return list

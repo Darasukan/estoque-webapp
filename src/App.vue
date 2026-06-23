@@ -96,7 +96,6 @@ const requestedMovSearch = ref('')
 const requestedMovementPrefill = ref(null)
 const movRef = ref(null)
 const requestedCadastrosTab = ref(savedUiState.cadastrosTab || 'hierarquia')
-const quickActionsOpen = ref(false)
 const globalCreateOpen = ref(false)
 const globalSearchOpen = ref(false)
 const globalSearchQuery = ref('')
@@ -109,10 +108,6 @@ const syncFailures = ref([])
 const syncing = ref(false)
 const globalCreateRootRef = ref(null)
 const accountMenuRootRef = ref(null)
-const quickActionsRootRef = ref(null)
-const quickActionToggleRef = ref(null)
-const quickEntryRef = ref(null)
-const quickExitRef = ref(null)
 const shortcutHelpOpen = ref(false)
 const shortcutPrefix = ref('')
 const accountMenuOpen = ref(false)
@@ -134,10 +129,6 @@ const showHistorySidebar = computed(() =>
   activeTab.value === 'movimentacoes' && movSubTab.value === 'historico'
 )
 const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
-const showQuickMovementActions = computed(() =>
-  isLoggedIn.value && activeTab.value !== 'movimentacoes'
-)
-
 const navigationGroups = [
   { id: 'inicio', label: 'Início', defaultTab: 'dashboard', tabs: [{ id: 'dashboard', label: 'Início' }] },
   {
@@ -179,20 +170,13 @@ const navigationShortcuts = [
 ]
 
 const actionShortcuts = [
-  { chord: '?', label: 'Abrir atalhos', always: true },
-  { chord: 'Ctrl K', label: 'Busca global', always: true },
-  { chord: 'Ctrl N', label: 'Registrar ou cadastrar', always: true },
-  { chord: 'M', label: 'Abrir movimentação rápida', requiresQuickMovement: true },
-  { chord: 'M E', label: 'Entrada rápida', requiresQuickMovement: true },
-  { chord: 'M S', label: 'Saída rápida', requiresQuickMovement: true },
+  { chord: '?', label: 'Abrir atalhos' },
+  { chord: 'Ctrl K', label: 'Busca global' },
+  { chord: 'Ctrl N', label: 'Registrar ou cadastrar' },
 ]
 
 const visibleNavigationShortcuts = computed(() =>
   navigationShortcuts.filter(shortcut => !shortcut.target?.requiresAuth || isLoggedIn.value)
-)
-
-const visibleActionShortcuts = computed(() =>
-  actionShortcuts.filter(shortcut => shortcut.always || !shortcut.requiresQuickMovement || showQuickMovementActions.value)
 )
 
 const createActions = computed(() => [
@@ -296,7 +280,6 @@ watch(user, (newUser, oldUser) => {
 
 watch(activeTab, value => {
   saveUiState({ activeTab: value })
-  if (value === 'movimentacoes') quickActionsOpen.value = false
 })
 watch(sidebarCollapsed, value => saveUiState({ sidebarCollapsed: value }))
 watch(catalogSearch, value => saveUiState({ catalogSearch: value }))
@@ -348,7 +331,6 @@ function logoutFromMenu() {
 
 function openMovementTab(tab, prefill = null) {
   if (!isLoggedIn.value) return
-  quickActionsOpen.value = false
   shortcutHelpOpen.value = false
   requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
@@ -363,7 +345,6 @@ function openGlobalSearch() {
   globalSearchOpen.value = true
   globalCreateOpen.value = false
   shortcutHelpOpen.value = false
-  quickActionsOpen.value = false
   clearShortcutPrefix()
   globalSearchActiveIndex.value = 0
   nextTick(() => globalSearchInputRef.value?.focus())
@@ -395,7 +376,6 @@ function openGlobalCreate() {
   }
   globalCreateOpen.value = !globalCreateOpen.value
   shortcutHelpOpen.value = false
-  quickActionsOpen.value = false
   clearShortcutPrefix()
 }
 
@@ -415,10 +395,6 @@ function closeTopPopup() {
   }
   if (shortcutHelpOpen.value) {
     closeShortcutHelp()
-    return true
-  }
-  if (quickActionsOpen.value) {
-    closeQuickActions()
     return true
   }
   if (passwordModalOpen.value) {
@@ -445,31 +421,11 @@ function handleGlobalPointerDown(event) {
   if (accountMenuOpen.value && !accountMenuRootRef.value?.contains(target)) {
     accountMenuOpen.value = false
   }
-  if (quickActionsOpen.value && !quickActionsRootRef.value?.contains(target)) {
-    quickActionsOpen.value = false
-  }
 }
 
 function isEditableTarget(target) {
   const tagName = String(target?.tagName || '').toLowerCase()
   return Boolean(target?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName))
-}
-
-function focusQuickEntry() {
-  nextTick(() => quickEntryRef.value?.focus())
-}
-
-function closeQuickActions() {
-  quickActionsOpen.value = false
-  nextTick(() => quickActionToggleRef.value?.focus())
-}
-
-function toggleQuickActions() {
-  if (!showQuickMovementActions.value) return
-  quickActionsOpen.value = !quickActionsOpen.value
-  shortcutHelpOpen.value = false
-  clearShortcutPrefix()
-  if (quickActionsOpen.value) focusQuickEntry()
 }
 
 function clearShortcutPrefix() {
@@ -488,7 +444,6 @@ function startShortcutPrefix(prefix) {
 
 function toggleShortcutHelp() {
   shortcutHelpOpen.value = !shortcutHelpOpen.value
-  quickActionsOpen.value = false
   clearShortcutPrefix()
 }
 
@@ -499,7 +454,6 @@ function closeShortcutHelp() {
 
 function runNavigationShortcut(shortcut) {
   closeShortcutHelp()
-  quickActionsOpen.value = false
   navigateTab(shortcut.target)
 }
 
@@ -666,30 +620,8 @@ function handleGlobalShortcutKeydown(event) {
   }
   if (key === 'g') {
     event.preventDefault()
-    quickActionsOpen.value = false
     startShortcutPrefix('g')
     return
-  }
-  if (!showQuickMovementActions.value) return
-  if (key === 'm' && !quickActionsOpen.value) {
-    event.preventDefault()
-    shortcutHelpOpen.value = false
-    quickActionsOpen.value = true
-    focusQuickEntry()
-    return
-  }
-  if (!quickActionsOpen.value) return
-  if (key === 'arrowdown' || key === 'arrowup') {
-    event.preventDefault()
-    const active = document.activeElement
-    const next = active === quickEntryRef.value ? quickExitRef.value : quickEntryRef.value
-    next?.focus()
-  } else if (key === 'e') {
-    event.preventDefault()
-    openMovementTab('entrada')
-  } else if (key === 's') {
-    event.preventDefault()
-    openMovementTab('saida')
   }
 }
 
@@ -1087,7 +1019,7 @@ function handleGlobalShortcutKeydown(event) {
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Ações</h3>
             <div class="space-y-1">
               <div
-                v-for="shortcut in visibleActionShortcuts"
+                v-for="shortcut in actionShortcuts"
                 :key="shortcut.chord"
                 class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
               >
@@ -1109,47 +1041,6 @@ function handleGlobalShortcutKeydown(event) {
       class="fixed bottom-5 left-5 z-50 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-lg dark:border-white/[0.08] dark:bg-gray-900 dark:text-gray-200"
     >
       {{ shortcutPrefix.toUpperCase() }}...
-    </div>
-
-    <div v-if="showQuickMovementActions" ref="quickActionsRootRef" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
-      <div
-        v-if="quickActionsOpen"
-        id="quick-movement-menu"
-        class="w-48 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
-      >
-        <button
-          ref="quickEntryRef"
-          type="button"
-          class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
-          @click="openMovementTab('entrada')"
-        >
-          <span>Entrada</span>
-          <span class="text-[11px] text-gray-400">M, E</span>
-        </button>
-        <button
-          ref="quickExitRef"
-          type="button"
-          class="w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
-          @click="openMovementTab('saida')"
-        >
-          <span>Saída</span>
-          <span class="text-[11px] text-red-300 dark:text-red-400">M, S</span>
-        </button>
-      </div>
-      <button
-        ref="quickActionToggleRef"
-        type="button"
-        class="inline-flex h-11 items-center gap-2 rounded-full bg-primary-600 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-primary-500 cursor-pointer"
-        :aria-expanded="quickActionsOpen"
-        aria-controls="quick-movement-menu"
-        title="Ações rápidas de movimentação. Tecla M abre o menu."
-        @click="toggleQuickActions"
-      >
-        <svg class="h-4 w-4 transition-transform" :class="quickActionsOpen ? 'rotate-45' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m7-7H5" />
-        </svg>
-        Movimentar
-      </button>
     </div>
 
     <!-- Toasts -->

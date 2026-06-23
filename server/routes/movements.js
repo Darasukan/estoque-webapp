@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
 import { calculateStockAfter, parsePositiveQty } from '../utils/stockMath.js'
+import { getDestinationFullName } from '../utils/destinations.js'
 
 const router = Router()
 
@@ -21,18 +22,11 @@ function parseOptionalCostStrict(value) {
   return { ok: true, value: n }
 }
 
-function destinationFullName(row) {
-  if (!row) return ''
-  if (!row.parent_id) return row.name
-  const parent = db.prepare('SELECT name FROM destinations WHERE id = ?').get(row.parent_id)
-  return parent ? `${parent.name} > ${row.name}` : row.name
-}
-
 function findActiveDestinationByName(name) {
   const wanted = clean(name).toLowerCase()
   if (!wanted) return null
   const rows = db.prepare('SELECT * FROM destinations WHERE active = 1').all()
-  return rows.find(row => destinationFullName(row).toLowerCase() === wanted || row.name.toLowerCase() === wanted) || null
+  return rows.find(row => getDestinationFullName(db, row).toLowerCase() === wanted || row.name.toLowerCase() === wanted) || null
 }
 
 function validateMovementDestination(fields) {
@@ -48,12 +42,12 @@ function validateMovementDestination(fields) {
   if (destinationId) {
     const row = db.prepare('SELECT * FROM destinations WHERE id = ? AND active = 1').get(destinationId)
     if (!row) return { ok: false, error: 'Destino selecionado nao existe ou esta inativo.' }
-    return { ok: true, destination: destinationFullName(row) }
+    return { ok: true, destination: getDestinationFullName(db, row) }
   }
 
   const row = findActiveDestinationByName(destination)
   if (!row) return { ok: false, error: 'Selecione um destino cadastrado ou marque Outro.' }
-  return { ok: true, destination: destinationFullName(row) }
+  return { ok: true, destination: getDestinationFullName(db, row) }
 }
 
 function validateMovementPerson(fields) {

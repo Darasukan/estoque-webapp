@@ -1,9 +1,10 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAuth } from '../../composables/useAuth.js'
 import { useDestinations } from '../../composables/useDestinations.js'
 import { useItems } from '../../composables/useItems.js'
 import { useToast } from '../../composables/useToast.js'
+import { filterDestinations, findExactDestination, normalizeSearchText } from '../../utils/globalSearch.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
 
 const {
@@ -11,8 +12,10 @@ const {
   editDestination,
   toggleDestinationActive,
   deleteDestination,
+  destinations,
   topLevelDestinations,
   getDestChildren,
+  getDestDescendants,
   getDestFullName,
 } = useDestinations()
 const { items, variations, editVariation } = useItems()
@@ -31,7 +34,13 @@ const newDestParentId = ref(null)
 const editingDestId = ref(null)
 const editDestName = ref('')
 const editDestDesc = ref('')
-const editDestParentId = ref('')
+
+const movingDest = ref(null)
+const moveDestParentId = ref('')
+const contextMenu = ref(null)
+const contextMenuRef = ref(null)
+const contextMenuFirstRef = ref(null)
+let contextMenuTarget = null
 
 const addingMaterial = ref(false)
 const materialSearch = ref('')
@@ -43,43 +52,69 @@ const materialItemId = ref('')
 const linkedMaterialsPage = ref(1)
 const linkedMaterialsPerPage = 8
 
-const filteredParentList = computed(() => {
-  const q = destinationSearch.value.trim().toLowerCase()
-  if (!q) return topLevelDestinations.value
-  return topLevelDestinations.value.filter(parent => {
-    const children = getDestChildren(parent.id)
-    return [parent, ...children].some(dest =>
-      `${dest.name} ${dest.description || ''}`.toLowerCase().includes(q)
-    )
-  })
-})
+const filteredDestinationList = computed(() =>
+  filterDestinations(destinations.value, destinationSearch.value)
+)
 
 const selectedParent = computed(() =>
-  topLevelDestinations.value.find(d => d.id === selectedParentId.value) || null
+  destinations.value.find(d => d.id === selectedParentId.value) || null
 )
 
 const selectedChildren = computed(() =>
   selectedParent.value ? getDestChildren(selectedParent.value.id) : []
 )
 
-const selectedMaterialDestination = computed(() => {
-  const all = selectedParent.value ? [selectedParent.value, ...selectedChildren.value] : []
-  return all.find(d => d.id === selectedMaterialDestId.value) || selectedParent.value
+const selectedMaterialDestination = computed(() => selectedParent.value)
+
+const detailDestination = computed(() => selectedMaterialDestination.value || selectedParent.value)
+
+const selectedDestinationPath = computed(() => {
+  const path = []
+  const byId = new Map(destinations.value.map(destination => [destination.id, destination]))
+  const seen = new Set()
+  let destination = selectedParent.value
+  while (destination && !seen.has(destination.id)) {
+    seen.add(destination.id)
+    path.unshift(destination)
+    destination = destination.parentId ? byId.get(destination.parentId) : null
+  }
+  return path
+})
+
+const visibleChildren = computed(() => {
+  const query = normalizeSearchText(destinationSearch.value.trim())
+  if (!query || normalizeSearchText(selectedParent.value?.name).includes(query)) return selectedChildren.value
+  return selectedChildren.value.filter(destination =>
+    normalizeSearchText(`${destination.name} ${destination.description || ''}`).includes(query)
+  )
 })
 
 const canLinkMaterial = computed(() =>
   isLoggedIn.value && selectedMaterialDestination.value?.active
 )
 
-watch(topLevelDestinations, (parents) => {
-  if (!parents.length) {
+const moveParentOptions = computed(() => {
+  if (!movingDest.value) return destinations.value
+  const blockedIds = new Set([
+    movingDest.value.id,
+    ...getDestDescendants(movingDest.value.id).map(destination => destination.id),
+  ])
+  return destinations.value.filter(destination => !blockedIds.has(destination.id))
+})
+
+const moveUnchanged = computed(() =>
+  (movingDest.value?.parentId || '') === moveDestParentId.value
+)
+
+watch(destinations, (list) => {
+  if (!list.length) {
     selectedParentId.value = ''
     selectedMaterialDestId.value = ''
     return
   }
 
-  const hasParent = parents.some(d => d.id === selectedParentId.value)
-  if (!hasParent) selectParent(parents[0].id)
+  const hasSelection = list.some(destination => destination.id === selectedParentId.value)
+  if (!hasSelection) selectParent(topLevelDestinations.value[0]?.id || list[0].id)
 }, { immediate: true })
 
 watch(selectedParent, (parent) => {
@@ -91,6 +126,11 @@ watch(selectedParent, (parent) => {
   if (!ids.includes(selectedMaterialDestId.value)) selectedMaterialDestId.value = parent.id
 })
 
+watch(destinationSearch, (query) => {
+  const destination = findExactDestination(destinations.value, query)
+  if (destination) selectDestination(destination)
+})
+
 function selectParent(id) {
   selectedParentId.value = id
   selectedMaterialDestId.value = id
@@ -99,9 +139,8 @@ function selectParent(id) {
   cancelMaterialAdd()
 }
 
-function selectMaterialDestination(id) {
-  selectedMaterialDestId.value = id
-  cancelMaterialAdd()
+function selectDestination(destination) {
+  selectParent(destination.id)
 }
 
 function startAddDest(parentId = null) {
@@ -122,13 +161,13 @@ function cancelAddDest() {
 
 async function confirmAddDest() {
   if (!isLoggedIn.value) return
-  const r = await addDestination(newDestName.value, newDestDesc.value, newDestParentId.value)
+  const parentId = newDestParentId.value
+  const r = await addDestination(newDestName.value, newDestDesc.value, parentId)
   if (!r.ok) { error(r.error); return }
 
-  if (!newDestParentId.value) selectParent(r.destination.id)
-  else selectMaterialDestination(r.destination.id)
+  selectParent(r.destination.id)
 
-  success(newDestParentId.value ? 'Sub-destino adicionado.' : 'Destino adicionado.')
+  success(parentId ? 'Sub-destino adicionado.' : 'Destino adicionado.')
   cancelAddDest()
 }
 
@@ -137,7 +176,7 @@ function startEditDest(dest) {
   editingDestId.value = dest.id
   editDestName.value = dest.name
   editDestDesc.value = dest.description || ''
-  editDestParentId.value = dest.parentId || ''
+  closeContextMenu()
   cancelAddDest()
 }
 
@@ -145,25 +184,114 @@ function cancelEditDest() {
   editingDestId.value = null
   editDestName.value = ''
   editDestDesc.value = ''
-  editDestParentId.value = ''
 }
 
 async function confirmEditDest() {
   if (!isLoggedIn.value || !editingDestId.value) return
-  const wasChild = Boolean(editDestParentId.value)
   const r = await editDestination(editingDestId.value, {
     name: editDestName.value,
     description: editDestDesc.value,
-    ...(wasChild ? { parentId: editDestParentId.value } : {}),
   })
   if (!r.ok) { error(r.error); return }
-  if (wasChild && editDestParentId.value && editDestParentId.value !== selectedParentId.value) {
-    selectedParentId.value = editDestParentId.value
-    selectedMaterialDestId.value = editingDestId.value
-  }
   success('Destino atualizado.')
   cancelEditDest()
 }
+
+function startMoveDest(dest) {
+  if (!isLoggedIn.value) return
+  movingDest.value = dest
+  moveDestParentId.value = dest.parentId || ''
+  closeContextMenu()
+  cancelEditDest()
+  cancelAddDest()
+}
+
+function cancelMoveDest() {
+  movingDest.value = null
+  moveDestParentId.value = ''
+}
+
+async function confirmMoveDest() {
+  const destination = movingDest.value
+  if (!isLoggedIn.value || !destination || moveUnchanged.value) return
+  const parentId = moveDestParentId.value || null
+  const r = await editDestination(destination.id, { parentId })
+  if (!r.ok) { error(r.error); return }
+
+  selectParent(destination.id)
+  success(parentId ? 'Destino movido.' : 'Destino transformado em principal.')
+  cancelMoveDest()
+}
+
+function openContextMenu(event, dest) {
+  if (!isLoggedIn.value) return
+  event.preventDefault()
+  contextMenuTarget = event.currentTarget
+  contextMenu.value = {
+    dest,
+    x: Math.min(event.clientX, window.innerWidth - 184),
+    y: Math.min(event.clientY, window.innerHeight - 132),
+  }
+  nextTick(() => contextMenuFirstRef.value?.focus())
+}
+
+function closeContextMenu(restoreFocus = false) {
+  contextMenu.value = null
+  if (restoreFocus) nextTick(() => contextMenuTarget?.focus())
+}
+
+function renameContextDestination() {
+  const dest = contextMenu.value?.dest
+  if (!dest) return
+  selectParent(dest.id)
+  startEditDest(dest)
+}
+
+function moveContextDestination() {
+  const dest = contextMenu.value?.dest
+  if (dest) startMoveDest(dest)
+}
+
+function deleteContextDestination() {
+  const dest = contextMenu.value?.dest
+  closeContextMenu()
+  if (dest) onDeleteDest(dest)
+}
+
+function handleContextMenuKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeContextMenu(true)
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const items = [...contextMenuRef.value.querySelectorAll('[role="menuitem"]')]
+  const current = items.indexOf(document.activeElement)
+  const index = event.key === 'Home' ? 0
+    : event.key === 'End' ? items.length - 1
+      : event.key === 'ArrowDown' ? (current + 1) % items.length
+        : (current - 1 + items.length) % items.length
+  items[index]?.focus()
+}
+
+function handleContextPointerDown(event) {
+  if (contextMenu.value && !contextMenuRef.value?.contains(event.target)) closeContextMenu()
+}
+
+function handleContextEscape(event) {
+  if (event.key === 'Escape' && contextMenu.value) closeContextMenu(true)
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', handleContextPointerDown)
+  window.addEventListener('keydown', handleContextEscape)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handleContextPointerDown)
+  window.removeEventListener('keydown', handleContextEscape)
+})
 
 async function onToggleActive(dest) {
   if (!isLoggedIn.value) return
@@ -172,13 +300,13 @@ async function onToggleActive(dest) {
 
 async function onDeleteDest(dest) {
   if (!isLoggedIn.value) return
-  const children = getDestChildren(dest.id)
-  const msg = children.length
-    ? `Excluir destino "${dest.name}" e seus ${children.length} sub-destino(s)?`
+  const descendants = getDestDescendants(dest.id)
+  const msg = descendants.length
+    ? `Excluir destino "${dest.name}" e seus ${descendants.length} descendente(s)?`
     : `Excluir destino "${dest.name}"?`
   if (!confirm(msg)) return
 
-  const removedIds = new Set([dest.id, ...children.map(c => c.id)])
+  const removedIds = new Set([dest.id, ...descendants.map(destination => destination.id)])
   const linked = variations.value.filter(v =>
     (v.destinations || []).some(id => removedIds.has(id))
   )
@@ -671,26 +799,35 @@ async function removeMaterialFromDestination(variation) {
           Nenhum destino ainda.
         </div>
 
+        <div v-else-if="destinationSearch && !filteredDestinationList.length" class="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500 italic">
+          Nenhum destino encontrado.
+        </div>
+
         <button
-          v-for="parent in filteredParentList"
-          :key="parent.id"
+          v-for="destination in filteredDestinationList"
+          :key="destination.id"
           type="button"
           class="group/row w-[calc(100%-0.5rem)] flex items-center gap-1.5 px-2 py-1.5 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors text-left"
-          :class="selectedParentId === parent.id
+          :class="selectedMaterialDestId === destination.id
             ? 'bg-primary-600 dark:bg-primary-700 text-white'
             : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'"
-          @click="selectParent(parent.id)"
+          :title="getDestFullName(destination.id)"
+          @click="selectDestination(destination)"
+          @contextmenu="openContextMenu($event, destination)"
         >
-          <svg class="w-4 h-4 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 flex-shrink-0 opacity-70" :class="destination.parentId ? 'ml-2' : ''" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
           </svg>
-          <span class="flex-1 min-w-0 text-sm font-medium truncate">{{ parent.name }}</span>
-          <span class="text-[10px] opacity-60 tabular-nums flex-shrink-0">{{ getDestChildren(parent.id).length }}</span>
+          <span class="flex-1 min-w-0 truncate">
+            <span class="block truncate text-sm font-medium">{{ destination.name }}</span>
+            <span v-if="destination.parentId" class="block truncate text-[10px] opacity-60">{{ getDestFullName(destination.id) }}</span>
+          </span>
+          <span v-if="!destination.parentId" class="text-[10px] opacity-60 tabular-nums flex-shrink-0">{{ getDestChildren(destination.id).length }}</span>
           <span
             class="w-2 h-2 rounded-full flex-shrink-0"
-            :class="parent.active ? 'bg-green-400' : 'bg-gray-400'"
-            :title="parent.active ? 'Ativo' : 'Inativo'"
+            :class="destination.active ? 'bg-green-400' : 'bg-gray-400'"
+            :title="destination.active ? 'Ativo' : 'Inativo'"
           ></span>
         </button>
       </div>
@@ -732,10 +869,14 @@ async function removeMaterialFromDestination(variation) {
 
       <template v-else>
         <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
-          <span class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedParent.name }}</span>
-          <template v-if="selectedMaterialDestination && selectedMaterialDestination.id !== selectedParent.id">
-            <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ selectedMaterialDestination.name }}</span>
+          <template v-for="(destination, index) in selectedDestinationPath" :key="destination.id">
+            <button
+              type="button"
+              class="text-sm font-bold"
+              :class="index === selectedDestinationPath.length - 1 ? 'text-gray-800 dark:text-gray-100' : 'text-primary-600 hover:underline dark:text-primary-400'"
+              @click="selectParent(destination.id)"
+            >{{ destination.name }}</button>
+            <svg v-if="index < selectedDestinationPath.length - 1" class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
           </template>
           <span
             class="ml-auto px-2 py-0.5 rounded-full text-[11px] font-medium"
@@ -748,15 +889,13 @@ async function removeMaterialFromDestination(variation) {
         </div>
 
         <div class="p-5 space-y-6">
-          <!-- Parent details -->
+          <!-- Selected destination details -->
           <section
-            class="rounded-xl border bg-gray-50 dark:bg-gray-800 overflow-hidden transition-all"
-            :class="selectedMaterialDestId === selectedParent.id
-              ? 'border-primary-500 dark:border-primary-500 ring-1 ring-primary-500/30'
-              : 'border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-700'"
+            class="rounded-xl border border-primary-500 bg-gray-50 ring-1 ring-primary-500/30 dark:border-primary-500 dark:bg-gray-800 overflow-hidden transition-all"
+            @contextmenu="openContextMenu($event, detailDestination)"
           >
             <div class="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-700">
-              <template v-if="editingDestId === selectedParent.id">
+              <template v-if="editingDestId === detailDestination.id">
                 <input
                   v-model="editDestName"
                   class="flex-1 min-w-0 px-2 py-1.5 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
@@ -780,32 +919,32 @@ async function removeMaterialFromDestination(variation) {
               </template>
 
               <template v-else>
-                <button
-                  type="button"
+                <div
                   class="flex-1 min-w-0 text-left rounded-lg px-2 py-1 -mx-2 hover:bg-white dark:hover:bg-gray-700/60 transition-colors"
-                  @click="selectMaterialDestination(selectedParent.id)"
                 >
                   <p class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                    <span class="truncate">{{ selectedParent.name }}</span>
+                    <span class="truncate">{{ detailDestination.name }}</span>
                   </p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ selectedParent.description || 'Sem descricao' }}</p>
-                </button>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ detailDestination.description || 'Sem descricao' }}</p>
+                </div>
                 <span
-                  v-if="selectedMaterialDestId === selectedParent.id"
                   class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
                 >Selecionado</span>
                 <div v-if="isLoggedIn" class="flex items-center gap-1">
                   <button
                     class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
-                    :class="selectedParent.active
+                    :class="detailDestination.active
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
-                    @click="onToggleActive(selectedParent)"
-                  >{{ selectedParent.active ? 'Ativo' : 'Inativo' }}</button>
-                  <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click="startEditDest(selectedParent)">
+                    @click="onToggleActive(detailDestination)"
+                  >{{ detailDestination.active ? 'Ativo' : 'Inativo' }}</button>
+                  <button class="p-1 rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click="startMoveDest(detailDestination)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h15m0 0-3-3m3 3-3 3M21 16.5H6m0 0 3 3m-3-3 3-3" /></svg>
+                  </button>
+                  <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click="startEditDest(detailDestination)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                   </button>
-                  <button class="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click="onDeleteDest(selectedParent)">
+                  <button class="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click="onDeleteDest(detailDestination)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                   </button>
                 </div>
@@ -814,7 +953,7 @@ async function removeMaterialFromDestination(variation) {
           </section>
 
           <!-- Children cards -->
-          <section>
+          <section v-if="selectedMaterialDestId === selectedParent.id">
             <div class="flex items-center justify-between mb-3">
               <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Sub-destinos</p>
               <button
@@ -851,15 +990,16 @@ async function removeMaterialFromDestination(variation) {
               </button>
             </div>
 
-            <div v-if="selectedChildren.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div v-if="visibleChildren.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div
-                v-for="child in selectedChildren"
+                v-for="child in visibleChildren"
                 :key="child.id"
                 class="group/card relative rounded-xl border bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
                 :class="[
                   selectedMaterialDestId === child.id ? 'border-primary-500 dark:border-primary-500 ring-1 ring-primary-500/30' : 'border-gray-200 dark:border-gray-700',
                   !child.active ? 'opacity-60' : ''
                 ]"
+                @contextmenu="openContextMenu($event, child)"
               >
                 <template v-if="editingDestId === child.id">
                   <div class="p-4 space-y-2">
@@ -877,20 +1017,6 @@ async function removeMaterialFromDestination(variation) {
                       @keydown.enter="confirmEditDest"
                       @keydown.escape="cancelEditDest"
                     />
-                    <select
-                      v-model="editDestParentId"
-                      class="w-full px-2 py-1 text-sm border border-primary-400 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                      @keydown.enter="confirmEditDest"
-                      @keydown.escape="cancelEditDest"
-                    >
-                      <option
-                        v-for="parent in topLevelDestinations"
-                        :key="parent.id"
-                        :value="parent.id"
-                      >
-                        Dentro de: {{ parent.name }}
-                      </option>
-                    </select>
                     <div class="flex justify-end gap-1">
                       <button class="p-1 rounded text-green-500 hover:text-green-600" title="Salvar" @click.stop="confirmEditDest">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -903,7 +1029,7 @@ async function removeMaterialFromDestination(variation) {
                 </template>
 
                 <template v-else>
-                  <button class="w-full text-left p-4 cursor-pointer" type="button" @click="selectMaterialDestination(child.id)">
+                  <button class="w-full text-left p-4 cursor-pointer" type="button" @click="selectDestination(child)">
                     <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate pr-20">{{ child.name }}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 line-clamp-2">{{ child.description || 'Sem descricao' }}</p>
                     <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-3">
@@ -929,6 +1055,9 @@ async function removeMaterialFromDestination(variation) {
                     >
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                     </button>
+                    <button class="p-1 rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click.stop="startMoveDest(child)">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h15m0 0-3-3m3 3-3 3M21 16.5H6m0 0 3 3m-3-3 3-3" /></svg>
+                    </button>
                     <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click.stop="startEditDest(child)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
@@ -941,7 +1070,7 @@ async function removeMaterialFromDestination(variation) {
             </div>
 
             <div v-else class="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-              Nenhum sub-destino cadastrado.
+              {{ destinationSearch ? 'Nenhum sub-destino encontrado.' : 'Nenhum sub-destino cadastrado.' }}
             </div>
           </section>
 
@@ -1067,6 +1196,82 @@ async function removeMaterialFromDestination(variation) {
       </template>
     </main>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="contextMenu"
+      ref="contextMenuRef"
+      role="menu"
+      aria-label="Ações do destino"
+      class="fixed z-[60] w-44 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @keydown="handleContextMenuKeydown"
+      @contextmenu.prevent
+    >
+      <button
+        ref="contextMenuFirstRef"
+        type="button"
+        role="menuitem"
+        class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-200 dark:hover:bg-white/[0.06] dark:focus:bg-white/[0.06]"
+        @click="moveContextDestination"
+      >Mover</button>
+      <button
+        type="button"
+        role="menuitem"
+        class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-200 dark:hover:bg-white/[0.06] dark:focus:bg-white/[0.06]"
+        @click="renameContextDestination"
+      >Renomear</button>
+      <button
+        type="button"
+        role="menuitem"
+        class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 focus:bg-red-50 focus:outline-none dark:text-red-300 dark:hover:bg-red-500/10 dark:focus:bg-red-500/10"
+        @click="deleteContextDestination"
+      >Excluir</button>
+    </div>
+  </Teleport>
+
+  <Teleport to="body">
+    <div
+      v-if="movingDest"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4 py-6"
+      @click.self="cancelMoveDest"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="move-destination-title"
+        class="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+      >
+        <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+          <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Mover destino</p>
+          <h3 id="move-destination-title" class="mt-1 text-base font-semibold text-gray-800 dark:text-gray-100">{{ movingDest.name }}</h3>
+        </div>
+        <div class="space-y-3 px-5 py-4">
+          <label for="move-destination-parent" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Novo destino pai</label>
+          <select
+            id="move-destination-parent"
+            v-model="moveDestParentId"
+            class="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            autofocus
+            @keydown.escape="cancelMoveDest"
+            @keydown.enter="confirmMoveDest"
+          >
+            <option value="">Sem destino pai (destino principal)</option>
+            <option v-for="parent in moveParentOptions" :key="parent.id" :value="parent.id">{{ getDestFullName(parent.id) }}</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+          <button type="button" class="h-10 rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelMoveDest">Cancelar</button>
+          <button
+            type="button"
+            class="h-10 rounded-md bg-primary-600 px-4 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="moveUnchanged"
+            @click="confirmMoveDest"
+          >Mover</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <Teleport to="body">
     <div

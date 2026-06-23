@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import * as api from '../services/api.js'
+import { normalizeSearchText } from '../utils/globalSearch.js'
 
 const motors = ref([])
 const motorEvents = ref({})
@@ -32,6 +33,59 @@ export function motorStatusLabel(status) {
 export function motorEventLabel(type) {
   if (type === 'enrolar') return 'Enrolado'
   return MOTOR_EVENT_TYPES.find(t => t.id === type)?.label || type || ''
+}
+
+export function motorMatchesSearch(motor, query, destinationName = '') {
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean)
+  if (!terms.length) return true
+  const haystack = normalizeSearchText([
+    motor.tag,
+    motor.serial,
+    motor.name,
+    motor.manufacturer,
+    motor.power,
+    motor.voltage,
+    motor.rpm,
+    motor.destinationName,
+    destinationName,
+    motorStatusLabel(motor.status),
+    motor.notes,
+  ].filter(Boolean).join(' '))
+  return terms.every(term => haystack.includes(term))
+}
+
+export function buildMotorDestinationTree(motors, destinations) {
+  const nodes = new Map(destinations.map(destination => [destination.id, {
+    id: destination.id,
+    name: destination.name,
+    parentId: destination.parentId || null,
+    motors: [],
+    children: [],
+  }]))
+  const roots = []
+  const unassigned = []
+
+  for (const node of nodes.values()) {
+    const parent = nodes.get(node.parentId)
+    if (parent && parent !== node) parent.children.push(node)
+    else roots.push(node)
+  }
+
+  for (const motor of motors) {
+    const node = nodes.get(motor.destinationId)
+    if (node) node.motors.push(motor)
+    else unassigned.push(motor)
+  }
+
+  function finish(node) {
+    node.children = node.children.map(finish).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }))
+    node.motorCount = node.motors.length + node.children.reduce((total, child) => total + child.motorCount, 0)
+    return node.motorCount ? node : null
+  }
+
+  const tree = roots.map(finish).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base', numeric: true }))
+  if (unassigned.length) tree.push({ id: '__unassigned__', name: 'Sem destino', parentId: null, motors: unassigned, children: [], motorCount: unassigned.length })
+  return tree
 }
 
 export function useMotors() {

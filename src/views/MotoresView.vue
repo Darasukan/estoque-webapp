@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorStatusLabel, motorEventLabel } from '../composables/useMotors.js'
+import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorStatusLabel, motorEventLabel, motorMatchesSearch, buildMotorDestinationTree } from '../composables/useMotors.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useItems } from '../composables/useItems.js'
@@ -30,7 +30,7 @@ const {
   removeMotor,
 } = useMotors()
 const { items, variations } = useItems()
-const { groupedDestinations, getDestFullName } = useDestinations()
+const { destinations, groupedDestinations, getDestFullName } = useDestinations()
 const { workOrders } = useWorkOrders()
 const { success, error } = useToast()
 
@@ -41,6 +41,7 @@ const MOTOR_PAGE_SIZE = 8
 const motorSortKey = ref('tag')
 const motorSortDirection = ref('asc')
 const motorViewMode = ref('motores')
+const motorCatalogPath = ref([])
 const selectedMotorId = ref('')
 const showForm = ref(false)
 const editingMotorId = ref(null)
@@ -136,17 +137,47 @@ const orderedDestinations = computed(() => {
 })
 
 const filteredMotors = computed(() => {
-  const q = search.value.trim().toLowerCase()
   return sortMotors(motors.value.filter(m => {
     if (statusFilter.value && m.status !== statusFilter.value) return false
-    if (!q) return true
-    const haystack = [
-      m.tag, m.serial, m.name, m.manufacturer, m.power, m.voltage, m.rpm,
-      m.destinationName, m.status, m.notes,
-    ].join(' ').toLowerCase()
-    return haystack.includes(q)
+    return motorMatchesSearch(m, search.value, getDestFullName(m.destinationId))
   }))
 })
+
+const motorCatalogTree = computed(() =>
+  buildMotorDestinationTree(filteredMotors.value, destinations.value)
+)
+
+const motorCatalogBreadcrumb = computed(() => {
+  const result = []
+  let nodes = motorCatalogTree.value
+  for (const id of motorCatalogPath.value) {
+    const node = nodes.find(candidate => candidate.id === id)
+    if (!node) break
+    result.push(node)
+    nodes = node.children
+  }
+  return result
+})
+
+const motorCatalogCurrentNode = computed(() =>
+  motorCatalogBreadcrumb.value.at(-1) || null
+)
+
+const motorCatalogDestinationCards = computed(() =>
+  motorCatalogCurrentNode.value?.children || motorCatalogTree.value
+)
+
+const motorCatalogMotorCards = computed(() =>
+  motorCatalogCurrentNode.value?.motors || []
+)
+
+function openMotorCatalogDestination(node) {
+  motorCatalogPath.value.push(node.id)
+}
+
+function goToMotorCatalogLevel(index) {
+  motorCatalogPath.value = index < 0 ? [] : motorCatalogPath.value.slice(0, index + 1)
+}
 
 const selectedMotor = computed(() =>
   filteredMotors.value.find(m => m.id === selectedMotorId.value) || filteredMotors.value[0] || null
@@ -530,7 +561,12 @@ watch(selectedMotor, (motor) => {
   locationTrailOpen.value = false
 }, { immediate: true })
 
-watch([search, statusFilter, filteredMotors, motorSortKey, motorSortDirection], () => {
+watch([search, statusFilter, motorSortKey, motorSortDirection], () => {
+  motorPage.value = 1
+  motorCatalogPath.value = []
+})
+
+watch(motorTotalPages, () => {
   if (motorPage.value > motorTotalPages.value) motorPage.value = motorTotalPages.value
   if (motorPage.value < 1) motorPage.value = 1
 })
@@ -552,6 +588,7 @@ function setMotorViewMode(mode) {
 }
 
 function startNewMotor() {
+  motorViewMode.value = 'motores'
   editingMotorId.value = null
   motorForm.value = emptyMotorForm()
   showForm.value = true
@@ -604,13 +641,7 @@ async function saveMotor() {
       : await addMotor(motorForm.value)
     selectedMotorId.value = saved.id
     success(isEditing ? 'Motor atualizado.' : 'Motor cadastrado.')
-    if (isEditing) {
-      cancelMotorForm()
-    } else {
-      motorForm.value = emptyMotorForm()
-      showForm.value = true
-      confirmCreateMotor.value = false
-    }
+    cancelMotorForm()
   } catch (e) {
     error(e.message)
   } finally {
@@ -1124,6 +1155,14 @@ function workOrderEndLabel(order) {
       <button
         type="button"
         class="ds-segmented-item"
+        :class="motorViewMode === 'catalogo' ? 'ds-segmented-item-active' : ''"
+        @click="setMotorViewMode('catalogo')"
+      >
+        Consultar motores
+      </button>
+      <button
+        type="button"
+        class="ds-segmented-item"
         :class="motorViewMode === 'linha' ? 'ds-segmented-item-active' : ''"
         @click="setMotorViewMode('linha')"
       >
@@ -1169,6 +1208,105 @@ function workOrderEndLabel(order) {
       </div>
     </div>
 
+    <div v-else-if="motorViewMode === 'catalogo'" class="space-y-4">
+      <div class="ds-panel p-4 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Catálogo por destino</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Encontre o local e abra a ficha do motor.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="ds-chip">{{ filteredMotors.length }} motor{{ filteredMotors.length !== 1 ? 'es' : '' }}</span>
+            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="startNewMotor">Cadastrar motor</AppButton>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-2">
+          <input
+            v-model="search"
+            type="search"
+            placeholder="Buscar motor, fabricante, destino ou status..."
+            class="ds-input"
+          />
+          <select v-model="statusFilter" class="ds-input">
+            <option value="">Todos os status</option>
+            <option v-for="status in MOTOR_STATUSES" :key="status.id" :value="status.id">{{ status.label }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div v-if="motorCatalogTree.length" class="flex flex-wrap items-center gap-1.5 text-sm">
+        <button
+          type="button"
+          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+          @click="goToMotorCatalogLevel(-1)"
+        >Destinos</button>
+        <template v-for="(node, index) in motorCatalogBreadcrumb" :key="node.id">
+          <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+          <button
+            type="button"
+            class="font-medium"
+            :class="index === motorCatalogBreadcrumb.length - 1 ? 'text-gray-900 dark:text-gray-100' : 'text-primary-600 hover:underline dark:text-primary-400'"
+            @click="goToMotorCatalogLevel(index)"
+          >{{ node.name }}</button>
+        </template>
+      </div>
+
+      <div v-if="motorCatalogDestinationCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <button
+          v-for="node in motorCatalogDestinationCards"
+          :key="node.id"
+          type="button"
+          class="ds-panel p-5 text-left transition-colors hover:border-primary-400 hover:bg-primary-50/40 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:hover:border-primary-500 dark:hover:bg-primary-950/20"
+          @click="openMotorCatalogDestination(node)"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="ds-page-kicker">Destino</p>
+              <h3 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{{ node.name }}</h3>
+            </div>
+            <span class="ds-chip">{{ node.motorCount }} motor{{ node.motorCount !== 1 ? 'es' : '' }}</span>
+          </div>
+          <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+            {{ node.children.length ? `${node.children.length} sub-destino${node.children.length !== 1 ? 's' : ''}` : 'Ver motores' }}
+          </p>
+        </button>
+      </div>
+
+      <div v-if="motorCatalogMotorCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <button
+          v-for="motor in motorCatalogMotorCards"
+          :key="motor.id"
+          type="button"
+          class="ds-panel p-4 text-left transition-colors hover:border-primary-400 hover:bg-primary-50/40 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:hover:border-primary-500 dark:hover:bg-primary-950/20"
+          @click="selectMotor(motor)"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="ds-page-kicker">Motor</p>
+              <h3 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{{ motor.tag }}</h3>
+              <p class="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">{{ motor.name || motor.manufacturer || 'Sem descrição' }}</p>
+            </div>
+            <StatusBadge domain="motor" :status="motor.status" :label="motorStatusLabel(motor.status)" />
+          </div>
+          <div class="mt-3 flex flex-wrap gap-1.5">
+            <span v-if="motor.manufacturer" class="ds-chip">{{ motor.manufacturer }}</span>
+            <span v-if="motor.power" class="ds-chip">{{ motor.power }}</span>
+            <span v-if="motor.voltage" class="ds-chip">{{ motor.voltage }}</span>
+            <span v-if="motor.rpm" class="ds-chip">{{ motor.rpm }} RPM</span>
+          </div>
+          <p class="mt-4 text-xs font-semibold text-primary-600 dark:text-primary-400">Abrir ficha</p>
+        </button>
+      </div>
+
+      <EmptyState
+        v-if="!motorCatalogTree.length"
+        title="Nenhum motor encontrado."
+        text="Ajuste a busca ou o filtro de status."
+      />
+    </div>
+
     <div v-else class="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
     <aside class="space-y-3">
       <div class="ds-toolbar justify-between">
@@ -1188,7 +1326,7 @@ function workOrderEndLabel(order) {
         <input
           v-model="search"
           type="text"
-          placeholder="Buscar tag, série, local..."
+          placeholder="Buscar tag, nome, fabricante, local, status..."
           class="ds-input"
         />
         <select v-model="statusFilter" class="ds-input">
