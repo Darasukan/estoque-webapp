@@ -21,6 +21,17 @@ const server = spawn(process.execPath, ['server/index.js', `--env=${envFile}`], 
   stdio: 'inherit',
 })
 
+let stopping = false
+function stop(code = 0) {
+  if (stopping) return
+  stopping = true
+  if (server.exitCode === null) server.kill()
+  process.exitCode = code
+}
+
 server.on('exit', (code) => {
-  process.exit(code || 0)
+  if (!stopping) process.exitCode = code || 0
 })
+
+process.on('SIGINT', () => stop())
+process.on('SIGTERM', () => stop())

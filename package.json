@@ -4,11 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "server": "node server/scripts/all.js",
     "dev": "node server/scripts/dev.js",
+    "server:dev": "node server/scripts/dev.js",
     "build": "vite build",
     "test": "node --test",
     "start": "node server/scripts/start.js",
     "start:prod": "node server/scripts/start.js",
+    "server:prod": "node server/scripts/start.js",
     "db:seed:dev": "node server/scripts/seedDatabase.js --env=.env.dev --mode=seed",
     "db:reset:dev": "node server/scripts/seedDatabase.js --env=.env.dev --mode=reset",
     "db:reset:prod": "node server/scripts/seedDatabase.js --env=.env.prod --mode=reset"

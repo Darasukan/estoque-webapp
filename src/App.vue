@@ -32,7 +32,7 @@ const MovimentacoesView = defineAsyncComponent(() => import('./views/Movimentaco
 const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
 
-const { isDark, toggleTheme } = useTheme()
+const { isDark, toggleTheme, visualStyleName, cycleStyle } = useTheme()
 const { items, variations, uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
 const { loadData: loadMovements } = useMovements()
 const { loadData: loadLocations } = useLocations()
@@ -759,6 +759,14 @@ function handleGlobalShortcutKeydown(event) {
                 @click="openPasswordModal"
               >
                 Trocar senha
+              </button>
+              <button
+                type="button"
+                class="ds-account-menu-action w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
+                title="Alternar entre Industrial, Discord e Vercel"
+                @click="cycleStyle"
+              >
+                Estilo: {{ visualStyleName }}
               </button>
               <button
                 type="button"

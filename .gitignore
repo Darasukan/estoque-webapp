@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+__pycache__/
+*.py[cod]
 *.local
 design.md
 .env
@@ -33,6 +35,12 @@ server/*.db-wal
 server/backups/
 public/local-brand/
 graphify-out/
+importar_banco.py
+test_importar_banco.py
+requirements-importar-banco.txt
+importacao_classificada*.json
+lista_produtos.xlsx
+~$*.xlsx
 
 # Notas de features futuras
 features.md
