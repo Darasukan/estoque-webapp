@@ -41,6 +41,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
+    username TEXT DEFAULT '',
     role TEXT NOT NULL CHECK(role IN ('admin','operador','visitante')),
     pin_hash TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
@@ -178,6 +179,7 @@ db.exec(`
     maintenance_destination_id TEXT DEFAULT '',
     maintenance_destination_name TEXT DEFAULT '',
     maintenance_external_location TEXT DEFAULT '',
+    maintenance_external_order_number TEXT DEFAULT '',
     service_type TEXT DEFAULT 'Outros',
     request_date TEXT DEFAULT '',
     request_time TEXT DEFAULT '',
@@ -190,6 +192,7 @@ db.exec(`
     maintenance_professional TEXT DEFAULT '',
     maintenance_materials TEXT DEFAULT '',
     maintenance_note TEXT DEFAULT '',
+    motor_status_after_maintenance TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -228,8 +231,10 @@ db.exec(`
     name TEXT DEFAULT '',
     manufacturer TEXT DEFAULT '',
     power TEXT DEFAULT '',
+    power_unit TEXT DEFAULT 'CV',
     voltage TEXT DEFAULT '',
     rpm TEXT DEFAULT '',
+    amperage TEXT DEFAULT '',
     destination_id TEXT DEFAULT '',
     destination_name TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','em_manutencao','reserva','inativo')),
@@ -301,9 +306,14 @@ if (!destinationCols.includes('material_rules')) {
 }
 
 const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name)
+if (!userCols.includes('username')) {
+  db.prepare("ALTER TABLE users ADD COLUMN username TEXT DEFAULT ''").run()
+}
 if (!userCols.includes('must_change_password')) {
   db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run()
 }
+db.prepare("UPDATE users SET username = name WHERE COALESCE(username, '') = ''").run()
+db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username <> ''").run()
 
 const peopleCols = db.prepare("PRAGMA table_info(people)").all().map(c => c.name)
 if (!peopleCols.includes('status')) {
@@ -327,6 +337,7 @@ const workOrderMigrations = [
   ['maintenance_destination_id', "ALTER TABLE work_orders ADD COLUMN maintenance_destination_id TEXT DEFAULT ''"],
   ['maintenance_destination_name', "ALTER TABLE work_orders ADD COLUMN maintenance_destination_name TEXT DEFAULT ''"],
   ['maintenance_external_location', "ALTER TABLE work_orders ADD COLUMN maintenance_external_location TEXT DEFAULT ''"],
+  ['maintenance_external_order_number', "ALTER TABLE work_orders ADD COLUMN maintenance_external_order_number TEXT DEFAULT ''"],
   ['service_type', "ALTER TABLE work_orders ADD COLUMN service_type TEXT DEFAULT 'Outros'"],
   ['request_date', "ALTER TABLE work_orders ADD COLUMN request_date TEXT DEFAULT ''"],
   ['request_time', "ALTER TABLE work_orders ADD COLUMN request_time TEXT DEFAULT ''"],
@@ -337,10 +348,20 @@ const workOrderMigrations = [
   ['maintenance_professional', "ALTER TABLE work_orders ADD COLUMN maintenance_professional TEXT DEFAULT ''"],
   ['maintenance_materials', "ALTER TABLE work_orders ADD COLUMN maintenance_materials TEXT DEFAULT ''"],
   ['maintenance_note', "ALTER TABLE work_orders ADD COLUMN maintenance_note TEXT DEFAULT ''"],
+  ['motor_status_after_maintenance', "ALTER TABLE work_orders ADD COLUMN motor_status_after_maintenance TEXT DEFAULT ''"],
 ]
 
 for (const [col, sql] of workOrderMigrations) {
   if (!workOrderCols.includes(col)) db.prepare(sql).run()
+}
+
+const motorCols = db.prepare("PRAGMA table_info(motors)").all().map(c => c.name)
+const motorMigrations = [
+  ['power_unit', "ALTER TABLE motors ADD COLUMN power_unit TEXT DEFAULT 'CV'"],
+  ['amperage', "ALTER TABLE motors ADD COLUMN amperage TEXT DEFAULT ''"],
+]
+for (const [col, sql] of motorMigrations) {
+  if (!motorCols.includes(col)) db.prepare(sql).run()
 }
 
 // Migration: widen motor event CHECK constraint for Enrolado.
@@ -397,7 +418,7 @@ import bcryptjs from 'bcryptjs'
 const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c
 if (userCount === 0) {
   const hash = bcryptjs.hashSync('admin123', 10)
-  db.prepare('INSERT INTO users (id, name, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, 1)').run('user_admin', 'admin', 'admin', hash)
+  db.prepare('INSERT INTO users (id, name, username, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, ?, 1)').run('user_admin', 'admin', 'admin', 'admin', hash)
 } else {
   const defaultAdmin = db.prepare('SELECT pin_hash FROM users WHERE id = ?').get('user_admin')
   if (defaultAdmin && bcryptjs.compareSync('admin123', defaultAdmin.pin_hash)) {

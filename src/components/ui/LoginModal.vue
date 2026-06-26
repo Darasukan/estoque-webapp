@@ -15,7 +15,7 @@ const localBrandLogo = '/local-brand/logo.jpg'
 function onSubmit() {
   errorMsg.value = ''
   if (!user.value.trim() || !pass.value) {
-    errorMsg.value = 'Preencha usuário e senha.'
+    errorMsg.value = 'Preencha login e senha.'
     return
   }
   login(user.value.trim(), pass.value).then(ok => {
@@ -25,7 +25,7 @@ function onSubmit() {
       errorMsg.value = ''
       emit('close')
     } else {
-      errorMsg.value = 'Usuário ou senha incorretos.'
+      errorMsg.value = 'Login ou senha incorretos.'
     }
   })
 }
@@ -72,13 +72,13 @@ function onCancel() {
         <form @submit.prevent="onSubmit" class="space-y-4">
           <!-- Usuário -->
           <div>
-            <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Usuário</label>
+            <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Login</label>
             <input
               v-model="user"
               type="text"
               autocomplete="username"
               class="ds-input"
-              placeholder="Usuário"
+              placeholder="Login"
             />
           </div>
 

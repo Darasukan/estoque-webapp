@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildGlobalSearchResults, filterDestinations, findExactDestination } from '../src/utils/globalSearch.js'
+import { buildGlobalSearchResults, filterDestinations, findExactDestination, normalizeSearchText } from '../src/utils/globalSearch.js'
 import { failedSourceNames } from '../src/utils/sync.js'
 import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
-import { buildMotorDestinationTree, motorMatchesSearch } from '../src/composables/useMotors.js'
+import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch } from '../src/composables/useMotors.js'
 import { getDestinationFullName } from '../server/utils/destinations.js'
+import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../src/utils/workOrderSearch.js'
 import {
   extrasListToObject,
   validateVariationForm,
@@ -110,6 +111,12 @@ test('motor search combines fields and ignores accents', () => {
 
   assert.equal(motorMatchesSearch(motor, 'weg super manutencao', 'Máquinas > Super Máquina 1'), true)
   assert.equal(motorMatchesSearch(motor, 'siemens'), false)
+  assert.equal(motorMatchesSearch({ tag: '1', serial: '1001' }, '1001'), true)
+  assert.equal(motorMatchesIdentity({ tag: '1001' }, '1001'), true)
+  assert.equal(motorMatchesIdentity({ tag: '1', serial: '1001' }, '1001'), false)
+  assert.equal(motorMatchesSearch({ power: '5 CV', powerUnit: 'CV' }, '5', '', 'power_cv'), true)
+  assert.equal(motorMatchesSearch({ power: '5 HP', powerUnit: 'HP' }, '5', '', 'power_cv'), false)
+  assert.equal(motorMatchesSearch({ power: '5 HP', powerUnit: 'HP' }, '5', '', 'power_hp'), true)
 })
 
 test('motor catalog nests motors under parent and child destinations', () => {
@@ -129,4 +136,25 @@ test('motor catalog nests motors under parent and child destinations', () => {
   assert.equal(tree[0].children[0].name, 'Super Máquina 1')
   assert.deepEqual(tree[0].children[0].children[0].motors.map(motor => motor.id), ['m1'])
   assert.deepEqual(tree[1].motors.map(motor => motor.id), ['m2'])
+})
+
+test('work order maintenance search includes external workshop mapping', () => {
+  const order = {
+    maintenanceLocationType: 'externa',
+    maintenanceExternalLocation: 'Americana Motores',
+    maintenanceExternalOrderNumber: 'PED-771',
+    motorOriginDestinationName: 'Turbo 1',
+    motorEventLabel: 'Rebobinado',
+    motorEventPerformedBy: 'Carlos Silva',
+    motorEventNotes: 'Troca de rolamento',
+  }
+  const searchText = normalizeSearchText(workOrderMaintenanceSearchParts(order).join(' '))
+
+  assert.equal(workOrderMaintenanceKindLabel(order), 'Oficina Externa')
+  assert.equal(searchText.includes('oficina externa'), true)
+  assert.equal(searchText.includes('americana motores'), true)
+  assert.equal(searchText.includes('ped-771'), true)
+  assert.equal(searchText.includes('rebobinado'), true)
+  assert.equal(searchText.includes('carlos silva'), true)
+  assert.equal(searchText.includes('troca de rolamento'), true)
 })

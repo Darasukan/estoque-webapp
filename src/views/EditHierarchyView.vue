@@ -115,22 +115,29 @@ const {
   filteredCategoryList,
   categorySubcategories,
   filteredSubcategoryList,
+  aiCatalogOpen,
+  aiCatalogImage,
+  aiCatalogLoading,
+  aiCatalogError,
+  aiCatalogAttrInput,
+  aiCatalog,
+  aiCatalogValueAttrs,
+  aiCatalogReady,
+  startAiCatalog,
+  cancelAiCatalog,
+  clearAiCatalogImage,
+  onAiCatalogImageSelected,
+  addAiCatalogAttr,
+  onAiCatalogAttrKeydown,
+  saveAiCatalog,
   addingGroup,
   newGroupName,
-  newGroupAttrs,
-  newGroupAttrInput,
-  addNewGroupAttr,
-  onNewGroupAttrKeydown,
   startAddGroup,
   cancelAddGroup,
   saveAddGroup,
   onAddGroupKeydown,
   addingCategory,
   newCategoryName,
-  newCategoryAttrs,
-  newCategoryAttrInput,
-  addNewCategoryAttr,
-  onNewCategoryAttrKeydown,
   startAddCategory,
   cancelAddCategory,
   saveAddCategory,
@@ -261,7 +268,7 @@ const {
 
       <!-- Add group footer -->
       <div class="border-t border-gray-200 dark:border-gray-700 p-2">
-        <div v-if="addingGroup" class="space-y-1.5">
+        <div v-if="addingGroup">
           <div class="flex items-center gap-1">
             <input
               v-model="newGroupName"
@@ -277,34 +284,15 @@ const {
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
-          <div class="flex flex-wrap items-center gap-1 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700">
-            <span
-              v-for="(attr, i) in newGroupAttrs"
-              :key="attr"
-              class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
-            >
-              {{ attr }}
-              <button class="text-primary-400 hover:text-red-500" @click.stop="newGroupAttrs.splice(i, 1)">
-                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-              </button>
-            </span>
-            <input
-              v-model="newGroupAttrInput"
-              placeholder="+ modelo"
-              class="flex-1 min-w-[70px] text-[11px] bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none"
-              @keydown="onNewGroupAttrKeydown"
-            />
-            <button v-if="newGroupAttrInput.trim()" class="text-[11px] text-primary-500 hover:text-primary-600" @click="addNewGroupAttr">Add</button>
-          </div>
         </div>
-        <button
-          v-else
-          class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-md transition-colors"
-          @click="startAddGroup"
-        >
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          Novo grupo
-        </button>
+        <div v-else class="hierarchy-quick-actions">
+          <button class="hierarchy-quick-action-new" @click="startAddGroup">
+            <span aria-hidden="true">+</span> Novo
+          </button>
+          <button class="hierarchy-quick-action-ai" @click="startAiCatalog">
+            <span aria-hidden="true">+</span> IA
+          </button>
+        </div>
       </div>
     </div>
 
@@ -383,10 +371,21 @@ const {
                     <span v-if="!(item.attributes || []).length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sem atributos</span>
                   </div>
                 </div>
-                <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
-                  Mover
-                </button>
+                <div v-if="isDeleting('item', item.id, item.name)" class="flex items-center gap-1">
+                  <span class="text-xs font-medium text-red-500">Excluir?</span>
+                  <button class="rounded bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600" @click.stop="confirmDelete">Sim</button>
+                  <button class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click.stop="cancelDelete">Nao</button>
+                </div>
+                <div v-else class="flex items-center gap-1">
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                    Mover
+                  </button>
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-300" title="Excluir modelo" @click.stop="requestDelete('item', item.id, item.name)">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
+                    Excluir
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -409,21 +408,22 @@ const {
             </button>
           </div>
 
-          <div class="order-1 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            <div
-              v-for="(cat, cIdx) in filteredCategoryList"
-              :key="cat"
-              :draggable="!searchQ"
-              @dragstart.stop="!searchQ && onDragStart('category', cIdx, $event)"
-              @dragover.stop="!searchQ && onDragOver('category', cIdx, $event)"
-              @drop.stop="!searchQ && onDrop('category', cIdx, $event)"
-              @dragend.stop="onDragEnd"
-              class="group/card relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all border-t-4"
-              :class="[
-                isDragTarget('category', cIdx) ? '!border-t-primary-500' : 'border-t-transparent',
-                isDragFrom('category', cIdx) ? 'opacity-40' : ''
-              ]"
-            >
+          <div class="order-1 max-h-[22rem] overflow-y-auto pr-1">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <div
+                v-for="(cat, cIdx) in filteredCategoryList"
+                :key="cat"
+                :draggable="!searchQ"
+                @dragstart.stop="!searchQ && onDragStart('category', cIdx, $event)"
+                @dragover.stop="!searchQ && onDragOver('category', cIdx, $event)"
+                @drop.stop="!searchQ && onDrop('category', cIdx, $event)"
+                @dragend.stop="onDragEnd"
+                class="group/card relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all border-t-4"
+                :class="[
+                  isDragTarget('category', cIdx) ? '!border-t-primary-500' : 'border-t-transparent',
+                  isDragFrom('category', cIdx) ? 'opacity-40' : ''
+                ]"
+              >
               <!-- Grip handle -->
               <div v-if="!searchQ" class="absolute top-2 left-2 opacity-0 group-hover/card:opacity-30 cursor-grab active:cursor-grabbing text-gray-500 dark:text-gray-400 pointer-events-none">
                 <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
@@ -488,58 +488,40 @@ const {
                   </button>
                 </div>
               </template>
-            </div>
+              </div>
 
-            <!-- Novo subgrupo: form card -->
-            <div
-              v-if="addingCategory"
-              class="relative rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-4 flex flex-col gap-2"
-            >
-              <p class="text-xs font-semibold text-primary-600 dark:text-primary-400">Novo subgrupo</p>
-              <input
-                v-model="newCategoryName"
-                placeholder="Nome do subgrupo"
-                class="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
-                @keydown="onAddCategoryKeydown"
-                autofocus
-              />
-              <div class="flex flex-wrap items-center gap-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:border-primary-400 dark:focus-within:border-primary-500 min-h-[2rem]">
-                <span
-                  v-for="(attr, i) in newCategoryAttrs"
-                  :key="attr"
-                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
-                >
-                  {{ attr }}
-                  <button class="text-primary-400 hover:text-red-500" @click.stop="newCategoryAttrs.splice(i, 1)">
-                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                  </button>
-                </span>
+              <!-- Novo subgrupo: form card -->
+              <div
+                v-if="addingCategory"
+                class="relative rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-4 flex flex-col gap-2"
+              >
+                <p class="text-xs font-semibold text-primary-600 dark:text-primary-400">Novo subgrupo</p>
                 <input
-                  v-model="newCategoryAttrInput"
-                  placeholder="+ modelo de variação"
-                  class="flex-1 min-w-[110px] text-xs bg-transparent text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none py-0.5"
-                  @keydown="onNewCategoryAttrKeydown"
+                  v-model="newCategoryName"
+                  placeholder="Nome do subgrupo"
+                  class="w-full px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
+                  @keydown="onAddCategoryKeydown"
+                  autofocus
                 />
-                <button v-if="newCategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewCategoryAttr">Adicionar</button>
+                <div class="flex gap-2">
+                  <button class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddCategory">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    Salvar
+                  </button>
+                  <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddCategory">Cancelar</button>
+                </div>
               </div>
-              <div class="flex gap-2">
-                <button class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddCategory">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                  Salvar
-                </button>
-                <button class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" @click="cancelAddCategory">Cancelar</button>
-              </div>
-            </div>
 
-            <!-- Novo subgrupo: "+" button card -->
-            <button
-              v-else-if="!searchQ"
-              class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary-400 dark:hover:border-primary-600 text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 flex flex-col items-center justify-center gap-2 p-4 transition-colors min-h-[80px]"
-              @click="startAddCategory"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              <span class="text-xs font-medium">Novo subgrupo</span>
-            </button>
+              <!-- Novo subgrupo: "+" button card -->
+              <button
+                v-else-if="!searchQ"
+                class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary-400 dark:hover:border-primary-600 text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 flex flex-col items-center justify-center gap-2 p-4 transition-colors min-h-[80px]"
+                @click="startAddCategory"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                <span class="text-xs font-medium">Novo subgrupo</span>
+              </button>
+            </div>
           </div>
 
           <!-- Empty hint (no categories and no search) -->
@@ -589,10 +571,21 @@ const {
                     <span v-if="!(item.attributes || []).length" class="text-xs italic text-gray-400 dark:text-gray-500">Sem atributos</span>
                   </div>
                 </div>
-                <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
-                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
-                  Mover
-                </button>
+                <div v-if="isDeleting('item', item.id, item.name)" class="flex items-center gap-1">
+                  <span class="text-xs font-medium text-red-500">Excluir?</span>
+                  <button class="rounded bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600" @click.stop="confirmDelete">Sim</button>
+                  <button class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click.stop="cancelDelete">Nao</button>
+                </div>
+                <div v-else class="flex items-center gap-1">
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                    Mover
+                  </button>
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-300" title="Excluir modelo" @click.stop="requestDelete('item', item.id, item.name)">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
+                    Excluir
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -964,14 +957,27 @@ const {
                     </template>
                   </div>
                 </div>
-                <button
-                  class="opacity-0 group-hover/card:opacity-100 inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
-                  title="Mover modelo"
-                  @click.stop="startMoveItem(item)"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
-                  Mover
-                </button>
+                <div v-if="isDeleting('item', item.id, item.name)" class="flex shrink-0 items-center gap-1">
+                  <button class="rounded bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600" @click.stop="confirmDelete">Sim</button>
+                  <button class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click.stop="cancelDelete">Nao</button>
+                </div>
+                <div v-else class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover/card:opacity-100">
+                  <button
+                    class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                    title="Mover modelo"
+                    @click.stop="startMoveItem(item)"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
+                    Mover
+                  </button>
+                  <button
+                    class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+                    title="Excluir modelo"
+                    @click.stop="requestDelete('item', item.id, item.name)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
+                  </button>
+                </div>
               </div>
 
               <!-- Attributes section -->
@@ -1117,6 +1123,122 @@ const {
   </div>
 
   <div
+    v-if="aiCatalogOpen"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+    @click.self="cancelAiCatalog"
+  >
+    <div class="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-widest text-primary-600 dark:text-primary-400">Catálogo com Gemini</p>
+          <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">Catalogar material pela foto</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">A IA sugere toda a hierarquia. Nada é salvo antes da sua aprovação.</p>
+        </div>
+        <button class="min-h-9 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" @click="cancelAiCatalog">Fechar</button>
+      </div>
+
+      <div class="space-y-5 px-5 py-4">
+        <section class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+          <div class="flex items-center gap-3">
+            <img v-if="aiCatalogImage" :src="aiCatalogImage" alt="Foto selecionada para catalogação" class="h-20 w-20 shrink-0 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10" />
+            <div v-else class="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-500">
+              <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Z" /></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Foto do material</p>
+                <span v-if="aiCatalog.confidence !== null" class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ Math.round(aiCatalog.confidence * 100) }}% de confiança</span>
+              </div>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">JPG, PNG ou WEBP, até 6 MB.</p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <label class="inline-flex min-h-9 cursor-pointer items-center rounded-md bg-primary-600 px-3 text-xs font-semibold hover:bg-primary-700 focus-within:ring-2 focus-within:ring-primary-400 focus-within:ring-offset-2 dark:focus-within:ring-offset-gray-900" style="color: var(--ds-primary-text)" :class="aiCatalogLoading ? 'pointer-events-none opacity-60' : ''">
+                  <input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" :disabled="aiCatalogLoading" @change="onAiCatalogImageSelected" />
+                  {{ aiCatalogImage ? 'Trocar foto' : 'Selecionar foto' }}
+                </label>
+                <button v-if="aiCatalogImage" type="button" class="min-h-9 rounded-md px-3 text-xs font-medium text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200" @click="clearAiCatalogImage">Remover</button>
+                <span v-if="aiCatalogLoading" class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" /><path class="opacity-75" fill="currentColor" d="M21 12a9 9 0 0 0-9-9v3a6 6 0 0 1 6 6h3Z" /></svg>
+                  Analisando…
+                </span>
+              </div>
+            </div>
+          </div>
+          <p v-if="aiCatalogError" class="mt-2 text-xs font-medium text-red-600 dark:text-red-400">{{ aiCatalogError }}</p>
+          <ul v-if="aiCatalog.observations.length" class="mt-2 space-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+            <li v-for="note in aiCatalog.observations" :key="note">• {{ note }}</li>
+          </ul>
+        </section>
+
+        <template v-if="aiCatalogImage && !aiCatalogLoading">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Grupo</span>
+              <input v-model="aiCatalog.group" list="ai-catalog-groups" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+              <datalist id="ai-catalog-groups"><option v-for="group in uniqueGroups" :key="group" :value="group" /></datalist>
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subgrupo</span>
+              <input v-model="aiCatalog.category" list="ai-catalog-categories" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+              <datalist id="ai-catalog-categories"><option v-for="category in getCategoriesForGroup(aiCatalog.group)" :key="category" :value="category" /></datalist>
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Subnível opcional</span>
+              <input v-model="aiCatalog.subcategory" list="ai-catalog-subcategories" placeholder="Opcional" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+              <datalist id="ai-catalog-subcategories"><option v-for="subcategory in getSubcategoriesForCategory(aiCatalog.group, aiCatalog.category)" :key="subcategory" :value="subcategory" /></datalist>
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Unidade</span>
+              <select v-model="aiCatalog.unit" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                <option v-for="unit in units" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="block">
+            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome do item</span>
+            <input v-model="aiCatalog.name" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+          </label>
+
+          <div>
+            <p class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos</p>
+            <div class="flex min-h-[42px] flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-2 focus-within:border-primary-400 dark:border-gray-700 dark:bg-gray-800">
+              <span v-for="(attribute, index) in aiCatalog.attributes" :key="attribute" class="inline-flex items-center gap-1 rounded bg-primary-50 px-1.5 py-0.5 text-[11px] text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                {{ attribute }}
+                <button class="text-primary-400 hover:text-red-500" @click.stop="aiCatalog.attributes.splice(index, 1)">
+                  <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                </button>
+              </span>
+              <input v-model="aiCatalogAttrInput" placeholder="+ atributo" class="min-w-[110px] flex-1 bg-transparent px-1.5 py-0.5 text-sm text-gray-700 outline-none placeholder-gray-400 dark:text-gray-200 dark:placeholder-gray-500" @keydown="onAiCatalogAttrKeydown" />
+              <button v-if="aiCatalogAttrInput.trim()" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="addAiCatalogAttr">Adicionar</button>
+            </div>
+          </div>
+
+          <div v-if="aiCatalogValueAttrs.length">
+            <div class="mb-1.5 flex items-center justify-between gap-3">
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Valores identificados</p>
+              <span class="text-[11px] text-gray-400 dark:text-gray-500">criam uma variação com estoque zero</span>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label v-for="attribute in aiCatalogValueAttrs" :key="attribute" class="block">
+                <span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">{{ attribute }}</span>
+                <input v-model="aiCatalog.values[attribute]" :placeholder="`Revisar ${attribute.toLowerCase()}`" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500" />
+              </label>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="sticky bottom-0 flex items-center justify-end gap-2 border-t border-gray-100 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
+        <button class="min-h-10 rounded-lg bg-gray-100 px-4 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelAiCatalog">Cancelar</button>
+        <button class="inline-flex min-h-10 items-center gap-1 rounded-lg bg-primary-600 px-4 text-sm font-medium hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50" style="color: var(--ds-primary-text)" :disabled="!aiCatalogReady || aiCatalogLoading" @click="saveAiCatalog">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+          Aprovar e catalogar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
     v-if="addingItemForSub"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
     @click.self="cancelAddItem"
@@ -1189,13 +1311,14 @@ const {
             />
           </div>
         </div>
+
       </div>
 
       <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
         <button class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelAddItem">
           Cancelar
         </button>
-        <button class="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700" @click="saveAddItem(addingItemForSub)">
+        <button class="inline-flex min-h-10 items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-primary-700" style="color: var(--ds-primary-text)" @click="saveAddItem(addingItemForSub)">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
           Criar modelo
         </button>

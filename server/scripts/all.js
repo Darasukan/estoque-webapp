@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
 
-const devPort = process.env.DEV_PORT || '3000'
-const prodPort = process.env.PROD_PORT || '3001'
+const devPort = process.env.DEV_PORT || '3001'
+const prodPort = process.env.PROD_PORT || '3000'
 
 if (devPort === prodPort) {
   console.error('DEV_PORT e PROD_PORT precisam ser diferentes.')

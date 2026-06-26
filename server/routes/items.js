@@ -2,8 +2,49 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
+import { analyzeCatalogImage } from '../utils/catalogSuggestion.js'
 
 const router = Router()
+
+router.post('/suggest', requireAuth, async (req, res) => {
+  const { image } = req.body
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+  if (!apiKey) return res.status(503).json({ error: 'Configure GEMINI_API_KEY ou GOOGLE_API_KEY no servidor.' })
+  if (typeof image !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,/i.test(image)) {
+    return res.status(400).json({ error: 'Envie uma imagem JPG, PNG ou WEBP.' })
+  }
+  if (image.length > 8_500_000) return res.status(413).json({ error: 'A imagem deve ter no máximo 6 MB.' })
+
+  const rows = db.prepare(`
+    SELECT name, group_name, category, subcategory, unit, attributes
+    FROM items ORDER BY group_name, category, subcategory, name LIMIT 300
+  `).all()
+  const catalog = {
+    hierarchy: [...new Set(rows.map(row => [row.group_name, row.category, row.subcategory].filter(Boolean).join(' > ')))],
+    examples: rows
+      .filter(row => row.name !== (row.subcategory || row.category || row.group_name))
+      .slice(0, 100)
+      .map(row => ({
+        path: [row.group_name, row.category, row.subcategory].filter(Boolean).join(' > '),
+        name: row.name,
+        unit: row.unit,
+        attributes: JSON.parse(row.attributes)
+      }))
+  }
+
+  try {
+    const suggestion = await analyzeCatalogImage({
+      image,
+      catalog,
+      apiKey,
+      model: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'
+    })
+    res.json(suggestion)
+  } catch (error) {
+    const status = error.name === 'TimeoutError' ? 504 : (error.status === 429 ? 429 : 502)
+    res.status(status).json({ error: error.name === 'TimeoutError' ? 'A análise demorou demais. Tente novamente.' : error.message })
+  }
+})
 
 // ===== Items =====
 

@@ -49,6 +49,7 @@ const { loadData: loadClosings } = useClosings()
 const { success, error } = useToast()
 const localBrandFavicon = '/local-brand/favicon.png'
 const localBrandName = ref('Estoque')
+const environmentBadge = ref(null)
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
 const UI_STATE_KEY = 'estoque_ui_state_v1'
@@ -254,8 +255,17 @@ async function loadLocalBrand() {
   } catch {}
 }
 
+async function loadEnvironmentBadge() {
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname)) return
+  try {
+    const response = await fetch('/api/meta', { cache: 'no-store' })
+    if (response.ok) environmentBadge.value = await response.json()
+  } catch {}
+}
+
 onMounted(async () => {
   loadLocalBrand()
+  loadEnvironmentBadge()
   await checkSession()
   if (activeTab.value === 'cadastros' && !isLoggedIn.value) activeTab.value = 'catalogo'
   await loadAllData()
@@ -679,6 +689,13 @@ function handleGlobalShortcutKeydown(event) {
               @error="$event.currentTarget.style.display = 'none'"
             />
             <span class="ds-nav-brand-name text-sm font-semibold text-white">{{ localBrandName }}</span>
+            <span
+              v-if="environmentBadge"
+              class="rounded px-1.5 py-0.5 text-[10px] font-bold leading-none"
+              :class="environmentBadge.env === 'PROD' ? 'bg-red-500/20 text-red-200' : 'bg-sky-500/20 text-sky-200'"
+            >
+              {{ environmentBadge.env }} :{{ environmentBadge.port }}
+            </span>
           </button>
 
           <div class="ds-nav-tabs" aria-label="Navegação principal">

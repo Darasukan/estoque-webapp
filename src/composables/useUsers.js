@@ -7,6 +7,7 @@ const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true
 function sortByName(list) {
   return [...list].sort((a, b) =>
     collator.compare(a.name || '', b.name || '') ||
+    collator.compare(a.username || '', b.username || '') ||
     String(a.id || '').localeCompare(String(b.id || ''))
   )
 }
@@ -18,12 +19,14 @@ export function useUsers() {
 
   const activeUsers = computed(() => sortByName(users.value.filter(u => u.active)))
 
-  async function addUser(name, pin, role = 'operador') {
+  async function addUser(name, username, pin, role = 'operador') {
     const trimmed = name.trim()
-    if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
+    const login = username.trim()
+    if (!trimmed) return { ok: false, error: 'Nome obrigatorio.' }
+    if (!login) return { ok: false, error: 'Login obrigatorio.' }
     if (!pin || pin.length < 4) return { ok: false, error: 'Senha deve ter ao menos 4 caracteres.' }
     try {
-      const created = await api.createUser({ name: trimmed, pin, role })
+      const created = await api.createUser({ name: trimmed, username: login, pin, role })
       users.value.push(created)
       users.value = sortByName(users.value)
       return { ok: true, user: created }

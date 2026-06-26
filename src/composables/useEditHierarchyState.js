@@ -3,6 +3,7 @@ import { useItems } from './useItems.js'
 import { useToast } from './useToast.js'
 import { useLocations } from './useLocations.js'
 import { units } from '../utils/units.js'
+import { suggestCatalogFromImage } from '../services/api.js'
 
 export function useEditHierarchyState() {
 const {
@@ -161,6 +162,10 @@ function confirmDelete() {
     if (selectedSubcategory.value === s) selectedSubcategory.value = null
     deleteSubcategory(g, c, s)
     success(`Subcategoria "${s}" excluída.`)
+  } else if (type === 'item') {
+    deleteItem(g)
+    if (expandedItemId.value === g) expandedItemId.value = null
+    success(`Modelo "${c}" excluido.`)
   }
   deletingKey.value = null
 }
@@ -706,41 +711,228 @@ const filteredSubcategoryList = computed(() => {
   return categorySubcategories.value.filter(s => s.toLowerCase().includes(q))
 })
 
+// ===== Catalog with AI =====
+const aiCatalogOpen = ref(false)
+const aiCatalogImage = ref('')
+const aiCatalogLoading = ref(false)
+const aiCatalogError = ref('')
+const aiCatalogAttrInput = ref('')
+const aiCatalog = ref(emptyAiCatalog())
+let aiCatalogRun = 0
+
+function emptyAiCatalog() {
+  return {
+    identified: false,
+    group: '',
+    category: '',
+    subcategory: '',
+    name: '',
+    unit: 'UN',
+    confidence: null,
+    attributes: [],
+    values: {},
+    observations: []
+  }
+}
+
+const aiCatalogValueAttrs = computed(() =>
+  aiCatalog.value.attributes.filter(attribute => Object.hasOwn(aiCatalog.value.values, attribute))
+)
+const aiCatalogReady = computed(() =>
+  aiCatalog.value.identified && aiCatalog.value.group.trim() && aiCatalog.value.name.trim()
+)
+
+function startAiCatalog() {
+  aiCatalogOpen.value = true
+  clearAiCatalogImage()
+  cancelEdit()
+  cancelDelete()
+}
+
+function cancelAiCatalog() {
+  aiCatalogOpen.value = false
+  clearAiCatalogImage()
+}
+
+function clearAiCatalogImage() {
+  aiCatalogRun++
+  aiCatalogImage.value = ''
+  aiCatalogLoading.value = false
+  aiCatalogError.value = ''
+  aiCatalogAttrInput.value = ''
+  aiCatalog.value = emptyAiCatalog()
+}
+
+const AI_CATALOG_MAX_IMAGE_BYTES = 6 * 1024 * 1024
+
+function imageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(image)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('NÃ£o foi possÃ­vel ler a imagem.'))
+    }
+    image.src = url
+  })
+}
+
+function canvasToJpeg(canvas, quality) {
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+}
+
+async function compressImageFile(file) {
+  if (file.size <= AI_CATALOG_MAX_IMAGE_BYTES) return file
+
+  const image = await imageFromBlob(file)
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('NÃ£o foi possÃ­vel reduzir a imagem.')
+
+  let maxEdge = Math.min(1800, Math.max(image.width, image.height))
+  let quality = 0.82
+
+  while (maxEdge >= 900) {
+    const scale = Math.min(1, maxEdge / Math.max(image.width, image.height))
+    canvas.width = Math.max(1, Math.round(image.width * scale))
+    canvas.height = Math.max(1, Math.round(image.height * scale))
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    while (quality >= 0.45) {
+      const blob = await canvasToJpeg(canvas, quality)
+      if (blob && blob.size <= AI_CATALOG_MAX_IMAGE_BYTES) return blob
+      quality -= 0.12
+    }
+
+    quality = 0.76
+    maxEdge = Math.round(maxEdge * 0.82)
+  }
+
+  throw new Error('NÃ£o foi possÃ­vel reduzir a imagem para menos de 6 MB.')
+}
+
+function fileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onAiCatalogImageSelected(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    aiCatalogError.value = 'Use uma imagem JPG, PNG ou WEBP.'
+    return
+  }
+  clearAiCatalogImage()
+  const run = ++aiCatalogRun
+  aiCatalogLoading.value = true
+  try {
+    const image = await fileAsDataUrl(await compressImageFile(file))
+    if (run !== aiCatalogRun) return
+    aiCatalogImage.value = image
+    const suggestion = await suggestCatalogFromImage({ image })
+    if (run !== aiCatalogRun) return
+
+    const attributes = suggestion.attributes || []
+    aiCatalog.value = {
+      ...suggestion,
+      attributes: attributes.map(attribute => attribute.name).filter(Boolean),
+      values: Object.fromEntries(attributes.map(attribute => [attribute.name, attribute.value || '']))
+    }
+    if (!suggestion.identified) aiCatalogError.value = 'Não foi possível identificar um material com segurança.'
+  } catch (cause) {
+    if (run === aiCatalogRun) aiCatalogError.value = cause.message || 'Não foi possível analisar a imagem.'
+  } finally {
+    if (run === aiCatalogRun) aiCatalogLoading.value = false
+  }
+}
+
+function addAiCatalogAttr() {
+  const attribute = aiCatalogAttrInput.value.trim()
+  if (!attribute) return
+  if (!aiCatalog.value.attributes.includes(attribute)) aiCatalog.value.attributes.push(attribute)
+  if (!Object.hasOwn(aiCatalog.value.values, attribute)) aiCatalog.value.values[attribute] = ''
+  aiCatalogAttrInput.value = ''
+}
+
+function onAiCatalogAttrKeydown(event) {
+  if (event.key === 'Enter') { event.preventDefault(); addAiCatalogAttr() }
+}
+
+async function saveAiCatalog() {
+  const data = aiCatalog.value
+  if (!data.group.trim() || !data.name.trim()) {
+    aiCatalogError.value = 'Revise o grupo e o nome do item.'
+    return
+  }
+  if (data.subcategory.trim() && !data.category.trim()) {
+    aiCatalogError.value = 'Defina o subgrupo antes do subnível.'
+    return
+  }
+
+  const result = await addItem({
+    group: data.group.trim(),
+    category: data.category.trim() || null,
+    subcategory: data.subcategory.trim() || null,
+    name: data.name.trim(),
+    unit: data.unit || 'UN',
+    minStock: 0,
+    attributes: [...data.attributes],
+    location: ''
+  })
+  if (!result.ok) { aiCatalogError.value = result.error; return }
+
+  const values = Object.fromEntries(
+    data.attributes
+      .map(attribute => [attribute, String(data.values[attribute] || '').trim()])
+      .filter(([, value]) => value)
+  )
+  if (Object.keys(values).length) {
+    try {
+      const variation = await addVariation(result.item.id, values, 0)
+      if (!variation.ok) error(`Item criado, mas a variação não foi criada: ${variation.error}`)
+    } catch {
+      error('Item criado, mas não foi possível criar a variação sugerida.')
+    }
+  }
+
+  selectedGroup.value = result.item.group
+  await nextTick()
+  selectedCategory.value = result.item.category || null
+  await nextTick()
+  selectedSubcategory.value = result.item.subcategory || null
+  success(`Item "${result.item.name}" catalogado com IA.`)
+  cancelAiCatalog()
+}
+
 // ===== Create group =====
 const addingGroup = ref(false)
 const newGroupName = ref('')
-const newGroupAttrs = ref([])
-const newGroupAttrInput = ref('')
 
 function startAddGroup() {
   addingGroup.value = true
   newGroupName.value = ''
-  newGroupAttrs.value = []
-  newGroupAttrInput.value = ''
   cancelEdit()
   cancelDelete()
 }
 function cancelAddGroup() {
   addingGroup.value = false
   newGroupName.value = ''
-  newGroupAttrs.value = []
-  newGroupAttrInput.value = ''
-}
-function addNewGroupAttr() {
-  const val = newGroupAttrInput.value.trim()
-  if (!val) return
-  if (!newGroupAttrs.value.includes(val)) newGroupAttrs.value.push(val)
-  newGroupAttrInput.value = ''
-}
-function onNewGroupAttrKeydown(e) {
-  if (e.key === 'Enter') { e.preventDefault(); addNewGroupAttr() }
-  else if (e.key === 'Backspace' && newGroupAttrInput.value === '' && newGroupAttrs.value.length > 0) newGroupAttrs.value.pop()
 }
 async function saveAddGroup() {
   const name = newGroupName.value.trim()
   if (!name) { cancelAddGroup(); return }
   if (uniqueGroups.value.includes(name)) { error(`Grupo "${name}" já existe.`); return }
-  const result = await addItem({ group: name, attributes: [...newGroupAttrs.value] })
+  const result = await addItem({ group: name })
   if (!result.ok) { error(result.error); return }
   selectedGroup.value = name
   success(`Grupo "${name}" criado.`)
@@ -754,41 +946,23 @@ function onAddGroupKeydown(e) {
 // ===== Create category =====
 const addingCategory = ref(false)
 const newCategoryName = ref('')
-const newCategoryAttrs = ref([])
-const newCategoryAttrInput = ref('')
 
 function startAddCategory() {
   addingCategory.value = true
   newCategoryName.value = ''
-  newCategoryAttrs.value = getGroupModelAttrs()
-  newCategoryAttrInput.value = ''
   cancelEdit()
   cancelDelete()
 }
 function cancelAddCategory() {
   addingCategory.value = false
   newCategoryName.value = ''
-  newCategoryAttrs.value = []
-  newCategoryAttrInput.value = ''
-}
-function addNewCategoryAttr() {
-  const val = newCategoryAttrInput.value.trim()
-  if (!val) return
-  if (!newCategoryAttrs.value.includes(val)) newCategoryAttrs.value.push(val)
-  newCategoryAttrInput.value = ''
-}
-function onNewCategoryAttrKeydown(e) {
-  if (e.key === 'Enter') { e.preventDefault(); addNewCategoryAttr() }
-  else if (e.key === 'Backspace' && newCategoryAttrInput.value === '' && newCategoryAttrs.value.length > 0) {
-    newCategoryAttrs.value.pop()
-  }
 }
 async function saveAddCategory() {
   const name = newCategoryName.value.trim()
   if (!name) { cancelAddCategory(); return }
   const existing = getCategoriesForGroup(selectedGroup.value)
   if (existing.includes(name)) { error(`Categoria "${name}" já existe.`); return }
-  const result = await addItem({ group: selectedGroup.value, category: name, attributes: [...newCategoryAttrs.value] })
+  const result = await addItem({ group: selectedGroup.value, category: name })
   if (!result.ok) { error(result.error); return }
   success(`Categoria "${name}" criada.`)
   cancelAddCategory()
@@ -1025,22 +1199,29 @@ async function organizeSubcategoriesAlphabetically() {
     filteredCategoryList,
     categorySubcategories,
     filteredSubcategoryList,
+    aiCatalogOpen,
+    aiCatalogImage,
+    aiCatalogLoading,
+    aiCatalogError,
+    aiCatalogAttrInput,
+    aiCatalog,
+    aiCatalogValueAttrs,
+    aiCatalogReady,
+    startAiCatalog,
+    cancelAiCatalog,
+    clearAiCatalogImage,
+    onAiCatalogImageSelected,
+    addAiCatalogAttr,
+    onAiCatalogAttrKeydown,
+    saveAiCatalog,
     addingGroup,
     newGroupName,
-    newGroupAttrs,
-    newGroupAttrInput,
-    addNewGroupAttr,
-    onNewGroupAttrKeydown,
     startAddGroup,
     cancelAddGroup,
     saveAddGroup,
     onAddGroupKeydown,
     addingCategory,
     newCategoryName,
-    newCategoryAttrs,
-    newCategoryAttrInput,
-    addNewCategoryAttr,
-    onNewCategoryAttrKeydown,
     startAddCategory,
     cancelAddCategory,
     saveAddCategory,

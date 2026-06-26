@@ -9,11 +9,13 @@ const { user, isAdmin } = useAuth()
 const { success, error } = useToast()
 
 const newUserName = ref('')
+const newUserUsername = ref('')
 const newUserPin = ref('')
 const newUserRole = ref('operador')
 const addingUser = ref(false)
 const editingUserId = ref(null)
 const editUserName = ref('')
+const editUserUsername = ref('')
 const editUserPin = ref('')
 const editUserRole = ref('operador')
 
@@ -31,14 +33,15 @@ function startAddUser() {
   if (!isAdmin.value) return
   addingUser.value = true
   newUserName.value = ''
+  newUserUsername.value = ''
   newUserPin.value = ''
   newUserRole.value = 'operador'
 }
 function cancelAddUser() { addingUser.value = false }
 async function confirmAddUser() {
   if (!isAdmin.value) { error('Apenas admin pode criar operadores.'); return }
-  if (!newUserName.value.trim() || !newUserPin.value.trim()) { error('Nome e senha são obrigatórios.'); return }
-  const r = await addUser(newUserName.value.trim(), newUserPin.value, newUserRole.value)
+  if (!newUserName.value.trim() || !newUserUsername.value.trim() || !newUserPin.value.trim()) { error('Nome, login e senha sao obrigatorios.'); return }
+  const r = await addUser(newUserName.value.trim(), newUserUsername.value.trim(), newUserPin.value, newUserRole.value)
   if (!r.ok) { error(r.error); return }
   success('Operador adicionado.')
   addingUser.value = false
@@ -46,6 +49,7 @@ async function confirmAddUser() {
 function startEditUser(u) {
   editingUserId.value = u.id
   editUserName.value = u.name
+  editUserUsername.value = u.username || u.name
   editUserPin.value = ''
   editUserRole.value = u.role
 }
@@ -55,6 +59,7 @@ async function confirmEditUser() {
   const changes = {}
   if (editingUserId.value !== 'user_admin') {
     changes.name = editUserName.value
+    changes.username = editUserUsername.value
     changes.role = editUserRole.value
   }
   if (editingUser && canEditUserPassword(editingUser) && editUserPin.value.trim()) changes.pin = editUserPin.value
@@ -79,7 +84,7 @@ async function onDeleteUser(u) {
 <template>
 <!-- ===== Operadores ===== -->
   <div>
-    <div class="max-w-2xl">
+    <div class="max-w-4xl">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Operadores</h2>
@@ -103,6 +108,12 @@ async function onDeleteUser(u) {
           placeholder="Nome do operador"
           class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
           autofocus
+          @keydown.escape="cancelAddUser"
+        />
+        <input
+          v-model="newUserUsername"
+          placeholder="Login de acesso"
+          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
           @keydown.escape="cancelAddUser"
         />
         <input
@@ -132,13 +143,14 @@ async function onDeleteUser(u) {
 
       <!-- Users table -->
       <div class="ds-table-wrap overflow-x-auto">
-        <table v-if="users.length" class="ds-table min-w-[640px]">
+        <table v-if="users.length" class="ds-table min-w-[680px]">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-              <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>
-              <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Papel</th>
-              <th class="text-center px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Status</th>
-              <th class="px-4 py-2.5 w-20"></th>
+              <th class="text-left px-3 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Login</th>
+              <th class="text-left px-3 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Papel</th>
+              <th class="text-center px-3 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Status</th>
+              <th class="px-3 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody>
@@ -150,11 +162,15 @@ async function onDeleteUser(u) {
             >
               <!-- Editing row -->
               <template v-if="editingUserId === u.id">
-                <td class="px-4 py-2">
+                <td class="px-3 py-2">
                   <input v-if="u.id !== 'user_admin'" v-model="editUserName" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditUser" @keydown.escape="cancelEditUser" autofocus />
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400 italic">{{ u.name }}</span>
                 </td>
-                <td class="px-4 py-2">
+                <td class="px-3 py-2">
+                  <input v-if="u.id !== 'user_admin'" v-model="editUserUsername" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditUser" @keydown.escape="cancelEditUser" />
+                  <span v-else class="text-sm text-gray-500 dark:text-gray-400 italic">{{ u.username || u.name }}</span>
+                </td>
+                <td class="px-3 py-2">
                   <div class="flex flex-col gap-1">
                     <select v-if="u.id !== 'user_admin'" v-model="editUserRole" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none">
                       <option value="operador">Operador</option>
@@ -166,7 +182,7 @@ async function onDeleteUser(u) {
                     <span v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Senha alteravel pelo proprio usuario ou admin mestre.</span>
                   </div>
                 </td>
-                <td colspan="2" class="px-4 py-2">
+                <td colspan="2" class="px-3 py-2">
                   <div class="flex items-center gap-1">
                     <button class="p-1 text-green-500 hover:text-green-600" title="Salvar" @click="confirmEditUser">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -179,8 +195,9 @@ async function onDeleteUser(u) {
               </template>
               <!-- Display row -->
               <template v-else>
-                <td class="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{{ u.name }}</td>
-                <td class="px-4 py-3 text-gray-500 dark:text-gray-400">
+                <td class="px-3 py-2.5 font-medium text-gray-800 dark:text-gray-100">{{ u.name }}</td>
+                <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">{{ u.username || u.name }}</td>
+                <td class="px-3 py-2.5 text-gray-500 dark:text-gray-400">
                   <span
                     class="px-2 py-0.5 rounded-full text-[11px] font-medium"
                     :class="{
@@ -190,7 +207,7 @@ async function onDeleteUser(u) {
                     }"
                   >{{ u.role === 'admin' ? 'Admin' : u.role === 'operador' ? 'Operador' : 'Visitante' }}</span>
                 </td>
-                <td class="px-4 py-3 text-center">
+                <td class="px-3 py-2.5 text-center">
                   <button
                     v-if="u.id !== 'user_admin'"
                     class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
@@ -201,7 +218,7 @@ async function onDeleteUser(u) {
                   >{{ u.active ? 'Ativo' : 'Inativo' }}</button>
                   <span v-else class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Ativo</span>
                 </td>
-                <td class="px-4 py-3">
+                <td class="px-3 py-2.5">
                   <div class="flex items-center justify-center gap-0.5">
                     <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditUser(u)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>

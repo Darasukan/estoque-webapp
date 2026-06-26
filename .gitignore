@@ -40,6 +40,7 @@ test_importar_banco.py
 requirements-importar-banco.txt
 importacao_classificada*.json
 lista_produtos.xlsx
+entrada_saida_produtos.xlsx
 ~$*.xlsx
 
 # Notas de features futuras

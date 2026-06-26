@@ -35,6 +35,13 @@ app.use(express.json({ limit: '10mb' }))
 
 // Auth (no auth required for login)
 app.use('/api/auth', authRoutes)
+app.get('/api/meta', (req, res) => {
+  res.json({
+    env: ENV_FILE.endsWith('.prod') ? 'PROD' : 'DEV',
+    envFile: ENV_FILE,
+    port: String(PORT),
+  })
+})
 
 // Public read + protected write (auth enforced per-route inside each file)
 app.use('/api/items', itemRoutes)

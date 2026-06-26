@@ -35,23 +35,59 @@ export function motorEventLabel(type) {
   return MOTOR_EVENT_TYPES.find(t => t.id === type)?.label || type || ''
 }
 
-export function motorMatchesSearch(motor, query, destinationName = '') {
+export function motorMatchesSearch(motor, query, destinationName = '', scope = 'all') {
   const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean)
   if (!terms.length) return true
-  const haystack = normalizeSearchText([
-    motor.tag,
-    motor.serial,
-    motor.name,
-    motor.manufacturer,
-    motor.power,
-    motor.voltage,
-    motor.rpm,
-    motor.destinationName,
-    destinationName,
-    motorStatusLabel(motor.status),
-    motor.notes,
-  ].filter(Boolean).join(' '))
-  return terms.every(term => haystack.includes(term))
+  const powerText = normalizeSearchText(motor.power)
+  const powerUnit = normalizeSearchText(motor.powerUnit || (/\bhp\b/.test(powerText) ? 'HP' : 'CV')).toUpperCase()
+  const scopedParts = {
+    tag: [motor.tag],
+    serial: [motor.serial],
+    manufacturer: [motor.manufacturer],
+    power_cv: powerUnit === 'CV' ? [motor.power] : [],
+    power_hp: powerUnit === 'HP' ? [motor.power] : [],
+    voltage: [motor.voltage],
+    amperage: [motor.amperage],
+    destination: [motor.destinationName, destinationName],
+    status: [motorStatusLabel(motor.status)],
+  }
+  const haystackParts = (scope && scope !== 'all' ? scopedParts[scope] : null) || [
+      motor.tag,
+      motor.serial,
+      motor.name,
+      motor.manufacturer,
+      motor.power,
+      motor.voltage,
+      motor.rpm,
+      motor.amperage,
+      motor.destinationName,
+      destinationName,
+      motorStatusLabel(motor.status),
+      motor.notes,
+    ]
+  if (scope === 'power_cv' || scope === 'power_hp') {
+    if (!haystackParts.length) return false
+  }
+  const haystack = normalizeSearchText(haystackParts.join(' '))
+  const numberTokens = new Set((haystack.match(/\d+/g) || []).flatMap(token => [
+    token,
+    token.replace(/^0+(?=\d)/, ''),
+  ]))
+  return terms.every(term => {
+    if (/^\d+$/.test(term)) return numberTokens.has(term) || numberTokens.has(term.replace(/^0+(?=\d)/, ''))
+    return haystack.includes(term)
+  })
+}
+
+export function motorMatchesIdentity(motor, query) {
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean)
+  const numericTerms = terms.filter(term => /^\d+$/.test(term))
+  if (!numericTerms.length) return false
+  const identityTokens = new Set((normalizeSearchText(motor.tag).match(/\d+/g) || []).flatMap(token => [
+    token,
+    token.replace(/^0+(?=\d)/, ''),
+  ]))
+  return numericTerms.every(term => identityTokens.has(term) || identityTokens.has(term.replace(/^0+(?=\d)/, '')))
 }
 
 export function buildMotorDestinationTree(motors, destinations) {

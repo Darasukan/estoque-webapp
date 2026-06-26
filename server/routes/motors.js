@@ -62,8 +62,10 @@ function mapMotor(row) {
     name: row.name || '',
     manufacturer: row.manufacturer || '',
     power: row.power || '',
+    powerUnit: row.power_unit || 'CV',
     voltage: row.voltage || '',
     rpm: row.rpm || '',
+    amperage: row.amperage || '',
     destinationId: row.destination_id || '',
     destinationName: row.destination_name || '',
     status: row.status || 'ativo',
@@ -111,19 +113,40 @@ function buildMotorPayload(body, existing = null) {
   const destinationName = destinationId ? resolveDestinationName(destinationId) : ''
   if (destinationId && !destinationName) return { error: 'Destino nao encontrado.' }
 
+  const powerUnit = normalizePowerUnit(body.powerUnit ?? existing?.power_unit ?? existing?.powerUnit, 'CV')
   return {
     tag,
     serial: clean(body.serial ?? existing?.serial),
     name: clean(body.name ?? existing?.name),
     manufacturer: clean(body.manufacturer ?? existing?.manufacturer),
-    power: clean(body.power ?? existing?.power),
-    voltage: clean(body.voltage ?? existing?.voltage),
-    rpm: clean(body.rpm ?? existing?.rpm),
+    power: withPowerUnit(body.power ?? existing?.power, powerUnit),
+    powerUnit,
+    voltage: withUnit(body.voltage ?? existing?.voltage, 'V'),
+    rpm: withUnit(body.rpm ?? existing?.rpm, 'RPM'),
+    amperage: withUnit(body.amperage ?? existing?.amperage, 'A'),
     destinationId,
     destinationName,
     status,
     notes: clean(body.notes ?? existing?.notes),
   }
+}
+
+function normalizePowerUnit(value, fallback = 'CV') {
+  const unit = clean(value).toUpperCase()
+  return unit === 'HP' || unit === 'CV' ? unit : fallback
+}
+
+function withUnit(value, unit) {
+  const text = clean(value)
+  if (!text) return ''
+  const compact = text.replace(/\s+/g, '').toUpperCase()
+  if (compact.endsWith(unit)) return text
+  return `${text} ${unit}`
+}
+
+function withPowerUnit(value, unit) {
+  const text = clean(value).replace(/\s*(CV|HP)\s*$/i, '').trim()
+  return text ? `${text} ${unit}` : ''
 }
 
 function buildEventPayload(body, motor) {
@@ -183,10 +206,10 @@ router.post('/', requireAuth, (req, res) => {
   const id = genId('motor')
   const now = nowIso()
   db.prepare(`INSERT INTO motors (
-    id, tag, serial, name, manufacturer, power, voltage, rpm,
+    id, tag, serial, name, manufacturer, power, power_unit, voltage, rpm, amperage,
     destination_id, destination_name, status, notes, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, payload.tag, payload.serial, payload.name, payload.manufacturer, payload.power, payload.voltage, payload.rpm,
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, payload.tag, payload.serial, payload.name, payload.manufacturer, payload.power, payload.powerUnit, payload.voltage, payload.rpm, payload.amperage,
     payload.destinationId, payload.destinationName, payload.status, payload.notes, now, now
   )
 
@@ -213,10 +236,10 @@ router.put('/:id', requireAuth, (req, res) => {
 
   const tx = db.transaction(() => {
     db.prepare(`UPDATE motors SET
-      tag=?, serial=?, name=?, manufacturer=?, power=?, voltage=?, rpm=?,
+      tag=?, serial=?, name=?, manufacturer=?, power=?, power_unit=?, voltage=?, rpm=?, amperage=?,
       destination_id=?, destination_name=?, status=?, notes=?, updated_at=?
       WHERE id=?`).run(
-      payload.tag, payload.serial, payload.name, payload.manufacturer, payload.power, payload.voltage, payload.rpm,
+      payload.tag, payload.serial, payload.name, payload.manufacturer, payload.power, payload.powerUnit, payload.voltage, payload.rpm, payload.amperage,
       payload.destinationId, payload.destinationName, payload.status, payload.notes, now, req.params.id
     )
 

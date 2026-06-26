@@ -41,10 +41,10 @@ async function request(path, options = {}) {
 }
 
 // ===== Auth =====
-export async function login(name, pin) {
+export async function login(login, pin) {
   const data = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ name, pin })
+    body: JSON.stringify({ login, pin })
   })
   setAuthData(data.user)
   return data.user
@@ -82,6 +82,10 @@ export async function getItems() {
 
 export async function createItem(data) {
   return request('/items', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function suggestCatalogFromImage(data) {
+  return request('/items/suggest', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function updateItem(id, data) {

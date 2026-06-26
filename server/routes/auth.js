@@ -10,6 +10,21 @@ const router = Router()
 const AUTH_COOKIE = 'auth_token'
 const COOKIE_MAX_AGE = 1000 * 60 * 60 * 24 * 30
 
+function clean(value) {
+  return String(value ?? '').trim()
+}
+
+function safeUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username || user.name,
+    role: user.role,
+    active: user.active,
+    mustChangePassword: Boolean(user.must_change_password),
+  }
+}
+
 function cookieOptions(req) {
   return {
     httpOnly: true,
@@ -20,32 +35,28 @@ function cookieOptions(req) {
   }
 }
 
-// POST /api/auth/login — { name, pin }
+// POST /api/auth/login
 router.post('/login', (req, res) => {
-  const { name, pin } = req.body
-  if (!name || !pin) return res.status(400).json({ error: 'Nome e PIN obrigatórios' })
+  const login = clean(req.body.login ?? req.body.username ?? req.body.name)
+  const { pin } = req.body
+  if (!login || !pin) return res.status(400).json({ error: 'Login e PIN obrigatorios' })
 
-  const user = db.prepare('SELECT * FROM users WHERE name = ? AND active = 1').get(name)
-  if (!user) return res.status(401).json({ error: 'Usuário não encontrado' })
+  const user = db.prepare(`
+    SELECT * FROM users
+    WHERE active = 1
+      AND (username = ? OR (COALESCE(username, '') = '' AND name = ?))
+  `).get(login, login)
+  if (!user) return res.status(401).json({ error: 'Usuario nao encontrado' })
 
   if (!bcryptjs.compareSync(pin, user.pin_hash)) {
     return res.status(401).json({ error: 'PIN incorreto' })
   }
 
-  // Create session token
   const token = crypto.randomBytes(32).toString('hex')
   db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, user.id)
 
   res.cookie(AUTH_COOKIE, token, cookieOptions(req))
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      name: user.name,
-      role: user.role,
-      mustChangePassword: Boolean(user.must_change_password),
-    },
-  })
+  res.json({ token, user: safeUser(user) })
 })
 
 // POST /api/auth/logout
@@ -59,92 +70,101 @@ router.post('/logout', (req, res) => {
 // GET /api/auth/me
 router.get('/me', (req, res) => {
   const token = getAuthToken(req)
-  if (!token) return res.status(401).json({ error: 'Não autenticado' })
+  if (!token) return res.status(401).json({ error: 'Nao autenticado' })
 
   const session = db.prepare(`
-    SELECT u.id, u.name, u.role, u.must_change_password FROM sessions s
+    SELECT u.id, u.name, u.username, u.role, u.active, u.must_change_password
+    FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ? AND u.active = 1
   `).get(token)
 
-  if (!session) return res.status(401).json({ error: 'Sessão inválida' })
-  res.json({
-    id: session.id,
-    name: session.name,
-    role: session.role,
-    mustChangePassword: Boolean(session.must_change_password),
-  })
+  if (!session) return res.status(401).json({ error: 'Sessao invalida' })
+  res.json(safeUser(session))
 })
-
-// ===== User management (admin only) =====
 
 // GET /api/auth/users
 router.get('/users', requireAuth, requireRole('admin'), (req, res) => {
-  const users = db.prepare('SELECT id, name, role, active, must_change_password FROM users ORDER BY name').all()
-  res.json(users.map(({ must_change_password, ...user }) => ({
-    ...user,
-    mustChangePassword: Boolean(must_change_password),
-  })))
+  const users = db.prepare('SELECT id, name, username, role, active, must_change_password FROM users ORDER BY name').all()
+  res.json(users.map(safeUser))
 })
 
-// POST /api/auth/users — { name, role, pin }
+// POST /api/auth/users
 router.post('/users', requireAuth, requireRole('admin'), (req, res) => {
-  const { name, role, pin } = req.body
-  if (!name || !role || !pin) return res.status(400).json({ error: 'Nome, papel e PIN obrigatórios' })
+  const name = clean(req.body.name)
+  const username = clean(req.body.username || req.body.login || name)
+  const { role, pin } = req.body
+  if (!name || !username || !role || !pin) return res.status(400).json({ error: 'Nome, login, papel e PIN obrigatorios' })
   const pinError = passwordChangeError(pin)
   if (pinError) return res.status(400).json({ error: pinError })
-  if (!['admin', 'operador', 'visitante'].includes(role)) return res.status(400).json({ error: 'Papel inválido' })
+  if (!['admin', 'operador', 'visitante'].includes(role)) return res.status(400).json({ error: 'Papel invalido' })
 
-  const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name)
-  if (existing) return res.status(409).json({ error: 'Nome já existe' })
+  if (db.prepare('SELECT id FROM users WHERE name = ?').get(name)) {
+    return res.status(409).json({ error: 'Nome ja existe' })
+  }
+  if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
+    return res.status(409).json({ error: 'Login ja existe' })
+  }
 
   const id = 'user_' + crypto.randomBytes(6).toString('hex')
   const pin_hash = bcryptjs.hashSync(pin, 10)
-  db.prepare('INSERT INTO users (id, name, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, 1)').run(id, name, role, pin_hash)
+  db.prepare('INSERT INTO users (id, name, username, role, pin_hash, must_change_password) VALUES (?, ?, ?, ?, ?, 1)')
+    .run(id, name, username, role, pin_hash)
 
-  res.json({ id, name, role, active: 1, mustChangePassword: true })
+  res.json({ id, name, username, role, active: 1, mustChangePassword: true })
 })
 
-// PUT /api/auth/users/:id — { name?, role?, pin?, active? }
+// PUT /api/auth/users/:id
 router.put('/users/:id', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
-  if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!target) return res.status(404).json({ error: 'Usuario nao encontrado' })
 
-  const { name, role, pin, active } = req.body
+  const { role, pin, active } = req.body
+  const name = req.body.name !== undefined ? clean(req.body.name) : undefined
+  const username = req.body.username !== undefined || req.body.login !== undefined
+    ? clean(req.body.username ?? req.body.login)
+    : undefined
   const isMasterAdmin = req.user?.id === 'user_admin'
   const isSelf = req.user?.id === req.params.id
   const isAdmin = req.user?.role === 'admin'
-  const hasProfileChanges = name !== undefined || role !== undefined || active !== undefined
+  const hasProfileChanges = name !== undefined || username !== undefined || role !== undefined || active !== undefined
 
   if (pin !== undefined) {
-    const pinError = passwordChangeError(pin, bcryptjs.compareSync(String(pin).trim(), user.pin_hash))
+    const pinError = passwordChangeError(pin, bcryptjs.compareSync(String(pin).trim(), target.pin_hash))
     if (pinError) return res.status(400).json({ error: pinError })
   }
   if (pin !== undefined && !isSelf && !isMasterAdmin) {
-    return res.status(403).json({ error: 'Somente o admin mestre pode alterar senha de outro usuário.' })
+    return res.status(403).json({ error: 'Somente o admin mestre pode alterar senha de outro usuario.' })
   }
   if (hasProfileChanges && !isAdmin) {
     return res.status(403).json({ error: 'Somente admin pode alterar dados de operador.' })
   }
 
-  // Protect default admin: only allow pin changes
   if (req.params.id === 'user_admin') {
-    if (name !== undefined && name !== user.name) return res.status(403).json({ error: 'Não é possível alterar o nome do admin padrão.' })
-    if (role !== undefined && role !== user.role) return res.status(403).json({ error: 'Não é possível alterar o papel do admin padrão.' })
-    if (active !== undefined && active !== !!user.active) return res.status(403).json({ error: 'Não é possível desativar o admin padrão.' })
+    if (name !== undefined && name !== target.name) return res.status(403).json({ error: 'Nao e possivel alterar o nome do admin padrao.' })
+    if (username !== undefined && username !== (target.username || target.name)) return res.status(403).json({ error: 'Nao e possivel alterar o login do admin padrao.' })
+    if (role !== undefined && role !== target.role) return res.status(403).json({ error: 'Nao e possivel alterar o papel do admin padrao.' })
+    if (active !== undefined && active !== !!target.active) return res.status(403).json({ error: 'Nao e possivel desativar o admin padrao.' })
   }
 
   if (name !== undefined) {
+    if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
     const dup = db.prepare('SELECT id FROM users WHERE name = ? AND id != ?').get(name, req.params.id)
-    if (dup) return res.status(409).json({ error: 'Nome já existe' })
+    if (dup) return res.status(409).json({ error: 'Nome ja existe' })
+  }
+  if (username !== undefined) {
+    if (!username) return res.status(400).json({ error: 'Login obrigatorio' })
+    const dup = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id)
+    if (dup) return res.status(409).json({ error: 'Login ja existe' })
   }
   if (role !== undefined && !['admin', 'operador', 'visitante'].includes(role)) {
-    return res.status(400).json({ error: 'Papel inválido' })
+    return res.status(400).json({ error: 'Papel invalido' })
   }
 
   const updates = []
   const params = []
   if (name !== undefined) { updates.push('name = ?'); params.push(name) }
+  if (username !== undefined) { updates.push('username = ?'); params.push(username) }
   if (role !== undefined) { updates.push('role = ?'); params.push(role) }
   if (pin !== undefined) {
     updates.push('pin_hash = ?')
@@ -159,22 +179,19 @@ router.put('/users/:id', requireAuth, (req, res) => {
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params)
   }
 
-  const updated = db.prepare('SELECT id, name, role, active, must_change_password FROM users WHERE id = ?').get(req.params.id)
-  const { must_change_password, ...safeUpdated } = updated
-  res.json({ ...safeUpdated, mustChangePassword: Boolean(must_change_password) })
+  const updated = db.prepare('SELECT id, name, username, role, active, must_change_password FROM users WHERE id = ?').get(req.params.id)
+  res.json(safeUser(updated))
 })
 
 // DELETE /api/auth/users/:id
 router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   const targetUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id)
-  if (!targetUser) return res.status(404).json({ error: 'Usuário não encontrado' })
-  // Don't allow deleting yourself
+  if (!targetUser) return res.status(404).json({ error: 'Usuario nao encontrado' })
   if (req.user && req.user.id === req.params.id) {
-    return res.status(400).json({ error: 'Não pode excluir a si mesmo' })
+    return res.status(400).json({ error: 'Nao pode excluir a si mesmo' })
   }
-  // Don't allow deleting the default admin
   if (req.params.id === 'user_admin') {
-    return res.status(403).json({ error: 'Não é possível excluir o admin padrão.' })
+    return res.status(403).json({ error: 'Nao e possivel excluir o admin padrao.' })
   }
   if (targetUser.role === 'admin' && req.user?.id !== 'user_admin') {
     return res.status(403).json({ error: 'Somente o admin mestre pode excluir outro admin.' })
