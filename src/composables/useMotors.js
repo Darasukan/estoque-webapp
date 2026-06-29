@@ -35,6 +35,23 @@ export function motorEventLabel(type) {
   return MOTOR_EVENT_TYPES.find(t => t.id === type)?.label || type || ''
 }
 
+const MOTOR_OPEN_EVENT_LABELS = {
+  rebobinado: 'Rebobinação',
+  reformado: 'Reforma',
+  revisado: 'Revisão',
+  enrolado: 'Enrolamento',
+  instalado: 'Instalação',
+  removido: 'Remoção',
+  movimentado: 'Movimentação',
+  inativado: 'Inativação',
+  reativado: 'Reativação',
+  observacao: 'Observação',
+}
+
+export function motorOpenEventLabel(type) {
+  return MOTOR_OPEN_EVENT_LABELS[type] || motorEventLabel(type)
+}
+
 export function motorMatchesSearch(motor, query, destinationName = '', scope = 'all') {
   const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean)
   if (!terms.length) return true

@@ -5,12 +5,13 @@ import { useItems } from '../composables/useItems.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
 import { useMovements } from '../composables/useMovements.js'
-import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorEventLabel } from '../composables/useMotors.js'
+import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorEventLabel, motorOpenEventLabel, motorStatusLabel } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
 import AppButton from '../components/ui/AppButton.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import PersonPicker from '../components/ui/PersonPicker.vue'
+import { workOrderCreationDateError } from '../utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../utils/workOrderSearch.js'
 
 const props = defineProps({
@@ -62,11 +63,16 @@ const pageSubtitle = computed(() =>
     ? 'Manutenção de motores com histórico do ativo e baixa de peças do estoque'
     : 'Manutenção geral, sem vínculo obrigatório com motor'
 )
+const createIntent = ref(props.createOnly ? 'register' : 'open')
+const isRegisteringOrder = computed(() => !editingOrderId.value && createIntent.value === 'register')
+const showExecutionFields = computed(() => Boolean(editingOrderId.value) || createIntent.value === 'register')
 const formTitle = computed(() => {
   if (editingOrderId.value) return isMotorMode.value ? 'Editar OS de Motor' : 'Editar Ordem de Serviço'
-  return isMotorMode.value ? 'Nova OS de Motor' : 'Nova Ordem de Serviço'
+  if (createIntent.value === 'register') return isMotorMode.value ? 'Registrar OS de Motor' : 'Registrar Ordem de Serviço'
+  return isMotorMode.value ? 'Abrir OS de Motor' : 'Abrir Ordem de Serviço'
 })
-const formSubmitLabel = computed(() => editingOrderId.value ? 'Salvar OS' : 'Criar OS')
+const formSubmitLabel = computed(() => editingOrderId.value ? 'Salvar OS' : (createIntent.value === 'register' ? 'Registrar OS' : 'Abrir OS'))
+const formStatusLabel = computed(() => editingOrderId.value ? 'Editando' : (createIntent.value === 'register' ? 'Registrando' : 'Abrindo'))
 const scopedMotor = computed(() => props.scopedMotorId ? motors.value.find(m => m.id === props.scopedMotorId) || null : null)
 const OS_FILTER_STATE_KEY = computed(() => `estoque_os_filters_${props.mode || 'general'}`)
 
@@ -843,12 +849,18 @@ const baseQuickOsFields = [
   { key: 'maintenanceNote', label: 'Obs. manutenção', type: 'text', placeholder: 'Opcional' },
 ]
 
+const registrationQuickRequiredKeys = new Set(['maintenanceStartDate', 'maintenanceEndDate'])
+
+function isQuickFieldRequired(field) {
+  return field.required || (isRegisteringOrder.value && registrationQuickRequiredKeys.has(field.key))
+}
+
 const quickOptionalFieldControls = computed(() =>
-  baseQuickOsFields.filter(field => !field.required)
+  baseQuickOsFields.filter(field => !isQuickFieldRequired(field))
 )
 
 const quickOsFields = computed(() =>
-  baseQuickOsFields.filter(field => field.required || !quickHiddenFieldKeys.value.includes(field.key))
+  baseQuickOsFields.filter(field => isQuickFieldRequired(field) || !quickHiddenFieldKeys.value.includes(field.key))
 )
 
 function isQuickFieldVisible(key) {
@@ -1158,6 +1170,7 @@ watch(() => props.createOnly, (createOnly) => {
     return
   }
   activeSubTab.value = 'nova'
+  createIntent.value = 'register'
   editingOrderId.value = null
   showNewForm.value = true
   resetOsForm()
@@ -1197,14 +1210,16 @@ function switchSubTab(tab) {
   activeSubTab.value = tab
 }
 
-function openNewOsModal() {
+function openNewOsModal(intent = 'open') {
+  createIntent.value = intent
+  if (intent === 'open') osEntryMode.value = 'form'
   activeSubTab.value = 'ordens'
   prepareSubTab('nova', { forceNew: true })
 }
 
 watch(() => props.initialTab, (tab) => {
-  if (tab === 'nova') {
-    openNewOsModal()
+  if (tab === 'nova' || tab === 'registrar') {
+    openNewOsModal(tab === 'registrar' ? 'register' : 'open')
     return
   }
   if (!tab || !visibleSubTabs.value.some(t => t.id === tab)) return
@@ -1694,6 +1709,12 @@ function validateOsForm() {
   const hasStartTime = !!osForm.value.maintenanceStartTime
   const hasEndDate = !!osForm.value.maintenanceEndDate
   const hasEndTime = !!osForm.value.maintenanceEndTime
+  const creationDateError = workOrderCreationDateError(
+    editingOrderId.value ? '' : createIntent.value,
+    osForm.value.maintenanceStartDate,
+    osForm.value.maintenanceEndDate
+  )
+  if (creationDateError) { showError(creationDateError); return false }
   if (hasStartTime && !hasStartDate) { showError('Informe data de início da manutenção'); return false }
   if (hasEndTime && !hasEndDate) { showError('Informe data de término da manutenção'); return false }
   if (hasStartDate && !isValidOrderDate(osForm.value.maintenanceStartDate)) { showError('Data de início inválida'); return false }
@@ -1710,7 +1731,9 @@ function validateOsForm() {
 }
 
 function motorObjectiveLabel(eventType) {
-  return motorObjectiveTypes.find(type => type.id === eventType)?.label || eventType
+  const type = motorObjectiveTypes.find(option => option.id === eventType)
+  if (!type) return eventType
+  return showExecutionFields.value ? type.label : motorOpenEventLabel(type.id)
 }
 
 function buildOrderTitle(form) {
@@ -1729,6 +1752,7 @@ function buildOsPayload() {
   const equipment = isMotorMode.value ? (selectedOsMotor.value?.tag || form.equipment.trim()) : selectedDestinationLabel(form.destinationId)
   const numberText = String(form.number || '').trim()
   const internalMaintenance = form.maintenanceLocationType === 'interna'
+  const includeExecution = showExecutionFields.value
   const hasInitialMotorEvent = isMotorMode.value && form.initialMotorEventType !== 'nenhum'
   const initialMotorEventPerformedBy = form.maintenanceLocationType === 'externa'
     ? form.maintenanceExternalLocation.trim()
@@ -1738,6 +1762,7 @@ function buildOsPayload() {
   const maintenanceProfessional = isMotorMode.value && internalMaintenance ? initialMotorEventPerformedBy : form.maintenanceProfessional.trim()
 
   return {
+    createIntent: editingOrderId.value ? '' : createIntent.value,
     number: numberText ? Number(numberText) : '',
     title: buildOrderTitle(form),
     motorId: isMotorMode.value ? form.motorId : '',
@@ -1753,7 +1778,9 @@ function buildOsPayload() {
     maintenanceExternalLocation: form.maintenanceLocationType === 'externa' ? form.maintenanceExternalLocation.trim() : '',
     maintenanceExternalOrderNumber: form.maintenanceLocationType === 'externa' ? form.maintenanceExternalOrderNumber.trim() : '',
     initialMotorEventType: isMotorMode.value ? form.initialMotorEventType : '',
-    initialMotorEventDate: hasInitialMotorEvent ? (form.maintenanceEndDate || form.requestDate) : '',
+    initialMotorEventDate: hasInitialMotorEvent
+      ? (includeExecution ? (form.maintenanceEndDate || form.requestDate) : (form.maintenanceStartDate || form.requestDate))
+      : '',
     initialMotorEventPerformedBy: hasInitialMotorEvent ? initialMotorEventPerformedBy : '',
     initialMotorEventToDestinationId: hasInitialMotorEvent && form.initialMotorEventType === 'movimentado' ? form.initialMotorEventToDestinationId : '',
     initialMotorEventToDestination: '',
@@ -1762,12 +1789,12 @@ function buildOsPayload() {
     note: form.note.trim(),
     maintenanceStartDate,
     maintenanceStartTime,
-    maintenanceEndDate: form.maintenanceEndDate,
-    maintenanceEndTime: form.maintenanceEndTime,
-    maintenanceProfessional: internalMaintenance ? maintenanceProfessional : '',
-    maintenanceMaterials: form.maintenanceMaterials.trim(),
-    maintenanceNote: form.maintenanceNote.trim(),
-    motorStatusAfterMaintenance: isMotorMode.value && form.maintenanceEndDate ? form.motorStatusAfterMaintenance : '',
+    maintenanceEndDate: includeExecution ? form.maintenanceEndDate : '',
+    maintenanceEndTime: includeExecution ? form.maintenanceEndTime : '',
+    maintenanceProfessional: includeExecution && internalMaintenance ? maintenanceProfessional : '',
+    maintenanceMaterials: includeExecution ? form.maintenanceMaterials.trim() : '',
+    maintenanceNote: includeExecution ? form.maintenanceNote.trim() : '',
+    motorStatusAfterMaintenance: includeExecution && isMotorMode.value && form.maintenanceEndDate ? form.motorStatusAfterMaintenance : '',
   }
 }
 
@@ -1836,14 +1863,14 @@ function shouldWarnDuplicateWorkOrder(payload) {
   }
   if (quickDuplicateWarningSignature.value === signature) return false
   quickDuplicateWarningSignature.value = signature
-  showError('OS igual à anterior. Clique em Criar OS de novo para confirmar.')
+  showError(`OS igual à anterior. Clique em ${formSubmitLabel.value} de novo para confirmar.`)
   return true
 }
 
 // ===== Actions =====
 async function handleCreateOS() {
   if (!canManageOs.value) return
-  const continueQuickEntry = !isMotorMode.value && osEntryMode.value === 'quick'
+  const continueQuickEntry = isRegisteringOrder.value && !isMotorMode.value && osEntryMode.value === 'quick'
   try {
     if (continueQuickEntry) {
       normalizeQuickOsFields()
@@ -1854,9 +1881,10 @@ async function handleCreateOS() {
     const payload = buildOsPayload()
     if (shouldWarnDuplicateWorkOrder(payload)) return
     const created = await addWorkOrder(payload)
+    ordersStatusTab.value = created.maintenanceEndDate ? 'finished' : 'open'
     quickDuplicateWarningSignature.value = ''
     if (isMotorMode.value) await loadMotorData().catch(() => {})
-    success('Ordem de serviço criada', {
+    success(createIntent.value === 'register' ? 'Ordem de serviço registrada' : 'Ordem de serviço aberta', {
       label: 'Abrir',
       onClick: () => {
         activeSubTab.value = 'ordens'
@@ -2186,6 +2214,7 @@ function motorOrderTitle(order) {
 
 function motorOrderEventLabel(order) {
   if (!order?.motorId) return ''
+  if (!isOrderFinished(order) && order.motorEventType) return motorOpenEventLabel(order.motorEventType)
   if (order.motorEventLabel) return order.motorEventLabel === 'Enrolar' ? 'Enrolado' : order.motorEventLabel
   if (order.motorEventType) return motorEventLabel(order.motorEventType)
   const parts = String(order.title || '').split(' - ').map(part => part.trim()).filter(Boolean)
@@ -2376,8 +2405,9 @@ function matBackToStep2() {
           <span class="ds-label">Até</span>
           <input v-model="historyDateTo" type="date" class="ds-input" />
         </label>
-        <div v-if="activeSubTab === 'ordens' && canManageOs" class="flex self-end">
-          <AppButton variant="primary" size="sm" @click="openNewOsModal">Nova OS</AppButton>
+        <div v-if="activeSubTab === 'ordens' && canManageOs" class="flex self-end gap-2 whitespace-nowrap">
+          <AppButton variant="primary" size="sm" @click="openNewOsModal('open')">Abrir OS</AppButton>
+          <AppButton variant="secondary" size="sm" @click="openNewOsModal('register')">Registrar OS</AppButton>
         </div>
       </div>
     </div>
@@ -2417,7 +2447,7 @@ function matBackToStep2() {
         <div :class="createOnly ? 'space-y-4' : 'ds-panel flex max-h-[calc(100vh-1rem)] w-full max-w-5xl flex-col overflow-hidden p-3 shadow-2xl sm:p-4'">
         <div class="flex items-center justify-between gap-3">
           <div class="flex min-w-0 items-center gap-2">
-            <span class="ds-chip">{{ editingOrderId ? 'Editando' : 'Criando' }}</span>
+            <span class="ds-chip">{{ formStatusLabel }}</span>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{{ formTitle }}</h3>
           </div>
           <div class="flex items-center gap-2">
@@ -2432,8 +2462,8 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div :class="createOnly ? 'space-y-4' : 'min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 pr-1'">
-        <div v-if="!isMotorMode && !editingOrderId" class="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+        <div :class="createOnly ? 'space-y-4' : 'min-h-0 flex-1 space-y-2 overflow-y-auto pb-2 pr-1'">
+        <div v-if="!isMotorMode && isRegisteringOrder" class="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
           <button
             type="button"
             class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
@@ -2448,7 +2478,7 @@ function matBackToStep2() {
           >Preenchimento rápido</button>
         </div>
 
-        <div v-if="!isMotorMode && !editingOrderId && osEntryMode === 'quick'" class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+        <div v-if="!isMotorMode && isRegisteringOrder && osEntryMode === 'quick'" class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Preenchimento rápido</h4>
@@ -2521,7 +2551,7 @@ function matBackToStep2() {
               :class="quickSuggestionOptions(field).length ? 'z-50' : 'z-0'"
             >
               <label class="flex min-h-10 items-center gap-1 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                {{ field.label }}<span v-if="field.required" class="text-red-500">*</span>
+                {{ field.label }}<span v-if="isQuickFieldRequired(field)" class="text-red-500">*</span>
               </label>
               <select
                 v-if="field.type === 'select'"
@@ -2615,14 +2645,7 @@ function matBackToStep2() {
           </div>
         </div>
 
-        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
-          <div class="flex items-center gap-3">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">1</span>
-            <div>
-              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Abertura da OS</h4>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Quem pediu, onde é o serviço e qual problema entrou.</p>
-            </div>
-          </div>
+        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form' || createIntent === 'open'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/40">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nº da Ordem</label>
@@ -2689,7 +2712,9 @@ function matBackToStep2() {
               <div class="md:col-span-2">
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Evento do motor</label>
                 <select v-model="osForm.initialMotorEventType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                  <option v-for="type in motorObjectiveTypes" :key="type.id" :value="type.id">{{ type.label }}</option>
+                  <option v-for="type in motorObjectiveTypes" :key="type.id" :value="type.id">
+                    {{ showExecutionFields ? type.label : motorOpenEventLabel(type.id) }}
+                  </option>
                 </select>
               </div>
               <div class="md:col-span-2">
@@ -2713,22 +2738,40 @@ function matBackToStep2() {
                   >Externa</button>
                 </div>
               </div>
+              <div v-if="!showExecutionFields && osForm.initialMotorEventType === 'movimentado'" class="md:col-span-2">
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Novo local do motor *</label>
+                <DestinationTreePicker v-model="osForm.initialMotorEventToDestinationId" placeholder="Buscar novo local do motor..." />
+              </div>
             </template>
+            <template v-if="!showExecutionFields && osForm.maintenanceLocationType === 'externa'">
+              <div class="md:col-span-2">
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina externa / executado por *</label>
+                <input v-model="osForm.maintenanceExternalLocation" type="text" placeholder="Oficina externa, fornecedor ou local de envio" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Número do pedido</label>
+                <input v-model="osForm.maintenanceExternalOrderNumber" type="text" placeholder="Pedido, OC ou referência externa" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              </div>
+            </template>
+            <fieldset v-if="!showExecutionFields" class="md:col-span-4 grid grid-cols-1 gap-3 rounded-lg border border-gray-300 px-3 pb-3 sm:grid-cols-2 dark:border-gray-600">
+              <legend class="px-2 text-xs font-medium text-gray-500 dark:text-gray-400">Opcional</legend>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data de início da manutenção</label>
+                <input v-model="osForm.maintenanceStartDate" type="date" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário de início</label>
+                <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              </div>
+            </fieldset>
             <div class="md:col-span-4">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações</label>
-              <textarea v-model="osForm.note" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Observações da abertura"></textarea>
+              <textarea v-model="osForm.note" rows="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Observações da abertura"></textarea>
             </div>
           </div>
         </div>
 
-        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'interna'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
-          <div class="flex items-center gap-3">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">2</span>
-            <div>
-              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Execução interna</h4>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Período, profissional, materiais e resultado do serviço.</p>
-            </div>
-          </div>
+        <div v-if="showExecutionFields && (isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'interna'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/40">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data início</label>
@@ -2766,23 +2809,16 @@ function matBackToStep2() {
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
-              <textarea v-model="osForm.maintenanceMaterials" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Materiais fora do catálogo, peças ou ferramentas"></textarea>
+              <textarea v-model="osForm.maintenanceMaterials" rows="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Materiais fora do catálogo, peças ou ferramentas"></textarea>
             </div>
             <div class="md:col-span-4">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações da manutenção</label>
-              <textarea v-model="osForm.maintenanceNote" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Serviço executado, pendências, testes"></textarea>
+              <textarea v-model="osForm.maintenanceNote" rows="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Serviço executado, pendências, testes"></textarea>
             </div>
           </div>
         </div>
 
-        <div v-if="(isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'externa'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4 dark:border-gray-700 dark:bg-gray-800/40">
-          <div class="flex items-center gap-3">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">2</span>
-            <div>
-              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Execução externa</h4>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ isMotorMode ? 'Para onde o motor foi enviado e quando retornou.' : 'Quem executou fora, quando saiu e quando retornou.' }}</p>
-            </div>
-          </div>
+        <div v-if="showExecutionFields && (isMotorMode || editingOrderId || osEntryMode === 'form') && osForm.maintenanceLocationType === 'externa'" class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/40">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Oficina externa / executado por *</label>
@@ -2816,39 +2852,11 @@ function matBackToStep2() {
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Materiais adicionais</label>
-              <textarea v-model="osForm.maintenanceMaterials" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Materiais fora do catálogo, peças ou ferramentas"></textarea>
+              <textarea v-model="osForm.maintenanceMaterials" rows="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Materiais fora do catálogo, peças ou ferramentas"></textarea>
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Observações da execução externa</label>
-              <textarea v-model="osForm.maintenanceNote" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Retorno, pendências, laudo ou observações"></textarea>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="isMotorMode || editingOrderId || osEntryMode === 'form'" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <div class="mb-3 flex items-center gap-3">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">3</span>
-            <div>
-              <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Revisão</h4>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Confira o básico antes de concluir.</p>
-            </div>
-          </div>
-          <div class="grid gap-3 text-sm md:grid-cols-4">
-            <div>
-              <span class="text-xs text-gray-400 dark:text-gray-500">Solicitante</span>
-              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.requestedBy || '-' }}</p>
-            </div>
-            <div>
-              <span class="text-xs text-gray-400 dark:text-gray-500">{{ isMotorMode ? 'Motor' : 'Equipamento' }}</span>
-              <p class="font-medium text-gray-900 dark:text-gray-100">{{ isMotorMode ? (selectedOsMotor?.tag || osForm.equipment || '-') : (selectedDestinationLabel(osForm.destinationId) || '-') }}</p>
-            </div>
-            <div>
-              <span class="text-xs text-gray-400 dark:text-gray-500">Execução</span>
-              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.maintenanceLocationType === 'externa' ? 'Externa' : 'Interna' }}</p>
-            </div>
-            <div>
-              <span class="text-xs text-gray-400 dark:text-gray-500">Data</span>
-              <p class="font-medium text-gray-900 dark:text-gray-100">{{ osForm.requestDate || '-' }} {{ osForm.requestTime || '' }}</p>
+              <textarea v-model="osForm.maintenanceNote" rows="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Retorno, pendências, laudo ou observações"></textarea>
             </div>
           </div>
         </div>
@@ -2870,9 +2878,9 @@ function matBackToStep2() {
         :title="searchQuery
           ? 'Nenhuma OS encontrada'
           : (ordersStatusTab === 'finished' ? 'Nenhuma ordem finalizada' : 'Nenhuma ordem aberta')"
-        :text="searchQuery ? 'Tente limpar a busca ou procurar por número, solicitante ou equipamento.' : 'Crie uma OS nova para iniciar o histórico deste fluxo.'"
-        :action-label="canManageOs ? 'Criar OS' : ''"
-        @action="switchSubTab('nova')"
+        :text="searchQuery ? 'Tente limpar a busca ou procurar por número, solicitante ou equipamento.' : 'Abra uma OS para iniciar o histórico deste fluxo.'"
+        :action-label="canManageOs ? 'Abrir OS' : ''"
+        @action="openNewOsModal('open')"
       />
 
       <div v-else-if="!createOnly && activeSubTab === 'ordens'" class="ds-list-panel">
@@ -3187,123 +3195,120 @@ function matBackToStep2() {
             </template>
 
             <template v-else>
-              <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="text-xs font-bold px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-400">OS #{{ order.number }}</span>
-                      <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span>
-                      <span v-if="isMotorMode && motorOrderEventLabel(order)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">{{ motorOrderEventLabel(order) }}</span>
-                    </div>
-                    <h3 class="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</h3>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ order.requestedBy || 'Sem solicitante' }} · {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</p>
+              <div class="flex flex-wrap items-center justify-between gap-4 pb-4">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span>
+                    <span v-if="isMotorMode && motorOrderEventLabel(order)" class="rounded bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">{{ motorOrderEventLabel(order) }}</span>
                   </div>
-                  <div class="grid min-w-[220px] grid-cols-2 gap-2 text-right">
-                    <div class="rounded-lg bg-white px-3 py-2 dark:bg-gray-900/60">
-                      <p class="text-[10px] uppercase tracking-wider text-gray-400">Materiais</p>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ (order.items || []).length }}</p>
-                    </div>
-                    <div class="rounded-lg bg-white px-3 py-2 dark:bg-gray-900/60">
-                      <p class="text-[10px] uppercase tracking-wider text-gray-400">Término</p>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</p>
-                    </div>
-                  </div>
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ order.requestedBy || 'Sem solicitante' }} · {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</p>
                 </div>
+                <dl class="flex divide-x divide-gray-200 text-right dark:divide-gray-700">
+                  <div class="px-4">
+                    <dt class="text-xs text-gray-400">Materiais</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-gray-100">{{ (order.items || []).length }}</dd>
+                  </div>
+                  <div class="px-4">
+                    <dt class="text-xs text-gray-400">Término</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</dd>
+                  </div>
+                </dl>
               </div>
 
-              <div class="grid grid-cols-1 gap-3 text-sm lg:grid-cols-2">
-                <div class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Abertura da OS</h4>
-                  <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div class="border-y border-gray-200 text-sm dark:border-gray-700">
+                <section class="grid gap-3 py-4 md:grid-cols-[9rem_1fr]">
+                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Solicitação</h4>
+                  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Solicitante</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ order.requestedBy || '-' }}</p>
                     </div>
                     <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Data</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ formatDateOnly(order.requestDate) }}</p>
-                    </div>
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Horário</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ formatTimeOnly(order.requestTime) }}</p>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Abertura</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</p>
                     </div>
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">{{ isMotorMode ? 'Motor' : 'Equipamento' }}</span>
-                      <p class="text-gray-900 dark:text-gray-100 flex flex-wrap items-center gap-2">
-                        <span>{{ orderDisplayTitle(order) }}</span>
-                        <span v-if="isMotorMode && motorOrderEventLabel(order)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">
-                          {{ motorOrderEventLabel(order) }}
-                        </span>
-                      </p>
+                      <p class="text-gray-900 dark:text-gray-100">{{ orderDisplayTitle(order) }}</p>
                     </div>
-                    <div v-if="isMotorMode && order.motorId">
+                    <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Manutenção</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenanceLocationTypeLabel(order) }}</p>
                     </div>
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Nº da Ordem</span>
-                      <p class="text-gray-900 dark:text-gray-100">#{{ order.number }}</p>
-                    </div>
-                    <div class="col-span-2 md:col-span-3">
+                    <div v-if="order.note" class="col-span-2 lg:col-span-4">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
-                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.note || '-' }}</p>
+                      <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.note }}</p>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                <div v-if="!order.maintenanceLocationType || order.maintenanceLocationType === 'interna'" class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Execução interna</h4>
-                  <div class="grid grid-cols-2 gap-3">
+                <section v-if="isMotorMode && motorOrderEventLabel(order)" class="grid gap-3 border-t border-gray-200 py-4 md:grid-cols-[9rem_1fr] dark:border-gray-700">
+                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Evento do motor</h4>
+                  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Tipo de evento</span>
+                      <p class="font-semibold text-gray-900 dark:text-gray-100">{{ motorOrderEventLabel(order) }}</p>
+                    </div>
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Data</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ formatDateOnly(order.motorEventDate) }}</p>
+                    </div>
+                    <div class="col-span-2">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Responsável</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ order.motorEventPerformedBy || '-' }}</p>
+                    </div>
+                    <div
+                      v-if="order.motorEventType === 'movimentado' || order.motorEventToDestination"
+                      class="col-span-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg bg-gray-50 px-3 py-2 lg:col-span-4 dark:bg-gray-800/50"
+                    >
+                      <div>
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Origem</span>
+                        <p class="font-medium text-gray-900 dark:text-gray-100">{{ order.motorOriginDestinationName || '-' }}</p>
+                      </div>
+                      <svg class="h-5 w-5 text-primary-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5" />
+                      </svg>
+                      <div>
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Destino</span>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ order.motorEventToDestination || '-' }}</p>
+                      </div>
+                    </div>
+                    <div v-if="order.motorEventNotes" class="col-span-2 lg:col-span-4">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
+                      <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.motorEventNotes }}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="grid gap-3 border-t border-gray-200 py-4 md:grid-cols-[9rem_1fr] dark:border-gray-700">
+                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Execução</h4>
+                  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Período</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenancePeriod(order) }}</p>
                     </div>
                     <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Profissional</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ order.maintenanceProfessional || '-' }}</p>
-                    </div>
-                    <div class="col-span-2">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Materiais adicionais</span>
-                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceMaterials || '-' }}</p>
-                    </div>
-                    <div class="col-span-2">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
-                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceNote || '-' }}</p>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  class="rounded-xl border border-gray-200 bg-white/70 p-4 space-y-3 dark:border-gray-700 dark:bg-gray-800/40"
-                  :class="order.maintenanceLocationType === 'externa' ? '' : 'lg:col-span-2'"
-                >
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{ order.maintenanceLocationType === 'externa' ? 'Execução externa' : 'Fechamento' }}</h4>
-                  <div class="grid grid-cols-2 gap-3">
-                    <div v-if="order.maintenanceLocationType === 'externa'">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Executado por</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ order.maintenanceExternalLocation || '-' }}</p>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">{{ order.maintenanceLocationType === 'externa' ? 'Oficina' : 'Profissional' }}</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ order.maintenanceLocationType === 'externa' ? (order.maintenanceExternalLocation || '-') : (order.maintenanceProfessional || '-') }}</p>
                     </div>
                     <div v-if="order.maintenanceLocationType === 'externa'">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Pedido</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ order.maintenanceExternalOrderNumber || '-' }}</p>
                     </div>
-                    <div v-if="order.maintenanceLocationType === 'externa' && !isMotorMode">
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Período</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ maintenancePeriod(order) }}</p>
+                    <div v-if="isMotorMode && order.motorStatusAfterMaintenance">
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Status após OS</span>
+                      <p class="text-gray-900 dark:text-gray-100">{{ motorStatusLabel(order.motorStatusAfterMaintenance) }}</p>
                     </div>
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">{{ order.maintenanceLocationType === 'externa' && !isMotorMode ? 'Retorno' : 'Término' }}</span>
-                      <p class="text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</p>
-                    </div>
-                    <div v-if="order.maintenanceLocationType === 'externa' && order.maintenanceMaterials" class="col-span-2">
+                    <div v-if="order.maintenanceMaterials" class="col-span-2 lg:col-span-4">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Materiais adicionais</span>
-                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceMaterials }}</p>
+                      <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.maintenanceMaterials }}</p>
                     </div>
-                    <div v-if="order.maintenanceLocationType === 'externa' && order.maintenanceNote" class="col-span-2">
+                    <div v-if="order.maintenanceNote" class="col-span-2 lg:col-span-4">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
-                      <p class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ order.maintenanceNote }}</p>
+                      <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.maintenanceNote }}</p>
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
 
               <div v-if="isLoggedIn && !isMotorMode" class="flex flex-wrap items-center gap-2">

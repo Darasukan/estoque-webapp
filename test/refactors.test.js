@@ -4,8 +4,9 @@ import assert from 'node:assert/strict'
 import { buildGlobalSearchResults, filterDestinations, findExactDestination, normalizeSearchText } from '../src/utils/globalSearch.js'
 import { failedSourceNames } from '../src/utils/sync.js'
 import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
-import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch } from '../src/composables/useMotors.js'
+import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch, motorOpenEventLabel } from '../src/composables/useMotors.js'
 import { getDestinationFullName } from '../server/utils/destinations.js'
+import { workOrderCreationDateError } from '../src/utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../src/utils/workOrderSearch.js'
 import {
   extrasListToObject,
@@ -119,6 +120,12 @@ test('motor search combines fields and ignores accents', () => {
   assert.equal(motorMatchesSearch({ power: '5 HP', powerUnit: 'HP' }, '5', '', 'power_hp'), true)
 })
 
+test('open motor work orders use activity names for events', () => {
+  assert.equal(motorOpenEventLabel('movimentado'), 'Movimentação')
+  assert.equal(motorOpenEventLabel('rebobinado'), 'Rebobinação')
+  assert.equal(motorOpenEventLabel('instalado'), 'Instalação')
+})
+
 test('motor catalog nests motors under parent and child destinations', () => {
   const destinations = [
     { id: 'machines', name: 'Máquinas' },
@@ -157,4 +164,12 @@ test('work order maintenance search includes external workshop mapping', () => {
   assert.equal(searchText.includes('rebobinado'), true)
   assert.equal(searchText.includes('carlos silva'), true)
   assert.equal(searchText.includes('troca de rolamento'), true)
+})
+
+test('registering a closed work order requires start and end dates', () => {
+  assert.equal(workOrderCreationDateError('open', '', ''), '')
+  assert.equal(workOrderCreationDateError('open', '2026-06-29', ''), '')
+  assert.match(workOrderCreationDateError('register', '', ''), /início/)
+  assert.match(workOrderCreationDateError('register', '2026-06-29', ''), /término/)
+  assert.equal(workOrderCreationDateError('register', '2026-06-29', '2026-06-29'), '')
 })

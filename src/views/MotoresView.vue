@@ -743,6 +743,11 @@ function createWorkOrderForMotor() {
   openMotorWorkOrdersPage({ tab: 'nova', status: 'open', prefillMotor: selectedMotor.value, motorId: selectedMotor.value.id })
 }
 
+function registerWorkOrderForMotor() {
+  if (!selectedMotor.value || !canManageMotorOrders.value) return
+  openMotorWorkOrdersPage({ tab: 'registrar', status: 'finished', prefillMotor: selectedMotor.value, motorId: selectedMotor.value.id })
+}
+
 function showMotorOrders(order = null, status = 'open') {
   openMotorWorkOrdersPage({
     tab: 'ordens',
@@ -1503,7 +1508,8 @@ function workOrderItemVariationLabel(item) {
             </div>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-2">
-            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Nova OS</AppButton>
+            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Abrir OS</AppButton>
+            <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="registerWorkOrderForMotor">Registrar OS</AppButton>
             <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
             <AppButton
               v-if="isLoggedIn && confirmDeleteMotorId !== selectedMotor.id"
@@ -1576,7 +1582,10 @@ function workOrderItemVariationLabel(item) {
                         {{ workOrderMotorEventLabel(wo) }}
                       </span>
                     </div>
-                    <span class="text-xs text-gray-400">{{ workOrderDateLabel(wo) }}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-gray-400">{{ workOrderDateLabel(wo) }}</span>
+                      <AppButton variant="secondary" size="xs" @click="showMotorOrders(wo)">Abrir a OS</AppButton>
+                    </div>
                   </div>
                   <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ wo.title || wo.maintenanceNote || wo.note || 'OS sem observação' }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Local/oficina: {{ workOrderLocationLabel(wo) }} - Término: {{ workOrderEndLabel(wo) }}</p>
@@ -1584,7 +1593,7 @@ function workOrderItemVariationLabel(item) {
                 <EmptyState
                   v-if="!selectedOpenWorkOrders.length"
                   title="Nenhuma OS aberta."
-                  text="Use Nova OS para abrir manutenção deste motor."
+                  text="Use Abrir OS para iniciar uma manutenção deste motor."
                 />
               </div>
             </div>

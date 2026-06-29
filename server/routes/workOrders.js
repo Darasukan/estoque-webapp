@@ -4,6 +4,7 @@ import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 import { nextMotorMaintenanceStatus } from '../utils/motorStatus.js'
+import { workOrderCreationDateError } from '../../src/utils/workOrderForm.js'
 
 const router = Router()
 const INTERNAL_MAINTENANCE_LOCATION = 'Oficina'
@@ -463,6 +464,7 @@ router.post('/', requireAuth, (req, res) => {
     initialMotorEventToDestinationId,
     initialMotorEventToDestination,
     initialMotorEventNotes,
+    createIntent,
   } = req.body
 
   if (!clean(requestedBy)) return res.status(400).json({ error: 'Solicitante é obrigatório' })
@@ -505,6 +507,8 @@ router.post('/', requireAuth, (req, res) => {
   const maintenanceProfessionalValue = internalMaintenance ? clean(maintenanceProfessional) : ''
   const maintenanceMaterialsValue = maintenanceMaterials || ''
   const maintenanceNoteValue = maintenanceNote || ''
+  const creationDateError = workOrderCreationDateError(createIntent, maintenanceStartDateValue, maintenanceEndDateValue)
+  if (creationDateError) return res.status(400).json({ error: creationDateError })
   const motorStatusAfterMaintenanceValue = isMotorOrder && maintenanceEndDateValue ? normalizeMotorStatusAfterMaintenance(motorStatusAfterMaintenance) : ''
   if (isMotorOrder && maintenanceEndDateValue && !motorStatusAfterMaintenanceValue) {
     return res.status(400).json({ error: 'Status do motor apos a OS e obrigatorio' })
@@ -600,33 +604,8 @@ router.post('/', requireAuth, (req, res) => {
   })
   tx()
 
-  const statusSync = isMotorOrder ? syncMotorMaintenanceStatus(motor.id) : null
-
-  res.json({
-    id, number, title: titleValue,
-    motorId: clean(motorId), motorTag: motor?.tag || '', motorName: motor?.name || '', motorStatus: statusSync?.status || motor?.status || '',
-    destinationId: destinationIdValue, destinationName,
-    equipment: equipmentValue, serviceType: serviceTypeValue,
-    motorOriginDestinationId: originIdValue,
-    motorOriginDestinationName: originNameValue,
-    maintenanceLocationType: maintenanceLocation?.maintenanceLocationType || '',
-    maintenanceDestinationId: maintenanceLocation?.maintenanceDestinationId || '',
-    maintenanceDestinationName: maintenanceLocation?.maintenanceDestinationName || '',
-    maintenanceExternalLocation: maintenanceLocation?.maintenanceExternalLocation || '',
-    maintenanceExternalOrderNumber: maintenanceLocation?.maintenanceExternalOrderNumber || '',
-    maintenanceLocationName: maintenanceLocation?.maintenanceLocationName || destinationName,
-    requestDate: clean(requestDate), requestTime: clean(requestTime),
-    requestedBy: clean(requestedBy), note: note || '',
-    maintenanceStartDate: maintenanceStartDateValue,
-    maintenanceStartTime: maintenanceStartTimeValue,
-    maintenanceEndDate: maintenanceEndDateValue,
-    maintenanceEndTime: maintenanceEndTimeValue,
-    maintenanceProfessional: maintenanceProfessionalValue,
-    maintenanceMaterials: maintenanceMaterialsValue,
-    maintenanceNote: maintenanceNoteValue,
-    motorStatusAfterMaintenance: motorStatusAfterMaintenanceValue,
-    createdAt, items: []
-  })
+  const createdOrder = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(id)
+  res.json({ ...mapWorkOrder(createdOrder), items: [] })
 })
 
 // PUT /api/work-orders/:id — update
