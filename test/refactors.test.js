@@ -6,7 +6,7 @@ import { failedSourceNames } from '../src/utils/sync.js'
 import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
 import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch, motorOpenEventLabel } from '../src/composables/useMotors.js'
 import { getDestinationFullName } from '../server/utils/destinations.js'
-import { workOrderCreationDateError } from '../src/utils/workOrderForm.js'
+import { formatPartialOrderDate, workOrderCreationDateError } from '../src/utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../src/utils/workOrderSearch.js'
 import {
   extrasListToObject,
@@ -173,4 +173,10 @@ test('registering a closed work order requires start and end dates', () => {
   assert.match(workOrderCreationDateError('register', '', ''), /início/)
   assert.match(workOrderCreationDateError('register', '2026-06-29', ''), /término/)
   assert.equal(workOrderCreationDateError('register', '2026-06-29', '2026-06-29'), '')
+})
+
+test('quick work order dates format while typing', () => {
+  assert.equal(formatPartialOrderDate('010'), '01/0')
+  assert.equal(formatPartialOrderDate('01072026'), '01/07/2026')
+  assert.equal(formatPartialOrderDate('2026-07-01'), '01/07/2026')
 })

@@ -151,7 +151,6 @@ const quickEntryQueue = ref([])
 const quickEntryPending = ref(false)
 const quickEntryAttempted = ref(false)
 const quickEntrySupplierDropdownOpen = ref(false)
-const quickEntryDocDropdownOpen = ref(false)
 const quickEntrySearchInputEl = ref(null)
 
 // ===== Saida rapida =====
@@ -861,7 +860,6 @@ function handleQuickEntrySearchEnter() {
 function setQuickMovementType(type) {
   activeQuickMovementType.value = type
   quickEntrySupplierDropdownOpen.value = false
-  quickEntryDocDropdownOpen.value = false
   quickExitPersonDropdownOpen.value = false
   nextTick(() => focusRef(type === 'entrada' ? quickEntrySearchInputEl : quickExitSearchInputEl))
 }
@@ -2365,7 +2363,7 @@ defineExpose({
             <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar entradas em sequencia</h2>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <div class="lg:col-span-2">
               <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
               <div class="relative">
@@ -2471,6 +2469,8 @@ defineExpose({
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                 @focus="quickEntrySupplierDropdownOpen = true"
                 @input="quickEntrySupplierDropdownOpen = true"
+                @blur="quickEntrySupplierDropdownOpen = false"
+                @keydown.tab="quickEntrySupplierDropdownOpen = false"
                 @keydown.enter.prevent="handleQuickEntrySupplierEnter"
               />
               <div v-if="quickEntrySupplierDropdownOpen" class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
@@ -2478,6 +2478,7 @@ defineExpose({
                   v-for="supplier in quickEntryFilteredSuppliers"
                   :key="supplier.id"
                   type="button"
+                  tabindex="-1"
                   class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700/60"
                   @mousedown.prevent="selectQuickEntrySupplier(supplier)"
                 >
@@ -2498,39 +2499,19 @@ defineExpose({
                 :class="quickEntryDocType !== 'sem' ? 'border-gray-300 dark:border-gray-600 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500' : 'border-gray-200 dark:border-gray-700'"
               >
                 <div class="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700">
-                  <div v-if="quickEntryDocDropdownOpen" class="fixed inset-0 z-10" @click="quickEntryDocDropdownOpen = false"></div>
-                  <button
-                    type="button"
-                    class="flex h-full items-center gap-1.5 rounded-l-xl py-2 pl-3 pr-2 text-xs font-semibold transition-colors focus:outline-none"
+                  <select
+                    v-model="quickEntryDocType"
+                    aria-label="Tipo de documento"
+                    class="h-full min-w-28 rounded-l-xl border-0 px-3 py-2 text-xs font-semibold transition-colors focus:outline-none"
                     :class="quickEntryDocType !== 'sem'
                       ? 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30'
                       : 'bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-gray-800/60 dark:text-gray-400 dark:hover:bg-gray-700/60'"
-                    @click="quickEntryDocDropdownOpen = !quickEntryDocDropdownOpen"
+                    @change="selectQuickEntryDocType(quickEntryDocType)"
                   >
-                    <span>{{ quickEntryDocType === 'nf' ? 'NF-e' : quickEntryDocType === 'pedido' ? 'PC' : 'Sem doc.' }}</span>
-                    <svg class="h-3.5 w-3.5 opacity-60 transition-transform duration-150" :class="quickEntryDocDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
-                  <div
-                    v-if="quickEntryDocDropdownOpen"
-                    class="absolute left-0 top-full z-20 mt-1 min-w-[130px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800"
-                  >
-                    <button
-                      v-for="opt in [{ v: 'sem', label: 'Sem doc.' }, { v: 'nf', label: 'NF-e' }, { v: 'pedido', label: 'PC' }]"
-                      :key="opt.v"
-                      type="button"
-                      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-                      :class="quickEntryDocType === opt.v
-                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
-                        : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/60'"
-                      @click="selectQuickEntryDocType(opt.v); quickEntryDocDropdownOpen = false"
-                    >
-                      <svg v-if="quickEntryDocType === opt.v" class="h-3.5 w-3.5 flex-shrink-0 text-primary-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
-                      <span v-else class="w-3.5"></span>
-                      {{ opt.label }}
-                    </button>
-                  </div>
+                    <option value="sem">Sem doc.</option>
+                    <option value="nf">NF-e</option>
+                    <option value="pedido">PC</option>
+                  </select>
                 </div>
                 <input
                   v-if="quickEntryDocType !== 'sem'"
@@ -2641,7 +2622,7 @@ defineExpose({
             <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar saidas em sequencia</h2>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <div class="lg:col-span-2">
               <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
               <div class="relative">
@@ -2736,6 +2717,8 @@ defineExpose({
                   : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600'"
                 @focus="quickExitPersonDropdownOpen = true"
                 @input="syncQuickExitPersonFromInput"
+                @blur="quickExitPersonDropdownOpen = false"
+                @keydown.tab="quickExitPersonDropdownOpen = false"
                 @keydown.enter.prevent="handleQuickExitPersonEnter"
               />
               <div v-if="quickExitPersonDropdownOpen" class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-800">
@@ -2743,6 +2726,7 @@ defineExpose({
                   v-for="person in quickExitFilteredPeople"
                   :key="person.id"
                   type="button"
+                  tabindex="-1"
                   class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700/60"
                   @mousedown.prevent="selectQuickExitPerson(person)"
                 >

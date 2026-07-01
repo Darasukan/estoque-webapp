@@ -11,7 +11,7 @@ import AppButton from '../components/ui/AppButton.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import PersonPicker from '../components/ui/PersonPicker.vue'
-import { workOrderCreationDateError } from '../utils/workOrderForm.js'
+import { formatPartialOrderDate, workOrderCreationDateError } from '../utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../utils/workOrderSearch.js'
 
 const props = defineProps({
@@ -126,7 +126,7 @@ const showNewForm = ref(false)
 const editingOrderId = ref(null)
 const confirmDeleteId = ref(null)
 const quickOsFieldRefs = ref([])
-const quickSuggestionIndex = ref(0)
+const quickSuggestionIndex = ref(-1)
 const quickSuggestionFieldKey = ref('')
 const quickSuggestionNavigated = ref(false)
 const quickExplicitNewValues = ref({})
@@ -653,13 +653,13 @@ function openQuickSuggestions(field) {
   if (!['person', 'destination'].includes(field.type)) return
   if (quickSuggestionFieldKey.value === field.key) return
   quickSuggestionFieldKey.value = field.key
-  quickSuggestionIndex.value = 0
+  quickSuggestionIndex.value = -1
   quickSuggestionNavigated.value = false
 }
 
 function closeQuickSuggestions({ blur = false } = {}) {
   quickSuggestionFieldKey.value = ''
-  quickSuggestionIndex.value = 0
+  quickSuggestionIndex.value = -1
   quickSuggestionNavigated.value = false
   if (blur && document.activeElement instanceof HTMLElement) {
     document.activeElement.blur()
@@ -739,7 +739,7 @@ function syncQuickDestinationFromText(uniqueOnly = false) {
 
 function handleQuickAutocompleteInput(field) {
   openQuickSuggestions(field)
-  quickSuggestionIndex.value = 0
+  quickSuggestionIndex.value = -1
   quickSuggestionNavigated.value = false
   delete quickExplicitNewValues.value[field.key]
   if (field.type !== 'destination') return
@@ -931,6 +931,14 @@ function quickPlaceholder(field) {
   if (field.type === 'date') return 'dd/mm/aaaa'
   if (field.type === 'time') return 'hh:mm'
   return field.placeholder
+}
+
+function handleQuickFieldInput(field, event) {
+  if (quickInvalidFieldKey.value === field.key) quickInvalidFieldKey.value = ''
+  if (field.type !== 'date') return
+  const formatted = formatPartialOrderDate(event.target.value)
+  event.target.value = formatted
+  osForm.value[field.key] = formatted
 }
 
 function formatQuickDateForInput(value) {
@@ -1898,7 +1906,6 @@ async function handleCreateOS() {
     }
     if (continueQuickEntry) {
       if (!quickKeepValues.value) resetOsForm()
-      activeSubTab.value = 'nova'
       showNewForm.value = true
       osEntryMode.value = 'quick'
       await nextTick()
@@ -2571,11 +2578,23 @@ function matBackToStep2() {
                 data-quick-suggestion-root
                 class="relative min-h-10 bg-white dark:bg-gray-900"
               >
+                <div
+                  v-if="quickSuggestionFieldKey === field.key && !quickSuggestionNavigated && quickInlineCompletion(field)"
+                  aria-hidden="true"
+                  class="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre px-3 py-2 text-sm"
+                >
+                  <span class="invisible">{{ osForm[field.key] }}</span>
+                  <span class="text-gray-400 dark:text-gray-500">{{ quickInlineCompletion(field) }}</span>
+                </div>
                 <input
                   :ref="el => setQuickOsFieldRef(el, index)"
                   v-model="osForm[field.key]"
                   type="text"
+                  role="combobox"
                   autocomplete="off"
+                  :aria-expanded="quickSuggestionOptions(field).length > 0"
+                  :aria-controls="`quick-suggestions-${field.key}`"
+                  :aria-activedescendant="quickSuggestionNavigated && quickSuggestionIndex >= 0 ? `quick-suggestion-${field.key}-${quickSuggestionIndex}` : undefined"
                   :placeholder="field.placeholder"
                   class="relative z-10 min-h-10 w-full border-0 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 dark:text-gray-100"
                   :class="(field.type === 'person' && osForm[field.key] && !isRegisteredRequester(osForm[field.key])) || (field.type === 'destination' && osForm.equipment && !osForm.destinationId)
@@ -2593,15 +2612,21 @@ function matBackToStep2() {
                 />
                 <div
                   v-if="quickSuggestionOptions(field).length"
+                  :id="`quick-suggestions-${field.key}`"
+                  role="listbox"
                   class="absolute left-0 right-0 top-full z-[200] max-h-56 overflow-auto border border-gray-200 bg-white py-1 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
                 >
                   <button
                     v-for="(suggestion, suggestionIndex) in quickSuggestionOptions(field)"
+                    :id="`quick-suggestion-${field.key}-${suggestionIndex}`"
                     :key="`${suggestion.type || 'existing'}:${suggestion.option}`"
                     type="button"
+                    role="option"
+                    tabindex="-1"
+                    :aria-selected="quickSuggestionNavigated && suggestionIndex === quickSuggestionIndex"
                     class="block w-full truncate px-3 py-2 text-left text-gray-700 dark:text-gray-200"
                     :class="[
-                      suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800',
+                      quickSuggestionNavigated && suggestionIndex === quickSuggestionIndex ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200' : 'hover:bg-gray-50 dark:hover:bg-gray-800',
                       suggestion.type === 'new' ? 'border-t border-gray-100 font-semibold text-primary-700 dark:border-gray-800 dark:text-primary-300' : ''
                     ]"
                     @mousedown.prevent="chooseQuickSuggestion(field, suggestion, index)"
@@ -2627,13 +2652,15 @@ function matBackToStep2() {
                 v-model="osForm[field.key]"
                 :type="quickInputType(field)"
                 :list="field.list"
+                :inputmode="field.type === 'date' ? 'numeric' : undefined"
+                :maxlength="field.type === 'date' ? 10 : undefined"
                 :placeholder="quickPlaceholder(field)"
                 class="min-h-10 w-full border-0 px-3 py-2 text-sm outline-none focus:ring-2 dark:text-gray-100"
                 :class="isQuickFieldInvalid(field)
                   ? 'bg-red-50 text-red-700 ring-2 ring-red-500 placeholder-red-300 focus:ring-red-500 dark:bg-red-950/30 dark:text-red-200 dark:placeholder-red-400'
                   : 'bg-white text-gray-900 focus:ring-primary-500 dark:bg-gray-900'"
                 @focus="closeQuickSuggestions(); field.type === 'date' && (osForm[field.key] = formatQuickDateForInput(osForm[field.key])); $event.target.select()"
-                @input="quickInvalidFieldKey === field.key && (quickInvalidFieldKey = '')"
+                @input="handleQuickFieldInput(field, $event)"
                 @blur="normalizeQuickField(field)"
                 @keydown.enter.prevent="handleQuickOsMove(field, index)"
                 @keydown.escape.prevent="closeQuickSuggestions({ blur: true })"
@@ -2962,15 +2989,15 @@ function matBackToStep2() {
             aria-modal="true"
             @click.self="expandedOrderId = null; motorEventOrderId = null"
           >
-            <div class="ds-panel w-full max-w-6xl space-y-4 p-4 shadow-2xl">
-              <div class="flex items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-gray-700">
+            <div class="ds-panel max-h-[calc(100vh-2rem)] w-full max-w-6xl space-y-4 overflow-y-auto p-4 shadow-2xl sm:p-5">
+              <div class="flex items-start justify-between gap-4 border-b border-gray-200 pb-4 dark:border-gray-700">
                 <div class="min-w-0">
                   <p class="ds-page-kicker">Ordem de Serviço</p>
-                  <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">OS #{{ order.number }} - {{ orderDisplayTitle(order) }}</h3>
+                  <h3 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">OS #{{ order.number }} · {{ orderDisplayTitle(order) }}</h3>
                 </div>
                 <button
                   type="button"
-                  class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                  class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                   aria-label="Fechar"
                   @click="expandedOrderId = null; motorEventOrderId = null"
                 >x</button>
@@ -3195,30 +3222,34 @@ function matBackToStep2() {
             </template>
 
             <template v-else>
-              <div class="flex flex-wrap items-center justify-between gap-4 pb-4">
+              <div class="grid gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-800/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span>
+                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="orderStatusClass(order)">{{ orderStatusLabel(order) }}</span>
                     <span v-if="isMotorMode && motorOrderEventLabel(order)" class="rounded bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900/30 dark:text-sky-300">{{ motorOrderEventLabel(order) }}</span>
                   </div>
-                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ order.requestedBy || 'Sem solicitante' }} · {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</p>
+                  <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    <span class="font-medium text-gray-900 dark:text-gray-100">{{ order.requestedBy || 'Sem solicitante' }}</span>
+                    <span class="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
+                    {{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}
+                  </p>
                 </div>
-                <dl class="flex divide-x divide-gray-200 text-right dark:divide-gray-700">
-                  <div class="px-4">
+                <dl class="grid grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white text-right dark:border-gray-700 dark:bg-gray-900">
+                  <div class="min-w-24 px-4 py-2">
                     <dt class="text-xs text-gray-400">Materiais</dt>
-                    <dd class="font-semibold text-gray-900 dark:text-gray-100">{{ (order.items || []).length }}</dd>
+                    <dd class="mt-0.5 text-base font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ (order.items || []).length }}</dd>
                   </div>
-                  <div class="px-4">
+                  <div class="min-w-36 border-l border-gray-200 px-4 py-2 dark:border-gray-700">
                     <dt class="text-xs text-gray-400">Término</dt>
-                    <dd class="font-semibold text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</dd>
+                    <dd class="mt-0.5 font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ maintenanceEndLabel(order) }}</dd>
                   </div>
                 </dl>
               </div>
 
-              <div class="border-y border-gray-200 text-sm dark:border-gray-700">
-                <section class="grid gap-3 py-4 md:grid-cols-[9rem_1fr]">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Solicitação</h4>
-                  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div class="grid gap-3 text-sm lg:grid-cols-2">
+                <section class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30">
+                  <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Solicitação</h4>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Solicitante</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ order.requestedBy || '-' }}</p>
@@ -3235,15 +3266,15 @@ function matBackToStep2() {
                       <span class="text-xs text-gray-400 dark:text-gray-500">Manutenção</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenanceLocationTypeLabel(order) }}</p>
                     </div>
-                    <div v-if="order.note" class="col-span-2 lg:col-span-4">
+                    <div v-if="order.note" class="sm:col-span-2">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
                       <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.note }}</p>
                     </div>
                   </div>
                 </section>
 
-                <section v-if="isMotorMode && motorOrderEventLabel(order)" class="grid gap-3 border-t border-gray-200 py-4 md:grid-cols-[9rem_1fr] dark:border-gray-700">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Evento do motor</h4>
+                <section v-if="isMotorMode && motorOrderEventLabel(order)" class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30 lg:col-span-2">
+                  <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Evento do motor</h4>
                   <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Tipo de evento</span>
@@ -3280,9 +3311,9 @@ function matBackToStep2() {
                   </div>
                 </section>
 
-                <section class="grid gap-3 border-t border-gray-200 py-4 md:grid-cols-[9rem_1fr] dark:border-gray-700">
-                  <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400">Execução</h4>
-                  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <section class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30">
+                  <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Execução</h4>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Período</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ maintenancePeriod(order) }}</p>
@@ -3299,11 +3330,11 @@ function matBackToStep2() {
                       <span class="text-xs text-gray-400 dark:text-gray-500">Status após OS</span>
                       <p class="text-gray-900 dark:text-gray-100">{{ motorStatusLabel(order.motorStatusAfterMaintenance) }}</p>
                     </div>
-                    <div v-if="order.maintenanceMaterials" class="col-span-2 lg:col-span-4">
+                    <div v-if="order.maintenanceMaterials" class="sm:col-span-2">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Materiais adicionais</span>
                       <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.maintenanceMaterials }}</p>
                     </div>
-                    <div v-if="order.maintenanceNote" class="col-span-2 lg:col-span-4">
+                    <div v-if="order.maintenanceNote" class="sm:col-span-2">
                       <span class="text-xs text-gray-400 dark:text-gray-500">Observações</span>
                       <p class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{{ order.maintenanceNote }}</p>
                     </div>
@@ -3311,8 +3342,8 @@ function matBackToStep2() {
                 </section>
               </div>
 
-              <div v-if="isLoggedIn && !isMotorMode" class="flex flex-wrap items-center gap-2">
-                <button class="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" @click="startEditOS(order)">
+              <div v-if="isLoggedIn && !isMotorMode" class="flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+                <button class="inline-flex min-h-9 items-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" @click="startEditOS(order)">
                   <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
                   Editar
                 </button>
@@ -3331,7 +3362,7 @@ function matBackToStep2() {
                 </template>
                 <button
                   v-if="confirmDeleteId !== order.id"
-                  class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  class="inline-flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                   @click="confirmDeleteId = order.id"
                 >
                   <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
@@ -3371,11 +3402,14 @@ function matBackToStep2() {
                 </div>
               </div>
 
-              <div class="flex items-center justify-between gap-3 border-t border-gray-200 dark:border-gray-700 pt-3">
-                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Materiais utilizados com baixa no estoque</h4>
+              <div class="flex flex-wrap items-center justify-between gap-3 rounded-t-lg border border-gray-200 bg-gray-50/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/50">
+                <div>
+                  <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Materiais utilizados</h4>
+                  <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">Itens do catálogo com baixa no estoque</p>
+                </div>
                 <button
                   v-if="isLoggedIn"
-                  class="px-3 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                  class="inline-flex min-h-9 items-center rounded-lg border border-green-200 bg-white px-3 text-xs font-semibold text-green-700 transition-colors hover:bg-green-50 dark:border-green-900/60 dark:bg-gray-900 dark:text-green-400 dark:hover:bg-green-900/20"
                   @click="startAddMaterial(order.id)"
                 >
                   <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -3463,7 +3497,7 @@ function matBackToStep2() {
               </div>
 
               <!-- Materials list -->
-              <div v-if="order.items && order.items.length">
+              <div v-if="order.items && order.items.length" class="rounded-b-lg border-x border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                 <div class="overflow-x-auto">
                   <table class="w-full text-sm">
                     <thead>
@@ -3499,7 +3533,7 @@ function matBackToStep2() {
                   </table>
                 </div>
               </div>
-              <div v-else class="text-sm text-gray-400 dark:text-gray-500 italic">Nenhum material do estoque vinculado a esta OS</div>
+              <div v-else class="rounded-b-lg border-x border-b border-gray-200 bg-white px-4 py-5 text-sm italic text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">Nenhum material do estoque vinculado a esta OS.</div>
 
               <div v-if="false" class="border-t border-gray-200 dark:border-gray-700 pt-3">
                 <div class="space-y-3">

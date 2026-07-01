@@ -233,6 +233,7 @@ defineExpose({ focus })
         class="min-h-7 min-w-32 flex-1 border-0 bg-transparent px-1 py-0.5 text-sm text-gray-900 outline-none dark:text-gray-100"
         @input="handleInput"
         @focus="openPicker"
+        @keydown.tab="open = false"
         @keydown.enter.prevent="handleEnter"
         @keydown.escape.stop="open = false"
       />
@@ -248,6 +249,7 @@ defineExpose({ focus })
       :class="compact ? 'min-h-10 rounded-none border-0 px-3 py-2 dark:bg-gray-900' : 'rounded-lg px-3 py-2.5'"
       @input="handleInput"
       @focus="openPicker"
+      @keydown.tab="open = false"
       @keydown.enter.prevent="handleEnter"
       @keydown.escape.stop="open = false"
     />
