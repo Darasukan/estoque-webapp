@@ -18,12 +18,13 @@ import {
 test('variation form helpers preserve catalog behavior', () => {
   const item = { attributes: ['Cor'], minStock: 2, location: 'A1' }
   assert.deepEqual(variationFormForItem(item), {
-    values: { Cor: '' }, stock: 0, minStock: 2, extrasList: [], location: 'A1', destinations: [],
+    values: { Cor: '' }, stock: 0, minStock: 2, extrasList: [], location: 'A1', locations: ['A1'], destinations: [],
   })
   assert.deepEqual(
     variationFormForEdit(item, { values: { Cor: 'Azul' }, stock: 3, extras: { Marca: 'X' }, destinations: [4] }),
-    { values: { Cor: 'Azul' }, stock: 3, minStock: 0, extrasList: [{ key: 'Marca', value: 'X' }], location: '', destinations: [4] }
+    { values: { Cor: 'Azul' }, stock: 3, minStock: 0, extrasList: [{ key: 'Marca', value: 'X' }], location: '', locations: [], destinations: [4] }
   )
+  assert.deepEqual(variationFormForEdit(item, { values: {}, stock: 1, locations: ['A1', 'A2'] }).locations, ['A1', 'A2'])
   assert.deepEqual(extrasListToObject([{ key: ' Marca ', value: 'X' }, { key: ' ', value: 'ignorar' }]), { Marca: 'X' })
   assert.equal(validateVariationForm(item, variationFormForItem(item)), 'Preencha ao menos um atributo.')
   assert.equal(validateVariationForm(item, { ...variationFormForItem(item), values: { Cor: 'Azul' }, stock: -1 }), 'Quantidade não pode ser negativa.')

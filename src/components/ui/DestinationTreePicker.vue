@@ -1,25 +1,33 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDestinations } from '../../composables/useDestinations.js'
+import { useLocations } from '../../composables/useLocations.js'
 
 const props = defineProps({
-  modelValue: { type: String, default: '' },
+  modelValue: { type: [String, Array], default: '' },
   placeholder: { type: String, default: 'Buscar destino...' },
   linkedIds: { type: Array, default: () => [] },
   allowOther: { type: Boolean, default: false },
   otherLabel: { type: String, default: 'Outro (digitar)...' },
   compact: { type: Boolean, default: false },
+  multiple: { type: Boolean, default: false },
+  source: { type: String, default: 'destinations', validator: value => ['destinations', 'locations'].includes(value) },
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'other', 'clear'])
 
-const { groupedDestinations, getDestFullName } = useDestinations()
+const destinationSource = useDestinations()
+const locationSource = useLocations()
+const sourceGroups = computed(() =>
+  props.source === 'locations' ? locationSource.groupedLocais.value : destinationSource.groupedDestinations.value
+)
+const entityLabel = computed(() => props.source === 'locations' ? 'local' : 'destino')
 const search = ref('')
 const open = ref(false)
 const expandedGroups = ref(new Set())
 const inputEl = ref(null)
 const rootEl = ref(null)
-const pickerId = `destination-${Math.random().toString(36).slice(2)}`
+const pickerId = `${props.source}-${Math.random().toString(36).slice(2)}`
 
 function normalizeText(value) {
   return String(value || '')
@@ -28,7 +36,22 @@ function normalizeText(value) {
     .toLowerCase()
 }
 
-const selectedPath = computed(() => props.modelValue ? getDestFullName(props.modelValue) : '')
+function fullName(idOrName) {
+  return props.source === 'locations'
+    ? locationSource.getFullName(idOrName)
+    : destinationSource.getDestFullName(idOrName)
+}
+
+function selectionValue(item) {
+  return props.source === 'locations' ? fullName(item.id) : item.id
+}
+
+const selectedValues = computed(() =>
+  props.multiple
+    ? (Array.isArray(props.modelValue) ? props.modelValue : [])
+    : (props.modelValue ? [props.modelValue] : [])
+)
+const selectedPath = computed(() => props.modelValue ? fullName(props.modelValue) : '')
 
 function openPicker() {
   window.dispatchEvent(new CustomEvent('app-picker-open', { detail: pickerId }))
@@ -56,23 +79,27 @@ onBeforeUnmount(() => {
 })
 
 watch(() => props.modelValue, (id, oldId) => {
+  if (props.multiple) {
+    search.value = ''
+    return
+  }
   if (id && id !== oldId) {
     search.value = selectedPath.value
     return
   }
   if (!id && !open.value) search.value = ''
-}, { immediate: true })
+}, { deep: true, immediate: true })
 
 const filteredGroups = computed(() => {
   const q = normalizeText(search.value)
-  return groupedDestinations.value
+  return sourceGroups.value
     .map(group => {
-      const parentPath = getDestFullName(group.parent.id)
+      const parentPath = fullName(group.parent.id)
       const parentMatches = !q || normalizeText(`${parentPath} ${group.parent.description || ''}`).includes(q)
       const children = !q || parentMatches
         ? group.children
         : group.children.filter(child =>
-          normalizeText(`${getDestFullName(child.id)} ${child.description || ''}`).includes(q)
+          normalizeText(`${fullName(child.id)} ${child.description || ''}`).includes(q)
         )
       if (!parentMatches && !children.length) return null
       return { parent: group.parent, children, parentMatches }
@@ -92,10 +119,10 @@ const filteredResults = computed(() =>
 )
 
 function selectedParentId() {
-  if (!props.modelValue) return ''
-  for (const group of groupedDestinations.value) {
-    if (group.parent.id === props.modelValue) return group.parent.id
-    if (group.children.some(child => child.id === props.modelValue)) return group.parent.id
+  if (!selectedValues.value.length) return ''
+  for (const group of sourceGroups.value) {
+    if (selectedValues.value.includes(selectionValue(group.parent))) return group.parent.id
+    if (group.children.some(child => selectedValues.value.includes(selectionValue(child)))) return group.parent.id
   }
   return ''
 }
@@ -114,15 +141,28 @@ function toggleGroup(groupId) {
 }
 
 function selectDestination(destination) {
-  const path = getDestFullName(destination.id)
-  emit('update:modelValue', destination.id)
+  const path = fullName(destination.id)
+  const value = selectionValue(destination)
+  if (props.multiple) {
+    if (!selectedValues.value.includes(value)) emit('update:modelValue', [...selectedValues.value, value])
+    emit('select', { destination, fullName: path })
+    search.value = ''
+    nextTick(() => inputEl.value?.focus?.())
+    return
+  }
+  emit('update:modelValue', value)
   emit('select', { destination, fullName: path })
   search.value = path
   open.value = false
 }
 
+function removeSelection(value) {
+  emit('update:modelValue', selectedValues.value.filter(selected => selected !== value))
+  emit('clear', value)
+}
+
 function clearSelection() {
-  emit('update:modelValue', '')
+  emit('update:modelValue', props.multiple ? [] : '')
   emit('clear')
   search.value = ''
   openPicker()
@@ -130,10 +170,14 @@ function clearSelection() {
 
 function handleInput() {
   openPicker()
-  if (props.modelValue && search.value !== selectedPath.value) {
+  if (!props.multiple && props.modelValue && search.value !== selectedPath.value) {
     emit('update:modelValue', '')
     emit('clear')
   }
+}
+
+function isSelected(item) {
+  return selectedValues.value.includes(selectionValue(item))
 }
 
 function handleEnter() {
@@ -157,7 +201,44 @@ defineExpose({ focus })
 
 <template>
   <div ref="rootEl" class="relative" :class="open ? 'z-50' : 'z-0'">
+    <div
+      v-if="multiple"
+      class="flex min-h-10 w-full cursor-text flex-wrap items-center gap-1.5 border border-gray-300 bg-white px-2 py-1.5 text-gray-900 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+      :class="compact ? 'rounded-none border-0 dark:bg-gray-900' : 'rounded-lg'"
+      @click="inputEl?.focus()"
+    >
+      <span
+        v-for="value in selectedValues"
+        :key="value"
+        class="ds-attribute-tag inline-flex min-h-7 max-w-full items-center gap-1.5 rounded border px-2 py-0.5 text-xs font-semibold"
+      >
+        <span class="truncate">{{ fullName(value) }}</span>
+        <button
+          type="button"
+          class="shrink-0 rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+          :aria-label="`Remover ${fullName(value)}`"
+          @click.stop="removeSelection(value)"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </span>
+      <input
+        ref="inputEl"
+        v-model="search"
+        type="search"
+        :placeholder="selectedValues.length ? '' : placeholder"
+        autocomplete="off"
+        class="min-h-7 min-w-32 flex-1 border-0 bg-transparent px-1 py-0.5 text-sm text-gray-900 outline-none dark:text-gray-100"
+        @input="handleInput"
+        @focus="openPicker"
+        @keydown.enter.prevent="handleEnter"
+        @keydown.escape.stop="open = false"
+      />
+    </div>
     <input
+      v-else
       ref="inputEl"
       v-model="search"
       type="search"
@@ -171,10 +252,10 @@ defineExpose({ focus })
       @keydown.escape.stop="open = false"
     />
     <button
-      v-if="modelValue && !open"
+      v-if="!multiple && modelValue && !open"
       type="button"
       class="absolute right-2 top-1/2 z-40 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-      title="Limpar destino"
+      :title="`Limpar ${entityLabel}`"
       @click.stop="clearSelection"
     >
       <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -186,7 +267,7 @@ defineExpose({ focus })
       v-if="open"
       class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-auto rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
     >
-      <p v-if="search && !filteredCount" class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Nenhum destino encontrado.</p>
+      <p v-if="search && !filteredCount" class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Nenhum {{ entityLabel }} encontrado.</p>
 
       <div v-for="group in filteredGroups" :key="group.parent.id" class="border-b border-gray-100 last:border-b-0 dark:border-gray-800">
         <div class="flex items-center">
@@ -206,7 +287,7 @@ defineExpose({ focus })
             v-if="group.parentMatches"
             type="button"
             class="min-w-0 flex-1 px-2 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
-            :class="modelValue === group.parent.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300' : ''"
+            :class="isSelected(group.parent) ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300' : ''"
             @click="selectDestination(group.parent)"
           >
             <span class="flex items-center gap-2 truncate font-medium">
@@ -226,11 +307,11 @@ defineExpose({ focus })
             :key="child.id"
             type="button"
             class="flex w-full items-center gap-2 px-9 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
-            :class="modelValue === child.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300' : ''"
+            :class="isSelected(child) ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300' : ''"
             @click="selectDestination(child)"
           >
             <span class="h-px w-3 bg-gray-300 dark:bg-gray-700"></span>
-            <span class="min-w-0 truncate">{{ getDestFullName(child.id) }}</span>
+            <span class="min-w-0 truncate">{{ fullName(child.id) }}</span>
             <span v-if="linkedIds.includes(child.id)" class="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Vinculado</span>
           </button>
         </div>

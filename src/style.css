@@ -1,21 +1,20 @@
 @import "tailwindcss";
 
-/* ===== Design System Tokens: industrial stockroom, dense operations ===== */
+/* Theme keys only. Runtime values live in public/themes/*.css. */
 @theme {
-  --font-sans: Aptos, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
-
-  --color-primary-50: #fffbeb;
-  --color-primary-100: #fef3c7;
-  --color-primary-200: #fde68a;
-  --color-primary-300: #fcd34d;
-  --color-primary-400: #fbbf24;
-  --color-primary-500: #f59e0b;
-  --color-primary-600: #d97706;
-  --color-primary-700: #b45309;
-  --color-primary-800: #92400e;
-  --color-primary-900: #78350f;
-  --color-primary-950: #451a03;
+  --font-sans: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  --color-primary-50: transparent;
+  --color-primary-100: transparent;
+  --color-primary-200: transparent;
+  --color-primary-300: transparent;
+  --color-primary-400: transparent;
+  --color-primary-500: transparent;
+  --color-primary-600: transparent;
+  --color-primary-700: transparent;
+  --color-primary-800: transparent;
+  --color-primary-900: transparent;
+  --color-primary-950: transparent;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -23,88 +22,40 @@
 @layer base {
   :root {
     color-scheme: light;
-    --ds-bg: #f2f0eb;
-    --ds-bg-wash: #f7f5f0;
-    --ds-panel: #fbfaf7;
-    --ds-panel-tint: #eeeae2;
-    --ds-surface: #efede7;
-    --ds-surface-strong: #e3dfd6;
-    --ds-surface-hover: #ddd8ce;
-    --ds-nav-bg: #20262d;
-    --ds-nav-border: rgba(255, 255, 255, 0.10);
+    --ds-bg: Canvas;
+    --ds-bg-wash: Canvas;
+    --ds-panel: Canvas;
+    --ds-panel-tint: color-mix(in srgb, CanvasText 4%, Canvas);
+    --ds-surface: color-mix(in srgb, CanvasText 6%, Canvas);
+    --ds-surface-strong: color-mix(in srgb, CanvasText 10%, Canvas);
+    --ds-surface-hover: color-mix(in srgb, CanvasText 14%, Canvas);
+    --ds-nav-bg: CanvasText;
+    --ds-nav-border: color-mix(in srgb, Canvas 14%, transparent);
     --ds-header-bg: transparent;
-    --ds-table-head: #e3dfd6;
-    --ds-text: #1f2429;
-    --ds-text-soft: #41484f;
-    --ds-text-muted: #697077;
-    --ds-text-subtle: #92979c;
-    --ds-border-subtle: rgba(31, 36, 41, 0.10);
-    --ds-border: rgba(31, 36, 41, 0.16);
-    --ds-brand: #b45309;
-    --ds-brand-hover: #92400e;
-    --ds-primary-text: #161a1d;
-    --ds-active-bg: #fef3c7;
-    --ds-active-text: #78350f;
-    --ds-info: #2563eb;
+    --ds-table-head: var(--ds-surface-strong);
+    --ds-text: CanvasText;
+    --ds-text-soft: color-mix(in srgb, CanvasText 82%, Canvas);
+    --ds-text-muted: color-mix(in srgb, CanvasText 64%, Canvas);
+    --ds-text-subtle: color-mix(in srgb, CanvasText 48%, Canvas);
+    --ds-border-subtle: color-mix(in srgb, CanvasText 10%, transparent);
+    --ds-border: color-mix(in srgb, CanvasText 16%, transparent);
+    --ds-brand: Highlight;
+    --ds-brand-hover: Highlight;
+    --ds-primary-text: HighlightText;
+    --ds-active-bg: color-mix(in srgb, Highlight 16%, Canvas);
+    --ds-active-text: CanvasText;
+    --ds-info: Highlight;
     --ds-danger: #dc2626;
     --ds-warning: #d97706;
     --ds-success: #15803d;
     --ds-radius-control: 6px;
     --ds-radius-card: 8px;
-    --ds-shadow-panel: 0 0 0 1px rgba(31, 36, 41, 0.03), 0 1px 2px rgba(31, 36, 41, 0.06);
-    --ds-focus-ring: 0 0 0 1px var(--ds-brand), 0 0 0 4px rgba(180, 83, 9, 0.18);
-
-    --color-gray-50: #f7f5f0;
-    --color-gray-100: #efede7;
-    --color-gray-200: #e3dfd6;
-    --color-gray-300: #cbc5ba;
-    --color-gray-400: #9c978e;
-    --color-gray-500: #74716b;
-    --color-gray-600: #575650;
-    --color-gray-700: #41413d;
-    --color-gray-800: #2b2e30;
-    --color-gray-900: #202428;
-    --color-gray-950: #161a1d;
+    --ds-shadow-panel: 0 1px 2px color-mix(in srgb, CanvasText 8%, transparent);
+    --ds-focus-ring: 0 0 0 3px color-mix(in srgb, Highlight 24%, transparent);
   }
 
   .dark {
     color-scheme: dark;
-    --ds-bg: #15191d;
-    --ds-bg-wash: #191e23;
-    --ds-panel: #1c2126;
-    --ds-panel-tint: #23292f;
-    --ds-surface: #252b31;
-    --ds-surface-strong: #2d343b;
-    --ds-surface-hover: #343c43;
-    --ds-text: #f1efe9;
-    --ds-text-soft: #d1cec6;
-    --ds-text-muted: #9c9b96;
-    --ds-text-subtle: #727470;
-    --ds-border-subtle: rgba(255, 255, 255, 0.08);
-    --ds-border: rgba(255, 255, 255, 0.13);
-    --ds-brand: #f59e0b;
-    --ds-brand-hover: #fbbf24;
-    --ds-primary-text: #15191d;
-    --ds-active-bg: #4a3517;
-    --ds-active-text: #fde68a;
-    --ds-info: #60a5fa;
-    --ds-nav-bg: #171b1f;
-    --ds-nav-border: rgba(255, 255, 255, 0.13);
-    --ds-header-bg: transparent;
-    --ds-table-head: #252b31;
-    --ds-shadow-panel: 0 0 0 1px rgba(255, 255, 255, 0.03);
-
-    --color-gray-50: #f7f5f0;
-    --color-gray-100: #ebe8e1;
-    --color-gray-200: #d1cec6;
-    --color-gray-300: #b5b2aa;
-    --color-gray-400: #9c9b96;
-    --color-gray-500: #7e807c;
-    --color-gray-600: #555c61;
-    --color-gray-700: #343c43;
-    --color-gray-800: #252b31;
-    --color-gray-900: #1c2126;
-    --color-gray-950: #15191d;
   }
 
   html {
@@ -1209,6 +1160,163 @@
   :root:not(.dark) .hierarchy-group-sidebar button:hover,
   :root:not(.dark) .destination-management-sidebar button:hover {
     background: rgba(255, 255, 255, 0.14) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 2.5rem;
+    overflow: hidden;
+    border-radius: var(--ds-radius-control);
+    background: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.65) !important;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions button {
+    min-height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    position: relative;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new span,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new svg {
+    color: #111827 !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
+    content: "";
+    position: absolute;
+    top: 0.45rem;
+    right: 0;
+    bottom: 0.45rem;
+    width: 1px;
+    background: rgba(31, 36, 41, 0.22);
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai {
+    background: var(--ds-active-bg) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai span,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai svg {
+    color: var(--ds-active-text) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new:hover {
+    background: #f3f4f6 !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover {
+    background: #fde68a !important;
+  }
+
+  .dark .hierarchy-group-sidebar .hierarchy-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 2.5rem;
+    overflow: hidden;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-control);
+    background: var(--ds-surface);
+  }
+
+  .dark .hierarchy-group-sidebar .hierarchy-quick-actions button {
+    min-height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    position: relative;
+    color: var(--ds-text-soft);
+  }
+
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
+    content: "";
+    position: absolute;
+    top: 0.45rem;
+    right: 0;
+    bottom: 0.45rem;
+    width: 1px;
+    background: var(--ds-border);
+  }
+
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai {
+    background: var(--ds-active-bg);
+    color: var(--ds-active-text);
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 0.72fr;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 !important;
+    overflow: visible;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions button,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-actions button {
+    min-height: 2.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new {
+    background: var(--ds-brand) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new span,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new span {
+    color: var(--ds-primary-text) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new::after,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
+    display: none;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(245, 158, 11, 0.46);
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai span,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai span {
+    color: #fde68a !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new:hover,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new:hover {
+    background: var(--ds-brand-hover) !important;
+  }
+
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover,
+  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover {
+    background: rgba(245, 158, 11, 0.18) !important;
   }
 
   :root:not(.dark) .hierarchy-group-sidebar input,

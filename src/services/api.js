@@ -59,6 +59,10 @@ export async function getMe() {
   return request('/auth/me')
 }
 
+export async function getThemes() {
+  return request('/themes')
+}
+
 export async function getUsers() {
   return request('/auth/users')
 }

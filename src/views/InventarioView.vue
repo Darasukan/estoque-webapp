@@ -30,7 +30,7 @@ const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn
 const canAccessEpiControl = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const emit = defineEmits(['quick-movement', 'open-work-order', 'update:section', 'update:status', 'update:search'])
 
-const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory, editVariation } = useItems()
+const { items, getVariationsForItem, getCategoriesForGroup, getSubcategoriesForCategory } = useItems()
 const { movements, addMovement } = useMovements()
 const { workOrders } = useWorkOrders()
 const { getDestFullName } = useDestinations()
@@ -318,12 +318,16 @@ function applyAttrFilters(rows, exceptKey = null) {
   )
 }
 
+function itemSubgroup(item) {
+  return item.subcategory || item.name || ''
+}
+
 // After hierarchy filters
 const afterHierarchy = computed(() => {
   let rows = afterStatusSearch.value
   if (filterGroup.value) rows = rows.filter(r => r.item.group === filterGroup.value)
   if (filterCategory.value) rows = rows.filter(r => r.item.category === filterCategory.value)
-  if (filterSubcategory.value) rows = rows.filter(r => r.item.subcategory === filterSubcategory.value)
+  if (filterSubcategory.value) rows = rows.filter(r => itemSubgroup(r.item) === filterSubcategory.value)
   return rows
 })
 
@@ -396,7 +400,7 @@ function findHierarchySearchMatch(q) {
   const rowsInCategory = category
     ? rowsInGroup.filter(r => r.item.category === category)
     : rowsInGroup
-  const uniqueSubcategories = new Set(rowsInCategory.map(r => r.item.subcategory || '').filter(Boolean))
+  const uniqueSubcategories = new Set(rowsInCategory.map(r => itemSubgroup(r.item)).filter(Boolean))
   const subcategory = category && uniqueSubcategories.size === 1 ? [...uniqueSubcategories][0] : ''
 
   return { group, category, subcategory }
@@ -412,7 +416,7 @@ watch(searchNorm, q => {
 const facetGroups = computed(() => {
   let rows = afterStatusSearch.value
   if (filterCategory.value) rows = rows.filter(r => r.item.category === filterCategory.value)
-  if (filterSubcategory.value) rows = rows.filter(r => r.item.subcategory === filterSubcategory.value)
+  if (filterSubcategory.value) rows = rows.filter(r => itemSubgroup(r.item) === filterSubcategory.value)
   rows = applyAttrFilters(rows)
   return [...new Set(rows.map(r => r.item.group).filter(Boolean))].sort(compareText)
 })
@@ -420,7 +424,7 @@ const facetGroups = computed(() => {
 const facetCategories = computed(() => {
   let rows = afterStatusSearch.value
   if (filterGroup.value) rows = rows.filter(r => r.item.group === filterGroup.value)
-  if (filterSubcategory.value) rows = rows.filter(r => r.item.subcategory === filterSubcategory.value)
+  if (filterSubcategory.value) rows = rows.filter(r => itemSubgroup(r.item) === filterSubcategory.value)
   rows = applyAttrFilters(rows)
   return [...new Set(rows.map(r => r.item.category).filter(Boolean))].sort(compareText)
 })
@@ -430,7 +434,7 @@ const facetSubcategories = computed(() => {
   if (filterGroup.value) rows = rows.filter(r => r.item.group === filterGroup.value)
   if (filterCategory.value) rows = rows.filter(r => r.item.category === filterCategory.value)
   rows = applyAttrFilters(rows)
-  return [...new Set(rows.map(r => r.item.subcategory).filter(Boolean))].sort(compareText)
+  return [...new Set(rows.map(r => itemSubgroup(r.item)).filter(Boolean))].sort(compareText)
 })
 
 // ---- Attribute facet keys & values ----
@@ -665,21 +669,6 @@ function quickSheetMovement(type) {
 async function adjustSheetStock(delta) {
   if (!sheetRow.value) return
   await applyStockAdjustment(sheetRow.value, delta)
-}
-
-async function updateSheetExtras(extras) {
-  if (!sheetRow.value || !(isAdmin?.value ?? isAdmin)) return
-  const variation = sheetRow.value.variation
-  const result = await editVariation(variation.id, {
-    values: { ...(variation.values || {}) },
-    stock: variation.stock,
-    minStock: variation.minStock || 0,
-    extras,
-    location: variation.location || '',
-    destinations: [...(variation.destinations || [])],
-  })
-  if (!result.ok) { error(result.error); return }
-  success('Informações extras atualizadas.')
 }
 
 function closeVariationHistory() {
@@ -1630,7 +1619,6 @@ function exportCSV() {
       @close="closeVariationSheet"
       @quick-movement="quickSheetMovement"
       @adjust-stock="adjustSheetStock"
-      @update-extras="updateSheetExtras"
       @open-work-order="order => emit('open-work-order', order)"
     />
 

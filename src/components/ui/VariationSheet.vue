@@ -1,7 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { stockAlertStatus } from '../../composables/useItems.js'
+import { stockAlertStatus, useItems } from '../../composables/useItems.js'
 import { useDestinations } from '../../composables/useDestinations.js'
+import { useToast } from '../../composables/useToast.js'
+import { extrasListToObject, validateVariationForm, variationFormForEdit } from '../../utils/variationForm.js'
+import { summarizeVariationMovements } from '../../utils/variationMovementStats.js'
+import DestinationTreePicker from './DestinationTreePicker.vue'
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -11,17 +15,20 @@ const props = defineProps({
   canManage: { type: Boolean, default: false },
   canAdjust: { type: Boolean, default: false },
   canEditDetails: { type: Boolean, default: false },
+  initialTab: { type: String, default: 'data' },
 })
 
-const emit = defineEmits(['close', 'quick-movement', 'adjust-stock', 'update-extras', 'open-work-order'])
+const emit = defineEmits(['close', 'quick-movement', 'adjust-stock', 'open-work-order'])
 const { getDestFullName } = useDestinations()
+const { editVariation } = useItems()
+const { success, error } = useToast()
 
-const activeTab = ref('info')
+const activeTab = ref(props.initialTab)
 const dialogRef = ref(null)
 const adjustOpen = ref(false)
 const adjustValue = ref('')
-const editingExtras = ref(false)
-const extraRows = ref([])
+const editForm = ref(variationFormForEdit(props.item, props.variation))
+const editSaving = ref(false)
 
 onMounted(async () => {
   await nextTick()
@@ -63,25 +70,17 @@ const recentSupplier = computed(() =>
   sortedMovements.value.find(m => m.type === 'entrada' && String(m.supplier || '').trim())?.supplier || '-'
 )
 
-const entryCostMovements = computed(() =>
-  sortedMovements.value.filter(m =>
+const movementStats = computed(() => summarizeVariationMovements(sortedMovements.value))
+
+const lastUnitCost = computed(() =>
+  sortedMovements.value.find(m =>
     m.type === 'entrada' &&
     m.unitCost !== null &&
     m.unitCost !== undefined &&
     m.unitCost !== '' &&
     Number.isFinite(Number(m.unitCost))
-  )
+  )?.unitCost ?? null
 )
-
-const lastUnitCost = computed(() =>
-  entryCostMovements.value.length ? Number(entryCostMovements.value[0].unitCost) : null
-)
-
-const averageUnitCost = computed(() => {
-  if (!entryCostMovements.value.length) return null
-  const total = entryCostMovements.value.reduce((sum, m) => sum + Number(m.unitCost), 0)
-  return total / entryCostMovements.value.length
-})
 
 const lastWithdrawalBy = computed(() =>
   sortedMovements.value.find(m => m.type === 'saida' && String(m.requestedBy || '').trim())?.requestedBy || '-'
@@ -92,31 +91,29 @@ const linkedDestinations = computed(() =>
     .map(id => getDestFullName(id))
     .filter(Boolean)
 )
+const linkedLocations = computed(() => {
+  if (props.variation.locations?.length) return props.variation.locations
+  return [props.variation.location || props.item.location].filter(Boolean)
+})
 
 const relatedOrders = computed(() => props.workOrders.filter(order =>
   (order.items || []).some(row => row.variationId === props.variation.id)
 ))
 
-const extraInfoRows = computed(() =>
-  Object.entries(props.variation.extras || {})
-    .map(([key, value]) => ({ key, value }))
-    .filter(row => row.key || row.value)
-)
-
-function resetExtraRows() {
-  extraRows.value = extraInfoRows.value.length
-    ? extraInfoRows.value.map(row => ({ ...row }))
-    : [{ key: '', value: '' }]
+function resetEditForm() {
+  editForm.value = variationFormForEdit(props.item, props.variation)
 }
 
 watch(() => props.variation.id, () => {
-  editingExtras.value = false
-  resetExtraRows()
+  activeTab.value = props.initialTab === 'info' || (props.initialTab === 'edit' && !props.canEditDetails)
+    ? 'data'
+    : props.initialTab
+  resetEditForm()
 }, { immediate: true })
 
-watch(() => props.variation.extras, () => {
-  if (!editingExtras.value) resetExtraRows()
-}, { deep: true })
+watch(() => props.initialTab, tab => {
+  activeTab.value = tab === 'info' || (tab === 'edit' && !props.canEditDetails) ? 'data' : tab
+})
 
 function formatDate(value) {
   if (!value) return '-'
@@ -129,6 +126,11 @@ function formatCurrency(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return '-'
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatQuantity(value) {
+  if (value === null || value === undefined) return '-'
+  return `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ${props.item.unit}`
 }
 
 function movementResponsible(movement) {
@@ -149,29 +151,44 @@ function submitAdjust() {
   adjustOpen.value = false
 }
 
-function startEditExtras() {
-  resetExtraRows()
-  editingExtras.value = true
+function startEdit() {
+  if (!props.canEditDetails) return
+  resetEditForm()
+  activeTab.value = 'edit'
 }
 
 function addExtraRow() {
-  extraRows.value.push({ key: '', value: '' })
+  editForm.value.extrasList.push({ key: '', value: '' })
 }
 
 function removeExtraRow(index) {
-  extraRows.value.splice(index, 1)
-  if (!extraRows.value.length) addExtraRow()
+  editForm.value.extrasList.splice(index, 1)
 }
 
-function saveExtras() {
-  const extras = {}
-  for (const row of extraRows.value) {
-    const key = String(row.key || '').trim()
-    if (!key) continue
-    extras[key] = String(row.value || '').trim()
+async function saveEdit() {
+  if (editSaving.value) return
+  const validationError = validateVariationForm(props.item, editForm.value)
+  if (validationError) { error(validationError); return }
+
+  editSaving.value = true
+  try {
+    const result = await editVariation(props.variation.id, {
+      values: { ...editForm.value.values },
+      stock: props.variation.stock,
+      minStock: editForm.value.minStock,
+      extras: extrasListToObject(editForm.value.extrasList),
+      location: editForm.value.locations[0] || '',
+      locations: [...editForm.value.locations],
+      destinations: [...editForm.value.destinations],
+    })
+    if (!result.ok) { error(result.error); return }
+    success('Variação atualizada.')
+    activeTab.value = 'data'
+  } catch (e) {
+    error(e.message)
+  } finally {
+    editSaving.value = false
   }
-  emit('update-extras', extras)
-  editingExtras.value = false
 }
 </script>
 
@@ -184,8 +201,8 @@ function saveExtras() {
     @cancel.prevent="emit('close')"
   >
     <div class="flex min-h-full items-center justify-center p-4" @click.self="emit('close')">
-    <section class="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-      <header class="flex items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-700">
+    <section class="flex w-full max-w-5xl max-h-[88vh] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+      <header class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-700">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ficha da variação</p>
           <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">{{ item.name }}</h2>
@@ -214,7 +231,7 @@ function saveExtras() {
         </button>
       </header>
 
-      <div class="max-h-[calc(88vh-5rem)] overflow-auto">
+      <div class="min-h-0 flex-1 overflow-auto">
         <section class="grid grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-gray-700 lg:grid-cols-6">
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400">Estoque atual</p>
@@ -280,31 +297,98 @@ function saveExtras() {
           </div>
         </section>
 
-        <nav class="flex items-center gap-1 border-b border-gray-200 px-4 pt-3 dark:border-gray-700">
+        <nav class="flex items-center gap-1 overflow-x-auto border-b border-gray-200 px-4 pt-3 dark:border-gray-700">
           <button
             type="button"
-            class="rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors"
-            :class="activeTab === 'info'
+            class="shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors"
+            :class="activeTab === 'data'
               ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
               : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'"
-            @click="activeTab = 'info'"
+            :aria-pressed="activeTab === 'data'"
+            @click="activeTab = 'data'"
           >
-            Informações extras
+            Dados
+          </button>
+          <button
+            v-if="canEditDetails"
+            type="button"
+            class="shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors"
+            :class="activeTab === 'edit'
+              ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+              : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'"
+            :aria-pressed="activeTab === 'edit'"
+            @click="startEdit"
+          >
+            Editar
           </button>
           <button
             type="button"
-            class="rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors"
+            class="shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors"
             :class="activeTab === 'movements'
               ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
               : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'"
+            :aria-pressed="activeTab === 'movements'"
             @click="activeTab = 'movements'"
           >
             Movimentos
           </button>
         </nav>
 
-        <section v-if="activeTab === 'info'" class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[18rem_1fr]">
-          <aside class="space-y-3">
+        <section v-if="activeTab === 'data'" class="space-y-4 p-4">
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Dados de movimentação</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Médias calculadas pelo histórico, sem considerar ajustes de estoque.</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <p class="text-xs text-gray-500 dark:text-gray-400">Pedido médio</p>
+              <p class="mt-2 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ formatQuantity(movementStats.averageEntryQty) }}</p>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">Por entrada registrada</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <p class="text-xs text-gray-500 dark:text-gray-400">Saída média</p>
+              <p class="mt-2 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ formatQuantity(movementStats.averageExitQty) }}</p>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">Por saída registrada</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <p class="text-xs text-gray-500 dark:text-gray-400">Custo médio</p>
+              <p class="mt-2 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ formatCurrency(movementStats.averageUnitCost) }}</p>
+              <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">Entre entradas com custo</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <p class="text-xs text-gray-500 dark:text-gray-400">Menor preço encontrado</p>
+              <p class="mt-2 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ formatCurrency(movementStats.lowestPrice?.unitCost) }}</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ movementStats.lowestPrice ? (movementStats.lowestPrice.supplier || 'Fornecedor não informado') : 'Sem custo registrado' }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <p class="text-xs text-gray-500 dark:text-gray-400">Maior preço encontrado</p>
+              <p class="mt-2 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ formatCurrency(movementStats.highestPrice?.unitCost) }}</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ movementStats.highestPrice ? (movementStats.highestPrice.supplier || 'Fornecedor não informado') : 'Sem custo registrado' }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Fornecedores</h3>
+              <span class="text-xs tabular-nums text-gray-400 dark:text-gray-500">{{ movementStats.suppliers.length }}</span>
+            </div>
+            <div v-if="movementStats.suppliers.length" class="mt-3 flex flex-wrap gap-2">
+              <span
+                v-for="supplier in movementStats.suppliers"
+                :key="supplier"
+                class="ds-attribute-tag rounded border px-2 py-1 text-xs font-medium"
+              >
+                {{ supplier }}
+              </span>
+            </div>
+            <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">Nenhum fornecedor registrado para esta variação.</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 md:grid-cols-3">
             <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
               <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Destinos vinculados</h3>
               <div v-if="linkedDestinations.length" class="mt-3 flex flex-wrap gap-1.5">
@@ -316,8 +400,11 @@ function saveExtras() {
               <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Resumo</h3>
               <dl class="mt-3 space-y-2 text-sm">
                 <div class="flex justify-between gap-3">
-                  <dt class="text-gray-500 dark:text-gray-400">Local</dt>
-                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ variation.location || item.location || '-' }}</dd>
+                  <dt class="shrink-0 text-gray-500 dark:text-gray-400">Locais</dt>
+                  <dd v-if="linkedLocations.length" class="flex flex-wrap justify-end gap-1">
+                    <span v-for="location in linkedLocations" :key="location" class="ds-attribute-tag rounded border px-2 py-0.5 text-xs font-semibold">{{ location }}</span>
+                  </dd>
+                  <dd v-else class="font-medium text-gray-900 dark:text-gray-100">-</dd>
                 </div>
                 <div class="flex justify-between gap-3">
                   <dt class="text-gray-500 dark:text-gray-400">Último a retirar</dt>
@@ -326,10 +413,6 @@ function saveExtras() {
                 <div class="flex justify-between gap-3">
                   <dt class="text-gray-500 dark:text-gray-400">Última</dt>
                   <dd class="font-medium text-gray-900 dark:text-gray-100">{{ sortedMovements[0] ? formatDate(sortedMovements[0].date) : '-' }}</dd>
-                </div>
-                <div class="flex justify-between gap-3">
-                  <dt class="text-gray-500 dark:text-gray-400">Média de custos</dt>
-                  <dd class="font-medium text-gray-900 dark:text-gray-100">{{ formatCurrency(averageUnitCost) }}</dd>
                 </div>
               </dl>
             </div>
@@ -349,76 +432,101 @@ function saveExtras() {
               </div>
               <p v-else class="mt-2 text-xs text-gray-500 dark:text-gray-400">Nenhuma OS usou esta variação.</p>
             </div>
-          </aside>
+          </div>
+        </section>
 
+        <section v-else-if="activeTab === 'edit'" class="space-y-5 p-4">
           <div>
-            <div class="mb-3 flex items-center justify-between gap-3">
-              <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Informações extras</h3>
-              <button
-                v-if="canEditDetails && !editingExtras"
-                type="button"
-                class="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600"
-                @click="startEditExtras"
-              >
-                Editar
-              </button>
-            </div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Editar variação</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">O saldo é alterado por Ajustar para manter o histórico de estoque.</p>
+          </div>
 
-            <div v-if="editingExtras" class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-              <div class="space-y-2">
-                <div v-for="(row, index) in extraRows" :key="index" class="grid grid-cols-[minmax(0,12rem)_1fr_auto] gap-2">
-                  <input
-                    v-model="row.key"
-                    type="text"
-                    placeholder="Campo"
-                    class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                  <input
-                    v-model="row.value"
-                    type="text"
-                    placeholder="Valor"
-                    class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                  <button
-                    type="button"
-                    class="rounded-lg px-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                    title="Remover"
-                    @click="removeExtraRow(index)"
-                  >
-                    Remover
-                  </button>
-                </div>
-              </div>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <button type="button" class="rounded-lg bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600" @click="addExtraRow">Adicionar campo</button>
-                <button type="button" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700" @click="saveExtras">Salvar</button>
-                <button type="button" class="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700" @click="editingExtras = false">Cancelar</button>
-              </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <h4 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Destinos vinculados</h4>
+              <DestinationTreePicker
+                v-model="editForm.destinations"
+                multiple
+                :linked-ids="editForm.destinations"
+                placeholder="Adicionar destino..."
+              />
             </div>
-
-            <div v-else-if="extraInfoRows.length" class="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div
-                v-for="row in extraInfoRows"
-                :key="row.key"
-                class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50"
-              >
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ row.key }}</p>
-                <p class="mt-1 break-words text-sm font-semibold text-gray-900 dark:text-gray-100">{{ row.value || '-' }}</p>
-              </div>
-            </div>
-
-            <div v-else class="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              Nenhuma informação extra cadastrada para esta variação.
-              <button
-                v-if="canEditDetails"
-                type="button"
-                class="ml-2 font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                @click="startEditExtras"
-              >
-                Adicionar agora
-              </button>
+            <div>
+              <h4 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Locais</h4>
+              <DestinationTreePicker
+                v-model="editForm.locations"
+                multiple
+                source="locations"
+                placeholder="Adicionar local..."
+              />
             </div>
           </div>
+
+          <div v-if="item.attributes?.length">
+            <h4 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos</h4>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label v-for="attribute in item.attributes" :key="attribute" class="block">
+                <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">{{ attribute }}</span>
+                <input
+                  v-model="editForm.values[attribute]"
+                  type="text"
+                  :placeholder="attribute"
+                  class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Estoque mínimo</span>
+              <input
+                v-model.number="editForm.minStock"
+                type="number"
+                min="0"
+                step="1"
+                class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </label>
+          </div>
+
+          <div>
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Campos extras</h4>
+              <button
+                type="button"
+                class="min-h-9 rounded-lg px-3 text-xs font-semibold text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                @click="addExtraRow"
+              >
+                Adicionar campo
+              </button>
+            </div>
+            <div v-if="editForm.extrasList.length" class="space-y-2">
+              <div v-for="(row, index) in editForm.extrasList" :key="index" class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,12rem)_1fr_auto]">
+                <input
+                  v-model="row.key"
+                  type="text"
+                  placeholder="Campo"
+                  class="min-h-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+                <input
+                  v-model="row.value"
+                  type="text"
+                  placeholder="Valor"
+                  class="min-h-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  class="min-h-10 rounded-lg px-3 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                  @click="removeExtraRow(index)"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+            <p v-else class="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Nenhum campo extra.</p>
+          </div>
+
         </section>
 
         <section v-else class="p-4">
@@ -460,6 +568,25 @@ function saveExtras() {
           </div>
         </section>
       </div>
+      <footer v-if="activeTab === 'edit' && canEditDetails" class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
+        <button
+          type="button"
+          class="min-h-10 rounded-lg bg-gray-100 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          :disabled="editSaving"
+          @click="activeTab = 'data'"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="min-h-10 rounded-lg bg-primary-700 px-4 text-sm font-semibold hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-primary-600 dark:hover:bg-primary-500"
+          style="color: var(--ds-primary-text)"
+          :disabled="editSaving"
+          @click="saveEdit"
+        >
+          {{ editSaving ? 'Salvando...' : 'Salvar alterações' }}
+        </button>
+      </footer>
     </section>
     </div>
   </dialog>

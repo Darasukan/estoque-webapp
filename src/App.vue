@@ -780,7 +780,7 @@ function handleGlobalShortcutKeydown(event) {
               <button
                 type="button"
                 class="ds-account-menu-action w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
-                title="Alternar entre Industrial, Discord e Vercel"
+                title="Alternar estilo visual"
                 @click="cycleStyle"
               >
                 Estilo: {{ visualStyleName }}

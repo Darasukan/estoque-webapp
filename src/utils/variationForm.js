@@ -1,5 +1,5 @@
 export function emptyVariationForm() {
-  return { values: {}, stock: 0, minStock: 0, extrasList: [], location: '', destinations: [] }
+  return { values: {}, stock: 0, minStock: 0, extrasList: [], location: '', locations: [], destinations: [] }
 }
 
 export function variationFormForItem(item) {
@@ -8,16 +8,21 @@ export function variationFormForItem(item) {
     values: Object.fromEntries((item?.attributes || []).map(attribute => [attribute, ''])),
     minStock: item?.minStock || 0,
     location: item?.location || '',
+    locations: item?.location ? [item.location] : [],
   }
 }
 
 export function variationFormForEdit(item, variation) {
+  const locations = variation.locations?.length
+    ? [...variation.locations]
+    : [variation.location].filter(Boolean)
   return {
     values: Object.fromEntries((item?.attributes || []).map(attribute => [attribute, variation.values?.[attribute] || ''])),
     stock: variation.stock,
     minStock: variation.minStock || 0,
     extrasList: Object.entries(variation.extras || {}).map(([key, value]) => ({ key, value })),
-    location: variation.location || '',
+    location: locations[0] || '',
+    locations,
     destinations: [...(variation.destinations || [])],
   }
 }

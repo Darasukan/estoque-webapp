@@ -11,7 +11,6 @@ import {
   emptyVariationForm,
   extrasListToObject,
   validateVariationForm,
-  variationFormForEdit,
   variationFormForItem,
 } from '../utils/variationForm.js'
 import VariationSheet from '../components/ui/VariationSheet.vue'
@@ -29,7 +28,7 @@ const {
   activeGroup, activeCategory, activeSubcategory,
   uniqueGroups, setActiveGroup, setActiveCategory, setActiveSubcategory,
   groupItems, navigationItems,
-  getVariationsForItem, addVariation, editVariation, deleteVariation, getTotalStock,
+  getVariationsForItem, addVariation, deleteVariation, getTotalStock,
   getCategoriesForGroup, getSubcategoriesForCategory,
   toggleFilter, clearFilters, setViewingItem,
   seedDatabase, resetAll
@@ -213,7 +212,6 @@ const totalStock = computed(() => {
 
 // ===== Variation CRUD =====
 const addingVariation = ref(false)
-const editingVariationId = ref(null)
 const varForm = ref(emptyVariationForm())
 const directVariationMode = ref(false)
 const directVariationGroup = ref('')
@@ -221,6 +219,7 @@ const directVariationCategory = ref('')
 const directVariationSubcategory = ref('')
 const directVariationItemId = ref('')
 const sheetVariationId = ref('')
+const sheetInitialTab = ref('data')
 const sheetVariation = computed(() => itemVariations.value.find(v => v.id === sheetVariationId.value) || null)
 
 const directVariationCategories = computed(() =>
@@ -281,18 +280,10 @@ function startAddVariation() {
   directVariationMode.value = false
   varForm.value = variationFormForItem(viewingItem.value)
   addingVariation.value = true
-  editingVariationId.value = null
   nextTick(() => {
     const el = document.querySelector('.var-form-input')
     if (el) el.focus()
   })
-}
-
-function startEditVariation(v) {
-  directVariationMode.value = false
-  varForm.value = variationFormForEdit(viewingItem.value, v)
-  editingVariationId.value = v.id
-  addingVariation.value = false
 }
 
 function resetDirectVariationForm() {
@@ -303,7 +294,6 @@ function resetDirectVariationForm() {
 function startDirectVariation() {
   directVariationMode.value = true
   addingVariation.value = true
-  editingVariationId.value = null
   directVariationGroup.value = activeGroup.value || ''
   directVariationCategory.value = activeCategory.value || ''
   directVariationSubcategory.value = activeSubcategory.value || ''
@@ -335,7 +325,7 @@ function onDirectVariationSubcategoryChange() {
 watch(directVariationItems, syncDirectVariationSingleModel)
 
 watch(directVariationItem, item => {
-  if (!directVariationMode.value || !item || editingVariationId.value) return
+  if (!directVariationMode.value || !item) return
   varForm.value = variationFormForItem(item)
   nextTick(() => {
     const el = document.querySelector('.var-form-input')
@@ -354,24 +344,16 @@ async function saveVariation() {
     error(validationError)
     return
   }
-  if (editingVariationId.value) {
-    const result = await editVariation(editingVariationId.value, { values: { ...varForm.value.values }, stock: varForm.value.stock, minStock: varForm.value.minStock, extras: extrasListToObject(varForm.value.extrasList), location: varForm.value.location, destinations: varForm.value.destinations })
-    if (!result.ok) { error(result.error); return }
-    editingVariationId.value = null
-    success('Variação atualizada!')
-  } else {
-    const result = await addVariation(targetItem.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, extrasListToObject(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
-    if (!result.ok) { error(result.error); return }
-    success('Variação adicionada!')
-    if (directVariationMode.value) openItem(targetItem)
-  }
+  const result = await addVariation(targetItem.id, varForm.value.values, varForm.value.stock, varForm.value.minStock, extrasListToObject(varForm.value.extrasList), varForm.value.location, varForm.value.destinations)
+  if (!result.ok) { error(result.error); return }
+  success('Variação adicionada!')
+  if (directVariationMode.value) openItem(targetItem)
   addingVariation.value = false
   directVariationMode.value = false
 }
 
 function cancelVariation() {
   addingVariation.value = false
-  editingVariationId.value = null
   directVariationMode.value = false
   localDropOpen.value = false
   destsDropOpen.value = false
@@ -474,8 +456,8 @@ function closeAllDrops() {
 }
 
 // ===== Variation Modal =====
-const showVarModal = computed(() => addingVariation.value || !!editingVariationId.value)
-const varModalTitle = computed(() => editingVariationId.value ? 'Editar Variação' : directVariationMode.value ? 'Criar Variação' : 'Nova Variação')
+const showVarModal = computed(() => addingVariation.value)
+const varModalTitle = computed(() => directVariationMode.value ? 'Criar Variação' : 'Nova Variação')
 
 function onDeleteVariation(v) {
   const label = Object.values(v.values).filter(Boolean).join(' / ') || 'esta variação'
@@ -526,7 +508,8 @@ async function loadSeedData() {
   success(`Dados de teste carregados! ${seedItems.length} itens + ${seedVars.length} variações + históricos.`)
 }
 
-function openVariationSheet(v) {
+function openVariationSheet(v, initialTab = 'data') {
+  sheetInitialTab.value = initialTab
   sheetVariationId.value = v.id
 }
 
@@ -564,6 +547,7 @@ function openVariationById(variationId) {
 
 function closeVariationSheet() {
   sheetVariationId.value = ''
+  sheetInitialTab.value = 'data'
 }
 
 function quickSheetMovement(type) {
@@ -596,20 +580,6 @@ async function adjustSheetStock(delta) {
   } catch (e) {
     error(e.message)
   }
-}
-
-async function updateSheetExtras(extras) {
-  if (!sheetVariation.value || !(isAdmin?.value ?? isAdmin)) return
-  const result = await editVariation(sheetVariation.value.id, {
-    values: { ...(sheetVariation.value.values || {}) },
-    stock: sheetVariation.value.stock,
-    minStock: sheetVariation.value.minStock || 0,
-    extras,
-    location: sheetVariation.value.location || '',
-    destinations: [...(sheetVariation.value.destinations || [])],
-  })
-  if (!result.ok) { error(result.error); return }
-  success('Informações extras atualizadas.')
 }
 
 function clearAllData() {
@@ -901,7 +871,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                 <!-- Ações -->
                 <td v-if="isAdmin" class="px-4 py-2.5">
                   <div class="flex items-center justify-center gap-1">
-                    <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click.stop="startEditVariation(v)">
+                    <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click.stop="openVariationSheet(v, 'edit')">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
                     <button class="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Excluir" @click.stop="onDeleteVariation(v)">
@@ -1219,10 +1189,10 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
     :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
     :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
     :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
+    :initial-tab="sheetInitialTab"
     @close="closeVariationSheet"
     @quick-movement="quickSheetMovement"
     @adjust-stock="adjustSheetStock"
-    @update-extras="updateSheetExtras"
     @open-work-order="order => emit('open-work-order', order)"
   />
 
@@ -1425,7 +1395,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
             :disabled="directVariationMode && !variationFormItem"
             :class="directVariationMode && !variationFormItem ? 'cursor-not-allowed opacity-60' : ''"
             @click="saveVariation"
-          >{{ editingVariationId ? 'Salvar' : directVariationMode ? 'Criar variação' : 'Adicionar' }}</button>
+          >{{ directVariationMode ? 'Criar variação' : 'Adicionar' }}</button>
         </div>
       </div>
     </div>

@@ -34,6 +34,8 @@ server/*.db-shm
 server/*.db-wal
 server/backups/
 public/local-brand/
+public/themes/*.css
+!public/themes/industrial.css
 graphify-out/
 importar_banco.py
 test_importar_banco.py

@@ -284,6 +284,10 @@ export function useItems() {
     if (changes.minStock !== undefined) updated.minStock = _sanitizeNumber(changes.minStock)
     if (changes.extras !== undefined) updated.extras = { ...changes.extras }
     if (changes.location !== undefined) updated.location = changes.location
+    if (changes.locations !== undefined) {
+      updated.locations = Array.isArray(changes.locations) ? [...changes.locations] : []
+      updated.location = updated.locations[0] || ''
+    }
     if (changes.destinations !== undefined) updated.destinations = Array.isArray(changes.destinations) ? [...changes.destinations] : []
     const result = await api.updateVariation(id, updated)
     Object.assign(v, result)

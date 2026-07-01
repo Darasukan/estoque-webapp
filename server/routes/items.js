@@ -6,6 +6,14 @@ import { analyzeCatalogImage } from '../utils/catalogSuggestion.js'
 
 const router = Router()
 
+function normalizeLocations(locations, legacyLocation = '') {
+  const values = (Array.isArray(locations) ? locations : [])
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+  const fallback = String(legacyLocation || '').trim()
+  return [...new Set(values.length ? values : [fallback].filter(Boolean))]
+}
+
 router.post('/suggest', requireAuth, async (req, res) => {
   const { image } = req.body
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
@@ -110,13 +118,14 @@ router.get('/variations', (req, res) => {
     initialStock: r.initial_stock,
     extras: JSON.parse(r.extras),
     location: r.location,
+    locations: normalizeLocations(JSON.parse(r.locations || '[]'), r.location),
     destinations: JSON.parse(r.destinations)
   })))
 })
 
 // POST /api/items/variations
 router.post('/variations', requireAuth, (req, res) => {
-  const { itemId, values, stock, minStock, initialStock, extras, location, destinations } = req.body
+  const { itemId, values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
   if (!itemId) return res.status(400).json({ error: 'itemId obrigatório' })
 
   const item = db.prepare('SELECT id, min_stock FROM items WHERE id = ?').get(itemId)
@@ -127,14 +136,16 @@ router.post('/variations', requireAuth, (req, res) => {
   const requestedMinStock = minStock === undefined || minStock === null ? item.min_stock : minStock
   const min = Number(requestedMinStock)
   const safeMinStock = Number.isFinite(min) ? Math.max(0, Math.round(min)) : 0
-  db.prepare(`INSERT INTO variations (id, item_id, vals, stock, min_stock, initial_stock, extras, location, destinations)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  const normalizedLocations = normalizeLocations(locations, location)
+  const primaryLocation = normalizedLocations[0] || ''
+  db.prepare(`INSERT INTO variations (id, item_id, vals, stock, min_stock, initial_stock, extras, location, locations, destinations)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, itemId, JSON.stringify(values || {}), s, safeMinStock,
     initialStock !== undefined ? initialStock : s,
-    JSON.stringify(extras || {}), location || '', JSON.stringify(destinations || [])
+    JSON.stringify(extras || {}), primaryLocation, JSON.stringify(normalizedLocations), JSON.stringify(destinations || [])
   )
 
-  res.json({ id, itemId, values: values || {}, stock: s, minStock: safeMinStock, initialStock: initialStock !== undefined ? initialStock : s, extras: extras || {}, location: location || '', destinations: destinations || [] })
+  res.json({ id, itemId, values: values || {}, stock: s, minStock: safeMinStock, initialStock: initialStock !== undefined ? initialStock : s, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
 })
 
 // PUT /api/items/variations/:id
@@ -142,14 +153,16 @@ router.put('/variations/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT id FROM variations WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Variação não encontrada' })
 
-  const { values, stock, minStock, initialStock, extras, location, destinations } = req.body
-  db.prepare(`UPDATE variations SET vals=?, stock=?, min_stock=?, initial_stock=?, extras=?, location=?, destinations=? WHERE id=?`).run(
+  const { values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
+  const normalizedLocations = normalizeLocations(locations, location)
+  const primaryLocation = normalizedLocations[0] || ''
+  db.prepare(`UPDATE variations SET vals=?, stock=?, min_stock=?, initial_stock=?, extras=?, location=?, locations=?, destinations=? WHERE id=?`).run(
     JSON.stringify(values || {}), stock || 0, minStock || 0, initialStock || 0,
-    JSON.stringify(extras || {}), location || '', JSON.stringify(destinations || []),
+    JSON.stringify(extras || {}), primaryLocation, JSON.stringify(normalizedLocations), JSON.stringify(destinations || []),
     req.params.id
   )
 
-  res.json({ id: req.params.id, values: values || {}, stock: stock || 0, minStock: minStock || 0, initialStock: initialStock || 0, extras: extras || {}, location: location || '', destinations: destinations || [] })
+  res.json({ id: req.params.id, values: values || {}, stock: stock || 0, minStock: minStock || 0, initialStock: initialStock || 0, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
 })
 
 // DELETE /api/items/variations/:id

@@ -22,6 +22,7 @@ import seedRoutes from './routes/seed.js'
 import workOrderRoutes from './routes/workOrders.js'
 import motorRoutes from './routes/motors.js'
 import closingRoutes from './routes/closings.js'
+import { listThemes } from './utils/themes.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -41,6 +42,10 @@ app.get('/api/meta', (req, res) => {
     envFile: ENV_FILE,
     port: String(PORT),
   })
+})
+app.get('/api/themes', (req, res) => {
+  const root = join(__dirname, '..', ENV_FILE.endsWith('.prod') ? 'dist' : 'public')
+  res.json(listThemes(join(root, 'themes')))
 })
 
 // Public read + protected write (auth enforced per-route inside each file)

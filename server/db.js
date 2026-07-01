@@ -75,6 +75,7 @@ db.exec(`
     initial_stock REAL NOT NULL DEFAULT 0,
     extras TEXT NOT NULL DEFAULT '{}',
     location TEXT DEFAULT '',
+    locations TEXT NOT NULL DEFAULT '[]',
     destinations TEXT NOT NULL DEFAULT '[]'
   );
 
@@ -298,6 +299,16 @@ if (!movCols.includes('unit_cost')) {
 }
 if (!movCols.includes('requested_by_person_id')) {
   db.prepare("ALTER TABLE movements ADD COLUMN requested_by_person_id TEXT DEFAULT ''").run()
+}
+
+const variationCols = db.prepare("PRAGMA table_info(variations)").all().map(c => c.name)
+if (!variationCols.includes('locations')) {
+  db.prepare("ALTER TABLE variations ADD COLUMN locations TEXT NOT NULL DEFAULT '[]'").run()
+  const legacyLocations = db.prepare("SELECT id, location FROM variations WHERE COALESCE(location, '') <> ''").all()
+  const migrateLocation = db.prepare('UPDATE variations SET locations = ? WHERE id = ?')
+  db.transaction(() => {
+    for (const variation of legacyLocations) migrateLocation.run(JSON.stringify([variation.location]), variation.id)
+  })()
 }
 
 const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)
