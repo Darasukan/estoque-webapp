@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onActivated, onMounted, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { useItems, stockAlertStatus } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
@@ -12,7 +12,7 @@ const isLoggedIn = inject('isLoggedIn')
 const isAdmin = inject('isAdmin')
 
 const { items, variations } = useItems()
-const { movements, loadData: loadMovements } = useMovements()
+const { movements } = useMovements()
 const { workOrders } = useWorkOrders()
 const { motors } = useMotors()
 const { closings } = useClosings()
@@ -38,13 +38,6 @@ const dashboardCopy = computed(() => {
     subtitle: 'Consulte saldos e locais. Entre para registrar ou administrar o estoque.',
   }
 })
-
-function refreshDashboardMovements() {
-  loadMovements().catch(err => console.error('Erro ao atualizar movimentacoes do dashboard:', err))
-}
-
-onMounted(refreshDashboardMovements)
-onActivated(refreshDashboardMovements)
 
 const rows = computed(() => variations.value.map(variation => {
   const item = items.value.find(i => i.id === variation.itemId) || {}

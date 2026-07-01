@@ -529,39 +529,39 @@ async function saveEdit() {
 
         </section>
 
-        <section v-else class="p-4">
-          <h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Movimentos</h3>
+        <section v-else class="p-3">
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Movimentos</h3>
           <div>
-            <div v-if="!sortedMovements.length" class="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <div v-if="!sortedMovements.length" class="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
               Nenhuma movimentação registrada para esta variação.
             </div>
-            <div v-else class="space-y-2">
+            <div v-else class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800/40">
               <article
                 v-for="movement in sortedMovements.slice(0, 8)"
                 :key="movement.id"
-                class="rounded-lg border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-800/40"
+                class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-b border-gray-200 px-3 py-2 last:border-b-0 dark:border-gray-700 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
               >
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <span
-                      class="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                      :class="movement.type === 'entrada'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'"
-                    >
-                      {{ movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
-                    </span>
-                    <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ movement.qty }} {{ item.unit }}</p>
-                    <p v-if="movement.type === 'entrada' && movement.unitCost != null" class="mt-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-                      Custo: {{ formatCurrency(movement.unitCost) }}
+                <span
+                  class="inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  :class="movement.type === 'entrada'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'"
+                >
+                  {{ movement.type === 'entrada' ? 'Entrada' : 'Saída' }}
+                </span>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                    <p class="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ movement.qty }} {{ item.unit }}</p>
+                    <p v-if="movement.type === 'entrada' && movement.unitCost != null" class="text-xs font-medium tabular-nums text-gray-700 dark:text-gray-300">
+                      {{ formatCurrency(movement.unitCost) }}
                     </p>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ movementResponsible(movement) }} / {{ movementPlace(movement) }}</p>
-                    <p v-if="movement.note" class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{ movement.note }}</p>
+                    <p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ movementResponsible(movement) }} / {{ movementPlace(movement) }}</p>
                   </div>
-                  <div class="text-right text-xs text-gray-500 dark:text-gray-400">
-                    <p>{{ formatDate(movement.date) }}</p>
-                    <p class="mt-1">Estoque: {{ movement.stockBefore }} → {{ movement.stockAfter }}</p>
-                  </div>
+                  <p v-if="movement.note" class="truncate text-xs text-gray-600 dark:text-gray-300">{{ movement.note }}</p>
+                </div>
+                <div class="col-span-2 flex items-center justify-between gap-3 text-xs tabular-nums text-gray-500 dark:text-gray-400 sm:col-span-1 sm:block sm:text-right">
+                  <p>{{ formatDate(movement.date) }}</p>
+                  <p>Estoque: {{ movement.stockBefore }} → {{ movement.stockAfter }}</p>
                 </div>
               </article>
             </div>

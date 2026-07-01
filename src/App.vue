@@ -675,7 +675,7 @@ function handleGlobalShortcutKeydown(event) {
 
     <!-- Main content -->
     <div
-      class="ds-app-main transition-all duration-300 flex flex-col min-h-screen"
+      class="ds-app-main flex flex-col min-h-screen"
       :class="anySidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
     >
       <!-- Navbar -->

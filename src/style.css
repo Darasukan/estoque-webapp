@@ -447,7 +447,7 @@
   .dashboard-pulse .ds-metric:first-child {
     padding: 1rem;
     background: color-mix(in srgb, var(--ds-danger) 8%, var(--ds-panel));
-    box-shadow: inset 3px 0 0 var(--ds-danger), 0 0 0 1px var(--ds-border-subtle);
+    box-shadow: 0 0 0 1px var(--ds-border-subtle);
   }
 
   .dashboard-pulse .ds-metric:first-child .ds-metric-value {

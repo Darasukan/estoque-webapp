@@ -103,6 +103,7 @@ const selectedVariation = ref(null)
 const searchInputEl = ref(null)
 const qtyInputEl = ref(null)
 const destSearchInputEl = ref(null)
+const supplierListEl = ref(null)
 
 const form = ref({
   qty: '',
@@ -128,9 +129,9 @@ function selectDocType(v) {
 
 const personDropdownOpen = ref(false)
 const supplierDropdownOpen = ref(false)
+const supplierActiveIndex = ref(-1)
 const destDropdownOpen = ref(false)
 const destSearch = ref('')
-const docDropdownOpen = ref(false)
 const personSelectVal = ref('')
 const destSelectVal = ref('')
 const movementDestinationId = ref('')
@@ -186,7 +187,6 @@ function resetFlow() {
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
-  docDropdownOpen.value = false
   nextTick(() => focusRef(searchInputEl))
 }
 
@@ -197,7 +197,6 @@ function adaptFormForSubTab(tab) {
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
-  docDropdownOpen.value = false
   if (tab === 'entrada') {
     form.value.requestedBy = ''
     form.value.requestedByPersonId = ''
@@ -335,9 +334,9 @@ function resetCurrentItem() {
   docType.value = 'sem'
   selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
+  supplierDropdownOpen.value = false
   destDropdownOpen.value = false
   destSearch.value = ''
-  docDropdownOpen.value = false
   confirmPending.value = false
   movementFormAttempted.value = false
   nextTick(() => focusRef(searchInputEl))
@@ -636,10 +635,47 @@ const supplierNameExists = computed(() => {
 function selectSupplier(supplier) {
   form.value.supplier = supplier.name
   supplierDropdownOpen.value = false
+  supplierActiveIndex.value = -1
 }
 
-function handleSupplierEnter() {
-  if (filteredSuppliers.value.length === 1) selectSupplier(filteredSuppliers.value[0])
+function openSupplierDropdown() {
+  supplierDropdownOpen.value = true
+  supplierActiveIndex.value = -1
+}
+
+function closeSupplierDropdown() {
+  supplierDropdownOpen.value = false
+  supplierActiveIndex.value = -1
+}
+
+function handleSupplierKeydown(event) {
+  if (event.key === 'Tab') {
+    closeSupplierDropdown()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSupplierDropdown()
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    const supplier = filteredSuppliers.value[supplierActiveIndex.value]
+      || (filteredSuppliers.value.length === 1 ? filteredSuppliers.value[0] : null)
+    if (supplier) selectSupplier(supplier)
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp'].includes(event.key) || !filteredSuppliers.value.length) return
+
+  event.preventDefault()
+  supplierDropdownOpen.value = true
+  const direction = event.key === 'ArrowDown' ? 1 : -1
+  supplierActiveIndex.value = (
+    supplierActiveIndex.value + direction + filteredSuppliers.value.length
+  ) % filteredSuppliers.value.length
+  nextTick(() => supplierListEl.value
+    ?.querySelector('[aria-selected="true"]')
+    ?.scrollIntoView({ block: 'nearest' }))
 }
 
 const filteredPeople = computed(() => {
@@ -1999,7 +2035,10 @@ defineExpose({
         </div>
 
         <!-- Form body -->
-        <div class="bg-white dark:bg-gray-900 p-5 rounded-b-xl">
+        <form
+          class="bg-white dark:bg-gray-900 p-5 rounded-b-xl"
+          @submit.prevent="tryConfirmCurrentMovement"
+        >
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 content-start">
 
           <!-- Quantidade -->
@@ -2036,26 +2075,40 @@ defineExpose({
             <div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fornecedor</label>
               <div class="relative">
-                <div v-if="supplierDropdownOpen" class="fixed inset-0 z-10" @click="supplierDropdownOpen = false"></div>
+                <div v-if="supplierDropdownOpen" class="fixed inset-0 z-10" @click="closeSupplierDropdown"></div>
                 <input
                   v-model="form.supplier"
                   type="text"
+                  role="combobox"
+                  aria-controls="supplier-options"
+                  :aria-expanded="supplierDropdownOpen"
+                  :aria-activedescendant="supplierActiveIndex >= 0 ? `supplier-option-${filteredSuppliers[supplierActiveIndex]?.id}` : undefined"
                   placeholder="Buscar ou digitar fornecedor..."
                   class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-                  @focus="supplierDropdownOpen = true"
-                  @input="supplierDropdownOpen = true"
-                  @keydown.enter.prevent="handleSupplierEnter"
+                  @focus="openSupplierDropdown"
+                  @input="openSupplierDropdown"
+                  @blur="closeSupplierDropdown"
+                  @keydown="handleSupplierKeydown"
                 />
                 <div
                   v-if="supplierDropdownOpen"
+                  id="supplier-options"
+                  ref="supplierListEl"
+                  role="listbox"
                   class="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden"
                 >
                   <div class="max-h-56 overflow-y-auto py-1">
                     <button
-                      v-for="supplier in filteredSuppliers"
+                      v-for="(supplier, index) in filteredSuppliers"
+                      :id="`supplier-option-${supplier.id}`"
                       :key="supplier.id"
                       type="button"
+                      role="option"
+                      tabindex="-1"
+                      :aria-selected="supplierActiveIndex === index"
                       class="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors"
+                      :class="supplierActiveIndex === index ? 'bg-gray-50 dark:bg-gray-700/60' : ''"
+                      @mouseenter="supplierActiveIndex = index"
                       @mousedown.prevent="selectSupplier(supplier)"
                     >
                       <span class="font-medium truncate">{{ supplier.name }}</span>
@@ -2091,42 +2144,20 @@ defineExpose({
                 class="flex items-stretch rounded-xl border transition-colors"
                 :class="docType !== 'sem' ? 'border-gray-300 dark:border-gray-600 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500' : 'border-gray-200 dark:border-gray-700'"
               >
-                <!-- Custom type picker -->
                 <div class="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700">
-                  <div v-if="docDropdownOpen" class="fixed inset-0 z-10" @click="docDropdownOpen = false"></div>
-                  <button
-                    type="button"
-                    class="h-full flex items-center gap-1.5 pl-3 pr-2 py-2.5 text-xs font-semibold transition-colors focus:outline-none rounded-l-xl"
+                  <select
+                    v-model="docType"
+                    aria-label="Tipo de documento"
+                    class="h-full min-w-28 rounded-l-xl border-0 px-3 py-2.5 text-xs font-semibold transition-colors focus:outline-none"
                     :class="docType !== 'sem'
                       ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/30'
                       : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/60'"
-                    @click="docDropdownOpen = !docDropdownOpen"
+                    @change="selectDocType(docType)"
                   >
-                    <span>{{ docType === 'nf' ? 'NF-e' : docType === 'pedido' ? 'PC' : 'Sem doc.' }}</span>
-                    <svg class="w-3.5 h-3.5 opacity-60 transition-transform duration-150" :class="docDropdownOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
-                  <!-- Dropdown panel -->
-                  <div
-                    v-if="docDropdownOpen"
-                    class="absolute z-20 top-full left-0 mt-1 min-w-[130px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden py-1"
-                  >
-                    <button
-                      v-for="opt in [{ v: 'sem', label: 'Sem doc.' }, { v: 'nf', label: 'NF-e' }, { v: 'pedido', label: 'PC' }]"
-                      :key="opt.v"
-                      type="button"
-                      class="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors"
-                      :class="docType === opt.v
-                        ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60'"
-                      @click="selectDocType(opt.v); docDropdownOpen = false"
-                    >
-                      <svg v-if="docType === opt.v" class="w-3.5 h-3.5 text-primary-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" /></svg>
-                      <span v-else class="w-3.5"></span>
-                      {{ opt.label }}
-                    </button>
-                  </div>
+                    <option value="sem">Sem doc.</option>
+                    <option value="nf">NF-e</option>
+                    <option value="pedido">PC</option>
+                  </select>
                 </div>
                 <!-- Number input -->
                 <input
@@ -2260,6 +2291,7 @@ defineExpose({
 
           <div class="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-wrap items-center gap-3">
             <button
+              type="submit"
               class="px-5 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
               :class="canConfirm && !confirmPending
                 ? activeSubTab === 'entrada'
@@ -2268,7 +2300,6 @@ defineExpose({
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"
               :aria-disabled="!canConfirm || confirmPending"
               :disabled="confirmPending"
-              @click="tryConfirmCurrentMovement"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path v-if="activeSubTab === 'entrada'" stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0-15 6 6m-6-6-6 6" />
@@ -2277,6 +2308,7 @@ defineExpose({
               {{ confirmPending ? 'Registrando...' : activeSubTab === 'entrada' ? 'Registrar entrada' : 'Registrar saida' }}
             </button>
             <button
+              type="button"
               class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               @click="resetCurrentItem"
             >
@@ -2287,7 +2319,7 @@ defineExpose({
             </p>
           </div>
           </div>
-        </div>
+        </form>
 
       </div>
 
