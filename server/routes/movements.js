@@ -2,7 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
-import { calculateStockAfter, parsePositiveQty } from '../utils/stockMath.js'
+import { calculateStockAfter, isAdminStockAdjustment, parsePositiveQty } from '../utils/stockMath.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 
 const router = Router()
@@ -137,11 +137,12 @@ router.post('/', requireAuth, (req, res) => {
 
   const costValidation = parseOptionalCostStrict(m.unitCost)
   if (m.type === 'entrada' && !costValidation.ok) return res.status(400).json({ error: costValidation.error })
+  const isStockAdjustment = isAdminStockAdjustment(m.docRef, req.user?.role)
   const supplierValidation = m.type === 'entrada' ? validateMovementSupplier(m) : { ok: true, supplier: '' }
   if (!supplierValidation.ok) return res.status(400).json({ error: supplierValidation.error })
-  const personValidation = m.type === 'saida' ? validateMovementPerson(m) : { ok: true, requestedBy: '', requestedByPersonId: '' }
+  const personValidation = m.type === 'saida' && !isStockAdjustment ? validateMovementPerson(m) : { ok: true, requestedBy: '', requestedByPersonId: '' }
   if (!personValidation.ok) return res.status(400).json({ error: personValidation.error })
-  const destinationValidation = m.type === 'saida' ? validateMovementDestination(m) : { ok: true, destination: '' }
+  const destinationValidation = m.type === 'saida' && !isStockAdjustment ? validateMovementDestination(m) : { ok: true, destination: '' }
   if (!destinationValidation.ok) return res.status(400).json({ error: destinationValidation.error })
 
   const unitCost = m.type === 'entrada' ? costValidation.value : null

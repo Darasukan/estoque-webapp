@@ -1155,6 +1155,11 @@ const {
                   <input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" :disabled="aiCatalogLoading" @change="onAiCatalogImageSelected" />
                   {{ aiCatalogImage ? 'Trocar foto' : 'Selecionar foto' }}
                 </label>
+                <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-100 focus-within:ring-2 focus-within:ring-primary-400 focus-within:ring-offset-2 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-within:ring-offset-gray-900" :class="aiCatalogLoading ? 'pointer-events-none opacity-60' : ''">
+                  <input class="sr-only" type="file" accept="image/*" capture="environment" :disabled="aiCatalogLoading" @change="onAiCatalogImageSelected" />
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175 7.7 4.65A1.5 1.5 0 0 1 9.002 3.9h5.996a1.5 1.5 0 0 1 1.302.75l.873 1.525A1.5 1.5 0 0 0 18.475 6.9H19.5A1.5 1.5 0 0 1 21 8.4v9.6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V8.4a1.5 1.5 0 0 1 1.5-1.5h1.025a1.5 1.5 0 0 0 1.302-.725Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 12.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" /></svg>
+                  Tirar foto
+                </label>
                 <button v-if="aiCatalogImage" type="button" class="min-h-9 rounded-md px-3 text-xs font-medium text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200" @click="clearAiCatalogImage">Remover</button>
                 <span v-if="aiCatalogLoading" class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                   <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" /><path class="opacity-75" fill="currentColor" d="M21 12a9 9 0 0 0-9-9v3a6 6 0 0 1 6 6h3Z" /></svg>

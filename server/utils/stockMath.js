@@ -12,3 +12,7 @@ export function calculateStockAfter(type, stockBefore, qty) {
 export function hasEnoughStock(type, stockBefore, qty) {
   return calculateStockAfter(type, stockBefore, qty) >= 0
 }
+
+export function isAdminStockAdjustment(docRef, role) {
+  return role === 'admin' && String(docRef || '').trim().toUpperCase() === 'AJUSTE'
+}

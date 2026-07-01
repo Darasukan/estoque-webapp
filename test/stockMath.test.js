@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateStockAfter, hasEnoughStock, parsePositiveQty } from '../server/utils/stockMath.js'
+import { calculateStockAfter, hasEnoughStock, isAdminStockAdjustment, parsePositiveQty } from '../server/utils/stockMath.js'
 
 test('parsePositiveQty accepts only positive finite numbers', () => {
   assert.equal(parsePositiveQty(3), 3)
@@ -23,4 +23,11 @@ test('hasEnoughStock blocks negative exit stock', () => {
 
 test('calculateStockAfter rejects invalid movement type', () => {
   assert.throws(() => calculateStockAfter('ajuste', 10, 1), /Tipo de movimentacao invalido/)
+})
+
+test('only admins can bypass exit details for stock adjustments', () => {
+  assert.equal(isAdminStockAdjustment('AJUSTE', 'admin'), true)
+  assert.equal(isAdminStockAdjustment(' ajuste ', 'admin'), true)
+  assert.equal(isAdminStockAdjustment('AJUSTE', 'operador'), false)
+  assert.equal(isAdminStockAdjustment('NF-E', 'admin'), false)
 })
