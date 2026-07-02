@@ -3273,7 +3273,7 @@ function matBackToStep2() {
                   </div>
                 </section>
 
-                <section v-if="isMotorMode && motorOrderEventLabel(order)" class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30 lg:col-span-2">
+                <section v-if="isMotorMode && motorOrderEventLabel(order)" class="rounded-lg border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30 lg:order-last lg:col-span-2">
                   <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Evento do motor</h4>
                   <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <div>
