@@ -8,6 +8,7 @@ import { useMovements } from '../composables/useMovements.js'
 import { useMotors, MOTOR_EVENT_TYPES, MOTOR_STATUSES, motorEventLabel, motorOpenEventLabel, motorStatusLabel } from '../composables/useMotors.js'
 import { useToast } from '../composables/useToast.js'
 import AppButton from '../components/ui/AppButton.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import PersonPicker from '../components/ui/PersonPicker.vue'
@@ -2431,7 +2432,7 @@ function matBackToStep2() {
             :key="tab.id"
             type="button"
             class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-            :class="ordersStatusTab === tab.id ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            :class="ordersStatusTab === tab.id ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
             @click="ordersStatusTab = tab.id"
           >
             {{ tab.label }}
@@ -2444,12 +2445,12 @@ function matBackToStep2() {
       </div>
 
       <!-- New OS form -->
-      <div
+      <component
         v-if="showNewForm && (activeSubTab === 'ordens' || activeSubTab === 'nova' || createOnly || editingOrderId)"
-        :class="createOnly ? 'ds-panel p-4' : 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4'"
-        role="dialog"
-        aria-modal="true"
-        @click.self="cancelNewOsForm"
+        :is="createOnly ? 'div' : AppDialog"
+        v-bind="createOnly ? {} : { visible: true, ariaLabel: 'Formulário de ordem de serviço' }"
+        :class="createOnly ? 'ds-panel p-4' : ''"
+        @close="cancelNewOsForm"
       >
         <div :class="createOnly ? 'space-y-4' : 'ds-panel flex max-h-[calc(100vh-1rem)] w-full max-w-5xl flex-col overflow-hidden p-3 shadow-2xl sm:p-4'">
         <div class="flex items-center justify-between gap-3">
@@ -2474,13 +2475,13 @@ function matBackToStep2() {
           <button
             type="button"
             class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-            :class="osEntryMode === 'form' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            :class="osEntryMode === 'form' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
             @click="osEntryMode = 'form'"
           >Formulário</button>
           <button
             type="button"
             class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-            :class="osEntryMode === 'quick' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            :class="osEntryMode === 'quick' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
             @click="osEntryMode = 'quick'"
           >Preenchimento rápido</button>
         </div>
@@ -2498,7 +2499,7 @@ function matBackToStep2() {
                 type="button"
                 class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
                 :class="quickKeepValues
-                  ? 'bg-primary-600 text-white hover:bg-primary-700'
+                  ? 'bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700'"
                 @click="quickKeepValues = !quickKeepValues"
               >
@@ -2529,7 +2530,7 @@ function matBackToStep2() {
                     <span
                       class="flex h-4 w-4 items-center justify-center rounded border"
                       :class="isQuickFieldVisible(field.key)
-                        ? 'border-primary-500 bg-primary-600 text-white'
+                        ? 'border-primary-500 bg-primary-600 text-[var(--ds-primary-text)]'
                         : 'border-gray-300 dark:border-gray-600'"
                     >
                       <svg v-if="isQuickFieldVisible(field.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
@@ -2717,13 +2718,13 @@ function matBackToStep2() {
                 <button
                   type="button"
                   class="px-2 py-2 text-xs font-medium transition-colors"
-                  :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   @click="osForm.maintenanceLocationType = 'interna'"
                 >Interna</button>
                 <button
                   type="button"
                   class="px-2 py-2 text-xs font-medium transition-colors"
-                  :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   @click="osForm.maintenanceLocationType = 'externa'"
                 >Externa</button>
               </div>
@@ -2750,7 +2751,7 @@ function matBackToStep2() {
                   <button
                     type="button"
                     class="px-2 py-2 text-xs font-medium transition-colors"
-                    :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                    :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                     @click="osForm.maintenanceLocationType = 'interna'"
                   >Interna</button>
                   <button
@@ -2758,7 +2759,7 @@ function matBackToStep2() {
                     class="px-2 py-2 text-xs font-medium transition-colors"
                     :disabled="osForm.initialMotorEventType === 'movimentado'"
                     :class="[
-                      osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                      osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
                       osForm.initialMotorEventType === 'movimentado' ? 'cursor-not-allowed opacity-50' : ''
                     ]"
                     @click="osForm.maintenanceLocationType = 'externa'"
@@ -2893,11 +2894,11 @@ function matBackToStep2() {
           class="flex items-center gap-2"
           :class="createOnly ? 'pt-1' : 'shrink-0 border-t border-gray-200 bg-white pt-3 dark:border-gray-700 dark:bg-gray-900'"
         >
-          <button class="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" @click="handleSubmitOS">{{ formSubmitLabel }}</button>
+          <button class="px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" @click="handleSubmitOS">{{ formSubmitLabel }}</button>
           <button class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" @click="cancelNewOsForm">Cancelar</button>
         </div>
         </div>
-      </div>
+      </component>
 
       <!-- Orders list -->
       <EmptyState
@@ -2950,7 +2951,7 @@ function matBackToStep2() {
             <button
               v-if="isLoggedIn"
               type="button"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+              class="px-3 py-1.5 text-xs font-medium text-[var(--ds-primary-text)] bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
               @click.stop="startEditOS(order)"
             >
               Editar
@@ -2982,12 +2983,12 @@ function matBackToStep2() {
             </template>
           </div>
 
-          <div
+          <AppDialog
             v-if="expandedOrderId === order.id && editingOrderId !== order.id"
-            class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6"
-            role="dialog"
-            aria-modal="true"
-            @click.self="expandedOrderId = null; motorEventOrderId = null"
+            visible
+            align="start"
+            aria-label="Detalhes da ordem de serviço"
+            @close="expandedOrderId = null; motorEventOrderId = null"
           >
             <div class="ds-panel max-h-[calc(100vh-2rem)] w-full max-w-6xl space-y-4 overflow-y-auto p-4 shadow-2xl sm:p-5">
               <div class="flex items-start justify-between gap-4 border-b border-gray-200 pb-4 dark:border-gray-700">
@@ -3042,13 +3043,13 @@ function matBackToStep2() {
                         <button
                           type="button"
                           class="px-2 py-2 text-xs font-medium transition-colors"
-                          :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                          :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                           @click="osForm.maintenanceLocationType = 'interna'"
                         >Interna</button>
                         <button
                           type="button"
                           class="px-2 py-2 text-xs font-medium transition-colors"
-                          :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                          :class="osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                           @click="osForm.maintenanceLocationType = 'externa'"
                         >Externa</button>
                       </div>
@@ -3073,7 +3074,7 @@ function matBackToStep2() {
                           <button
                             type="button"
                             class="px-2 py-2 text-xs font-medium transition-colors"
-                            :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                            :class="osForm.maintenanceLocationType === 'interna' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                             @click="osForm.maintenanceLocationType = 'interna'"
                           >Interna</button>
                           <button
@@ -3081,7 +3082,7 @@ function matBackToStep2() {
                             class="px-2 py-2 text-xs font-medium transition-colors"
                             :disabled="motorEventForm.eventType === 'movimentado'"
                             :class="[
-                              osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
+                              osForm.maintenanceLocationType === 'externa' ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
                               motorEventForm.eventType === 'movimentado' ? 'cursor-not-allowed opacity-50' : ''
                             ]"
                             @click="osForm.maintenanceLocationType = 'externa'"
@@ -3215,7 +3216,7 @@ function matBackToStep2() {
                 </div>
 
                 <div class="flex gap-2">
-                  <button class="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg" @click="handleEditOS(order.id)">Salvar</button>
+                  <button class="px-3 py-1.5 text-sm font-medium text-[var(--ds-primary-text)] bg-primary-600 hover:bg-primary-700 rounded-lg" @click="handleEditOS(order.id)">Salvar</button>
                   <button class="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" @click="cancelEdit">Cancelar</button>
                 </div>
               </div>
@@ -3565,7 +3566,7 @@ function matBackToStep2() {
               </div>
             </template>
           </div>
-        </div>
+        </AppDialog>
         </div>
 
         <div v-if="ordersTotalPages > 1" class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
@@ -3587,7 +3588,7 @@ function matBackToStep2() {
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            class="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="!historyOrders.length"
             @click="exportFilteredHistoryCsv"
           >
@@ -3794,7 +3795,7 @@ function matBackToStep2() {
       </div>
     </template>
 
-    <div v-if="addingMaterialToId" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @mousedown.self="cancelAddMaterial">
+    <AppDialog v-if="addingMaterialToId" visible aria-label="Adicionar material do catálogo" @close="cancelAddMaterial">
       <div class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <div>
@@ -3970,7 +3971,7 @@ function matBackToStep2() {
                         <td class="px-4 py-3 text-right">
                           <button
                             type="button"
-                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700"
                             @click.stop="selectMatVariation(variation)"
                           >
                             Selecionar
@@ -4048,6 +4049,6 @@ function matBackToStep2() {
           </template>
         </div>
       </div>
-    </div>
+    </AppDialog>
   </div>
 </template>

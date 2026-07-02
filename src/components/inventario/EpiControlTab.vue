@@ -5,6 +5,7 @@ import { personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
+import AppDialog from '../ui/AppDialog.vue'
 
 const emit = defineEmits(['quick-movement'])
 
@@ -489,7 +490,7 @@ function quickMovement(record) {
                   </button>
                   <button
                     type="button"
-                    class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-700 cursor-pointer"
+                    class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 cursor-pointer"
                     @click="quickMovement(record)"
                   >
                     Registrar saida
@@ -521,10 +522,11 @@ function quickMovement(record) {
       </div>
     </div>
 
-    <div
+    <AppDialog
       v-if="historyRecord"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-      @click.self="historyRecord = null"
+      visible
+      aria-label="Histórico de retirada de EPI"
+      @close="historyRecord = null"
     >
       <section class="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
@@ -572,6 +574,6 @@ function quickMovement(record) {
           Nenhuma retirada registrada para este EPI desta pessoa.
         </div>
       </section>
-    </div>
+    </AppDialog>
   </section>
 </template>

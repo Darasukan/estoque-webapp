@@ -1,10 +1,12 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { ref } from 'vue'
 import AppButton from './AppButton.vue'
+import AppDialog from './AppDialog.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   title: { type: String, default: '' },
+  ariaLabel: { type: String, default: 'Janela de diálogo' },
   confirmLoading: { type: Boolean, default: false },
   confirmDisabled: { type: Boolean, default: false },
   showActions: { type: Boolean, default: true },
@@ -14,40 +16,23 @@ const props = defineProps({
 const emit = defineEmits(['close', 'confirm'])
 
 const inputValue = ref('')
-const dialogRef = ref(null)
-const titleId = `app-modal-${useId()}`
-
-async function syncDialog(visible) {
-  await nextTick()
-  const dialog = dialogRef.value
-  if (!dialog) return
-  if (visible && !dialog.open) dialog.showModal()
-  if (!visible && dialog.open) dialog.close()
-}
 
 function requestClose() {
   if (!props.persistent) emit('close')
 }
 
-watch(() => props.visible, syncDialog)
-onMounted(() => syncDialog(props.visible))
-onUnmounted(() => dialogRef.value?.close())
-
 defineExpose({ inputValue })
 </script>
 
 <template>
-  <Teleport to="body">
-    <dialog
-      ref="dialogRef"
-      class="fixed inset-0 z-50 m-0 h-screen w-screen max-w-none bg-transparent p-0 backdrop:bg-black/85"
-      aria-modal="true"
-      :aria-labelledby="titleId"
-      @cancel.prevent="requestClose"
-    >
-      <div class="flex min-h-full items-center justify-center p-4" @click.self="requestClose">
-      <div class="ds-panel w-full max-w-md p-6">
-        <h3 :id="titleId" class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+  <AppDialog
+    :visible="visible"
+    :aria-label="title || ariaLabel"
+    :persistent="persistent"
+    @close="requestClose"
+  >
+    <div class="ds-panel w-full max-w-md p-6">
+        <h3 v-if="title" class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           {{ title }}
         </h3>
 
@@ -62,7 +47,5 @@ defineExpose({ inputValue })
           </AppButton>
         </div>
       </div>
-      </div>
-    </dialog>
-  </Teleport>
+  </AppDialog>
 </template>

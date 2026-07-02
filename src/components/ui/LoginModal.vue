@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useAuth } from '../../composables/useAuth.js'
 import AppButton from './AppButton.vue'
+import AppModal from './AppModal.vue'
 
 defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
@@ -39,14 +40,7 @@ function onCancel() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="show"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/85"
-      @click.self="onCancel"
-      @keydown.escape="onCancel"
-    >
-      <div class="ds-panel w-full max-w-sm mx-4 p-6" @click.stop>
+  <AppModal :visible="show" :show-actions="false" aria-label="Entrar" @close="onCancel">
         <div class="mb-5 flex justify-center">
           <img
             :src="localBrandLogo"
@@ -110,7 +104,5 @@ function onCancel() {
             >Entrar</AppButton>
           </div>
         </form>
-      </div>
-    </div>
-  </Teleport>
+  </AppModal>
 </template>

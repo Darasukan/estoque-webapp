@@ -12,6 +12,7 @@ import { useDestinationSummary } from '../composables/useDestinationSummary.js'
 import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -1564,7 +1565,7 @@ defineExpose({
             <span
               class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
               :class="step === i + 1
-                ? 'bg-primary-600 dark:bg-primary-500 text-white'
+                ? 'bg-primary-600 dark:bg-primary-500 text-[var(--ds-primary-text)]'
                 : step > i + 1
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
@@ -2601,7 +2602,7 @@ defineExpose({
               type="button"
               class="w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
               :class="quickEntryQueue.length && !quickEntryPending
-                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                ? 'bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700'
                 : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
               :disabled="!quickEntryQueue.length || quickEntryPending"
               @click="confirmQuickEntryQueue"
@@ -2829,7 +2830,7 @@ defineExpose({
               type="button"
               class="w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
               :class="quickExitQueue.length && !quickExitPending
-                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                ? 'bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700'
                 : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'"
               :disabled="!quickExitQueue.length || quickExitPending"
               @click="confirmQuickExitQueue"
@@ -3034,12 +3035,12 @@ defineExpose({
   </div>
 
   <!-- ===== Edit Movement Modal ===== -->
-  <Teleport to="body">
-    <div
-      v-if="editingMovement"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      @click.self="cancelEditMovement"
-    >
+  <AppDialog
+    v-if="editingMovement"
+    visible
+    aria-label="Editar movimentação"
+    @close="cancelEditMovement"
+  >
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" @click.stop>
         <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-400 mb-1">
           Editar {{ editingMovement.type === 'entrada' ? 'Entrada' : 'Saída' }}
@@ -3222,12 +3223,11 @@ defineExpose({
             @click="cancelEditMovement"
           >Cancelar</button>
           <button
-            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!canSaveEditMovement"
             @click="saveEditMovement"
           >{{ editMovementSaving ? 'Salvando...' : 'Salvar' }}</button>
         </div>
       </div>
-    </div>
-  </Teleport>
+  </AppDialog>
 </template>

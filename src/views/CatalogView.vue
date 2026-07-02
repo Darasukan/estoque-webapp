@@ -14,6 +14,7 @@ import {
   variationFormForItem,
 } from '../utils/variationForm.js'
 import VariationSheet from '../components/ui/VariationSheet.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -680,7 +681,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
   <div>
     <div v-if="isAdmin && !viewingItem" class="mb-4 flex justify-end">
       <button
-        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500"
         @click="startDirectVariation"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -783,7 +784,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         </div>
         <button
           v-if="isAdmin"
-          class="px-4 py-2 text-sm font-medium bg-primary-700 dark:bg-primary-600 text-white rounded-lg hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors flex items-center gap-1.5 flex-shrink-0"
+          class="px-4 py-2 text-sm font-medium bg-primary-700 dark:bg-primary-600 text-[var(--ds-primary-text)] rounded-lg hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors flex items-center gap-1.5 flex-shrink-0"
           @click="startAddVariation"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1197,12 +1198,12 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
   />
 
   <!-- ===== Variation Add/Edit Modal ===== -->
-  <Teleport to="body">
-    <div
-      v-if="showVarModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      @click.self="cancelVariation"
-    >
+  <AppDialog
+    v-if="showVarModal"
+    visible
+    aria-label="Adicionar ou editar variação"
+    @close="cancelVariation"
+  >
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" @click.stop>
         <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-400 mb-5">
           {{ varModalTitle }}
@@ -1391,15 +1392,14 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
             @click="cancelVariation"
           >Cancelar</button>
           <button
-            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
+            class="px-4 py-2 text-sm rounded-lg bg-primary-700 dark:bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors font-medium"
             :disabled="directVariationMode && !variationFormItem"
             :class="directVariationMode && !variationFormItem ? 'cursor-not-allowed opacity-60' : ''"
             @click="saveVariation"
           >{{ directVariationMode ? 'Criar variação' : 'Adicionar' }}</button>
         </div>
       </div>
-    </div>
-  </Teleport>
+  </AppDialog>
 
   <!-- Teleported combobox dropdowns — renders outside any overflow-hidden container -->
   <Teleport to="body">

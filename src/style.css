@@ -17,6 +17,10 @@
   --color-primary-950: transparent;
 }
 
+:is(.bg-primary-500, .bg-primary-600, .bg-primary-700, .bg-primary-800) {
+  color: var(--ds-primary-text);
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {

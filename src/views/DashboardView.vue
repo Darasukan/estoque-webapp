@@ -6,6 +6,8 @@ import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useMotors } from '../composables/useMotors.js'
 import { useClosings } from '../composables/useClosings.js'
 import { useDestinations } from '../composables/useDestinations.js'
+import AppButton from '../components/ui/AppButton.vue'
+import StatusBadge from '../components/ui/StatusBadge.vue'
 
 const emit = defineEmits(['go'])
 const isLoggedIn = inject('isLoggedIn')
@@ -493,9 +495,9 @@ watch(topConsumedAllItems, () => {
           <div class="flex items-center gap-2">
             <span class="ds-chip">{{ lowStockAllRows.length }} itens</span>
             <div v-if="lowStockTotalPages > 1" class="flex items-center gap-1">
-              <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="lowStockPage <= 1" @click="lowStockPage--">Anterior</button>
+              <AppButton variant="ghost" size="xs" :disabled="lowStockPage <= 1" @click="lowStockPage--">Anterior</AppButton>
               <span class="ds-chip">{{ lowStockPage }}/{{ lowStockTotalPages }}</span>
-              <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="lowStockPage >= lowStockTotalPages" @click="lowStockPage++">Próxima</button>
+              <AppButton variant="ghost" size="xs" :disabled="lowStockPage >= lowStockTotalPages" @click="lowStockPage++">Próxima</AppButton>
             </div>
           </div>
         </div>
@@ -550,9 +552,9 @@ watch(topConsumedAllItems, () => {
           <div class="flex items-center gap-2">
             <span class="ds-chip">Ranking</span>
             <div v-if="consumedTotalPages > 1" class="flex items-center gap-1">
-              <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="consumedPage <= 1" @click="consumedPage--">Anterior</button>
+              <AppButton variant="ghost" size="xs" :disabled="consumedPage <= 1" @click="consumedPage--">Anterior</AppButton>
               <span class="ds-chip">{{ consumedCurrentPage }}/{{ consumedTotalPages }}</span>
-              <button class="ds-chip cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" :disabled="consumedPage >= consumedTotalPages" @click="consumedPage++">Próxima</button>
+              <AppButton variant="ghost" size="xs" :disabled="consumedPage >= consumedTotalPages" @click="consumedPage++">Próxima</AppButton>
             </div>
           </div>
         </div>
@@ -606,7 +608,7 @@ watch(topConsumedAllItems, () => {
               <p class="font-medium text-gray-900 dark:text-gray-100 truncate">OS #{{ order.number }} - {{ order.title }}</p>
               <p class="text-xs ds-muted truncate">{{ order.requestedBy || '-' }} / {{ order.destinationName || order.maintenanceLocationName || '-' }}</p>
             </div>
-            <span class="ds-chip">Aberta</span>
+            <StatusBadge status="aberto" label="Aberta" size="xs" />
           </div>
         </button>
       </section>

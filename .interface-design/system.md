@@ -36,6 +36,7 @@ Assinatura do produto: ficha de circulacao que conecta material, saldo, local ou
 ## Padroes reutilizaveis
 
 - Botoes: `xs/sm` com 36 px, `md` com 40 px, `lg` com 44 px e icone com 40 px; primario reservado a acao principal e perigo solido apenas para confirmacao destrutiva.
+- Dialogos: `AppModal` para confirmacoes simples e `AppDialog` para fluxos complexos; ambos usam `<dialog>` nativo, nome acessivel, foco preso, `Esc`, retorno de foco e fechamento pelo backdrop quando nao persistentes.
 - Abas: navegacao principal, contexto e controle segmentado sao camadas distintas; segmentado usa recipiente discreto e aba ativa elevada sobre a superficie.
 - Tabelas: cabecalho fixo, linhas de 44 px, numeros tabulares, acoes na ultima coluna e rolagem horizontal quando necessario.
 - Selecao em listas: fundo ativo, texto contrastante, icone e contador herdando a cor do estado.

@@ -1,4 +1,6 @@
 <script setup>
+import AppButton from './AppButton.vue'
+
 defineProps({
   title: { type: String, default: 'Nenhum registro encontrado.' },
   text: { type: String, default: '' },
@@ -21,14 +23,14 @@ defineEmits(['action'])
     <p v-if="text" class="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">{{ text }}</p>
     <div v-if="$slots.default || actionLabel" class="mt-4">
       <slot />
-      <button
+      <AppButton
         v-if="actionLabel"
-        type="button"
-        class="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700"
+        variant="primary"
+        size="sm"
         @click="$emit('action')"
       >
         {{ actionLabel }}
-      </button>
+      </AppButton>
     </div>
   </div>
 </template>

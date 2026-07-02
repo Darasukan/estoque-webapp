@@ -7,6 +7,7 @@ import { useItems } from '../composables/useItems.js'
 import { useToast } from '../composables/useToast.js'
 import OrdensServicoView from './OrdensServicoView.vue'
 import AppButton from '../components/ui/AppButton.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
 import ConfirmInline from '../components/ui/ConfirmInline.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
@@ -972,10 +973,11 @@ function workOrderItemVariationLabel(item) {
         text="Vincule rolamentos, tampas, buchas ou outras peças cadastradas no catálogo."
       />
 
-      <div
+      <AppDialog
         v-if="motorMaterialSelectorOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-        @click.self="motorMaterialSelectorOpen = false"
+        visible
+        aria-label="Selecionar material do catálogo"
+        @close="motorMaterialSelectorOpen = false"
       >
         <section class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
           <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
@@ -1156,7 +1158,7 @@ function workOrderItemVariationLabel(item) {
             </div>
           </div>
         </section>
-      </div>
+      </AppDialog>
     </section>
   </div>
 
@@ -1357,21 +1359,23 @@ function workOrderItemVariationLabel(item) {
 
       <div class="ds-toolbar flex-wrap gap-1.5">
         <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mr-1">Ordenar</span>
-        <button
-          v-for="option in [
-            { key: 'tag', label: 'Tag' },
-            { key: 'name', label: 'Nome' },
-            { key: 'destination', label: 'Local' },
-            { key: 'status', label: 'Status' },
-          ]"
-          :key="option.key"
-          type="button"
-          class="ds-chip cursor-pointer transition-colors"
-          :class="motorSortKey === option.key ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
-          @click="setMotorSort(option.key)"
-        >
-          {{ option.label }} {{ motorSortArrow(option.key) }}
-        </button>
+        <div class="ds-segmented flex-wrap">
+          <button
+            v-for="option in [
+              { key: 'tag', label: 'Tag' },
+              { key: 'name', label: 'Nome' },
+              { key: 'destination', label: 'Local' },
+              { key: 'status', label: 'Status' },
+            ]"
+            :key="option.key"
+            type="button"
+            class="ds-segmented-item"
+            :class="{ 'ds-segmented-item-active': motorSortKey === option.key }"
+            @click="setMotorSort(option.key)"
+          >
+            {{ option.label }} {{ motorSortArrow(option.key) }}
+          </button>
+        </div>
       </div>
 
       <div class="ds-list-panel">
@@ -1621,10 +1625,11 @@ function workOrderItemVariationLabel(item) {
 
   </div>
 
-  <div
+  <AppDialog
     v-if="selectedMotor && eventSummaryOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-    @click.self="eventSummaryOpen = false"
+    visible
+    aria-label="Eventos contabilizados do motor"
+    @close="eventSummaryOpen = false"
   >
     <div class="ds-panel w-full max-w-3xl overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
@@ -1698,12 +1703,13 @@ function workOrderItemVariationLabel(item) {
         </div>
       </div>
     </div>
-  </div>
+  </AppDialog>
 
-  <div
+  <AppDialog
     v-if="workOrderPreview"
-    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 px-4"
-    @click.self="workOrderPreview = null"
+    visible
+    aria-label="Visualizador de ordem de serviço"
+    @close="workOrderPreview = null"
   >
     <div class="ds-panel w-full max-w-4xl overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-start justify-between gap-3">
@@ -1806,12 +1812,13 @@ function workOrderItemVariationLabel(item) {
         </div>
       </div>
     </div>
-  </div>
+  </AppDialog>
 
-  <div
+  <AppDialog
     v-if="selectedMotor && locationTrailOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-    @click.self="locationTrailOpen = false"
+    visible
+    aria-label="Histórico de locais do motor"
+    @close="locationTrailOpen = false"
   >
     <div class="ds-panel w-full max-w-2xl overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
@@ -1842,5 +1849,5 @@ function workOrderItemVariationLabel(item) {
         <p v-else class="text-sm text-gray-500 dark:text-gray-400">Nenhum período de local registrado para este motor.</p>
       </div>
     </div>
-  </div>
+  </AppDialog>
 </template>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AppDialog from '../ui/AppDialog.vue'
 
 const props = defineProps({
   summaryTotals: { type: Object, required: true },
@@ -207,12 +208,12 @@ onBeforeUnmount(() => {
     </button>
   </div>
 
-  <Teleport to="body">
-    <div
-      v-if="historyDestination"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3"
-      @click.self="closeHistory"
-    >
+  <AppDialog
+    v-if="historyDestination"
+    visible
+    aria-label="Histórico de saídas por destino"
+    @close="closeHistory"
+  >
       <section class="flex h-[92vh] w-[96vw] max-w-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
           <div class="min-w-0">
@@ -344,6 +345,5 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
-    </div>
-  </Teleport>
+  </AppDialog>
 </template>

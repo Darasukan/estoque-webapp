@@ -84,7 +84,7 @@ function personStatusClass(person) {
         </div>
         <button
           v-if="!addingPerson"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
           @click="startAddPerson"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -124,7 +124,7 @@ function personStatusClass(person) {
         <p v-if="!newPersonName.trim()" class="text-xs text-amber-600 dark:text-amber-400">Informe o nome da pessoa.</p>
         <div class="flex gap-2">
           <button
-            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!canAddPerson"
             @click="confirmAddPerson"
           >

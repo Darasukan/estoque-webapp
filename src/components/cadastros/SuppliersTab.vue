@@ -117,7 +117,7 @@ async function onDelete(supplier) {
       <button
         v-if="!adding"
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
+        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700"
         @click="startAdd"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -150,7 +150,7 @@ async function onDelete(supplier) {
       </div>
       <p v-if="!newName.trim()" class="mt-2 text-xs text-amber-600 dark:text-amber-400">Informe o nome do fornecedor.</p>
       <div class="mt-3 flex gap-2">
-        <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!canAddSupplier" @click="confirmAdd">{{ supplierSaving ? 'Salvando...' : 'Salvar' }}</button>
+        <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!canAddSupplier" @click="confirmAdd">{{ supplierSaving ? 'Salvando...' : 'Salvar' }}</button>
         <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="supplierSaving" @click="cancelAdd">Cancelar</button>
       </div>
     </div>

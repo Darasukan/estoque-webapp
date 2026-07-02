@@ -7,6 +7,7 @@ import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import { useToast } from '../../composables/useToast.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
+import AppDialog from '../ui/AppDialog.vue'
 
 const emit = defineEmits(['quick-movement'])
 const isLoggedIn = inject('isLoggedIn')
@@ -501,7 +502,7 @@ function quickMovement(record) {
             <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'EPI' }}</span>
             <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget ? readableTargetLabel(selectedRuleTarget) : 'Selecionar por blocos do catálogo' }}</span>
           </button>
-          <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
+          <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
         </div>
       </aside>
 
@@ -536,7 +537,7 @@ function quickMovement(record) {
               </div>
             </div>
             <div class="flex items-center gap-2">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700" @click="onUpdateRuleDays(rule)">Atualizar</button>
+              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="onUpdateRuleDays(rule)">Atualizar</button>
               <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
               <button type="button" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700" @click="onDeleteRule(rule)">Excluir</button>
             </div>
@@ -589,7 +590,7 @@ function quickMovement(record) {
               <span class="rounded-full px-2 py-1 text-xs font-semibold" :class="statusClass(record.status)">{{ record.status }}</span>
             </div>
             <div class="flex items-center justify-end">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700" @click="quickMovement(record)">Registrar saida</button>
+              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="quickMovement(record)">Registrar saida</button>
             </div>
           </article>
         </div>
@@ -599,11 +600,11 @@ function quickMovement(record) {
       </div>
     </section>
 
-    <Teleport to="body">
-      <div
+    <AppDialog
         v-if="selectorOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-        @click.self="closeSelector"
+        visible
+        aria-label="Selecionar EPI no catálogo"
+        @close="closeSelector"
       >
         <section class="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
           <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
@@ -805,7 +806,7 @@ function quickMovement(record) {
                         <td class="px-4 py-3 text-right">
                           <button
                             type="button"
-                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                            class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700"
                             @click.stop="setModalTarget(makeVariationTarget(variation, item))"
                           >
                             Selecionar
@@ -833,13 +834,12 @@ function quickMovement(record) {
             </div>
             <button
               type="button"
-              class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+              class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
               :disabled="!modalSelectedTarget"
               @click="confirmSelector"
             >Usar seleção</button>
           </footer>
         </section>
-      </div>
-    </Teleport>
+    </AppDialog>
   </div>
 </template>

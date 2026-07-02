@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { ref, computed, nextTick, inject, watch } from 'vue'
 import { useItems } from '../composables/useItems.js'
 import { stockAlertStatus } from '../composables/useItems.js'
@@ -8,6 +8,7 @@ import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 import FechamentosView from './FechamentosView.vue'
 import VariationSheet from '../components/ui/VariationSheet.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
 import EpiControlTab from '../components/inventario/EpiControlTab.vue'
 
 const props = defineProps({
@@ -981,7 +982,7 @@ function exportCSV() {
               <span
                 class="flex h-4 w-4 items-center justify-center rounded border"
                 :class="isColumnVisible(column.key)
-                  ? 'border-primary-500 bg-primary-600 text-white'
+                  ? 'border-primary-500 bg-primary-600 text-[var(--ds-primary-text)]'
                   : 'border-gray-300 dark:border-gray-600'"
               >
                 <svg v-if="isColumnVisible(column.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
@@ -1622,10 +1623,11 @@ function exportCSV() {
       @open-work-order="order => emit('open-work-order', order)"
     />
 
-    <div
+    <AppDialog
       v-if="historyRow"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      @click.self="closeVariationHistory"
+      visible
+      aria-label="Histórico por item e variação"
+      @close="closeVariationHistory"
     >
       <section class="w-full max-w-5xl max-h-[86vh] overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
         <div class="flex items-start justify-between gap-4 border-b border-gray-200 dark:border-gray-700 p-4">
@@ -1781,7 +1783,7 @@ function exportCSV() {
           </aside>
         </div>
       </section>
-    </div>
+    </AppDialog>
 
   </div>
 </template>

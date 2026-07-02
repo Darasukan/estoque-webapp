@@ -6,6 +6,7 @@ import { useItems } from '../../composables/useItems.js'
 import { useToast } from '../../composables/useToast.js'
 import { filterDestinations, findExactDestination, normalizeSearchText } from '../../utils/globalSearch.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
+import AppDialog from '../ui/AppDialog.vue'
 
 const {
   addDestination,
@@ -809,7 +810,7 @@ async function removeMaterialFromDestination(variation) {
           type="button"
           class="group/row w-[calc(100%-0.5rem)] flex items-center gap-1.5 px-2 py-1.5 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors text-left"
           :class="selectedMaterialDestId === destination.id
-            ? 'bg-primary-600 dark:bg-primary-700 text-white'
+            ? 'bg-primary-600 dark:bg-primary-700 text-[var(--ds-primary-text)]'
             : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'"
           :title="getDestFullName(destination.id)"
           @click="selectDestination(destination)"
@@ -958,7 +959,7 @@ async function removeMaterialFromDestination(variation) {
               <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Sub-destinos</p>
               <button
                 v-if="isLoggedIn && selectedParent.active && !(addingDest && newDestParentId === selectedParent.id)"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
                 @click="startAddDest(selectedParent.id)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -1094,7 +1095,7 @@ async function removeMaterialFromDestination(variation) {
               </div>
               <button
                 v-if="canLinkMaterial && !addingMaterial"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
                 @click="startMaterialAdd"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -1230,16 +1231,13 @@ async function removeMaterialFromDestination(variation) {
     </div>
   </Teleport>
 
-  <Teleport to="body">
-    <div
-      v-if="movingDest"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4 py-6"
-      @click.self="cancelMoveDest"
-    >
+  <AppDialog
+    v-if="movingDest"
+    visible
+    aria-label="Mover destino"
+    @close="cancelMoveDest"
+  >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="move-destination-title"
         class="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
       >
         <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
@@ -1264,21 +1262,20 @@ async function removeMaterialFromDestination(variation) {
           <button type="button" class="h-10 rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelMoveDest">Cancelar</button>
           <button
             type="button"
-            class="h-10 rounded-md bg-primary-600 px-4 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            class="h-10 rounded-md bg-primary-600 px-4 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="moveUnchanged"
             @click="confirmMoveDest"
           >Mover</button>
         </div>
       </div>
-    </div>
-  </Teleport>
+  </AppDialog>
 
-  <Teleport to="body">
-    <div
-      v-if="addingMaterial"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4 py-6"
-      @click.self="cancelMaterialAdd"
-    >
+  <AppDialog
+    v-if="addingMaterial"
+    visible
+    aria-label="Adicionar materiais ao destino"
+    @close="cancelMaterialAdd"
+  >
       <div class="w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl flex flex-col">
         <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3">
           <div class="flex-1 min-w-0">
@@ -1468,14 +1465,13 @@ async function removeMaterialFromDestination(variation) {
             @click="cancelMaterialAdd"
           >Cancelar</button>
           <button
-            class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!pendingMaterialIds.length"
             @click="savePendingMaterials"
           >Salvar vinculos</button>
         </div>
       </div>
-    </div>
-  </Teleport>
+  </AppDialog>
 </template>
 
 <style scoped>

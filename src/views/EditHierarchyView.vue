@@ -1,5 +1,6 @@
 <script setup>
 import { useEditHierarchyState } from '../composables/useEditHierarchyState.js'
+import AppDialog from '../components/ui/AppDialog.vue'
 
 const {
   units,
@@ -211,7 +212,7 @@ const {
           class="group/row flex items-center gap-1.5 px-2 py-1.5 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors border-t-2"
           :class="[
             selectedGroup === group
-              ? 'bg-primary-600 dark:bg-primary-700 text-white'
+              ? 'bg-primary-600 dark:bg-primary-700 text-[var(--ds-primary-text)]'
               : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200',
             isDragTarget('group', gIdx) ? 'border-primary-500 dark:border-primary-400' : 'border-transparent',
             isDragFrom('group', gIdx) ? 'opacity-40' : ''
@@ -354,7 +355,7 @@ const {
               </div>
               <button
                 v-if="addingItemForSub !== groupDirectKey"
-                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors"
                 @click="startAddItem(groupDirectKey)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -504,7 +505,7 @@ const {
                   autofocus
                 />
                 <div class="flex gap-2">
-                  <button class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddCategory">
+                  <button class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors" @click="saveAddCategory">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                     Salvar
                   </button>
@@ -554,7 +555,7 @@ const {
               </div>
               <button
                 v-if="addingItemForSub !== categoryDirectKey"
-                class="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-700"
+                class="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700"
                 @click="startAddItem(categoryDirectKey)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -736,7 +737,7 @@ const {
                       </div>
                       <div class="flex items-center gap-1 ml-auto">
                         <button
-                          class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                          class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors"
                           @click="saveAddItem(sub)"
                         >
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -790,7 +791,7 @@ const {
                         />
                         <button v-if="newSubcategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewSubcategoryAttr">Adicionar</button>
                       </div>
-                      <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
+                      <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                         Salvar
                       </button>
@@ -847,7 +848,7 @@ const {
                 />
                 <button v-if="newSubcategoryAttrInput.trim()" class="text-xs text-primary-500 hover:text-primary-600" @click="addNewSubcategoryAttr">Adicionar</button>
               </div>
-              <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
+              <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors" @click="saveAddSubcategory">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                 Salvar
               </button>
@@ -1088,7 +1089,7 @@ const {
                 </div>
                 <div class="mt-4 flex gap-2">
                   <button
-                    class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                    class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors"
                     @click="saveAddItem(selectedSubcategory)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -1122,10 +1123,11 @@ const {
     </div>
   </div>
 
-  <div
+  <AppDialog
     v-if="aiCatalogOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-    @click.self="cancelAiCatalog"
+    visible
+    aria-label="Catalogar material pela foto"
+    @close="cancelAiCatalog"
   >
     <div class="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
       <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
@@ -1241,12 +1243,13 @@ const {
         </button>
       </div>
     </div>
-  </div>
+  </AppDialog>
 
-  <div
+  <AppDialog
     v-if="addingItemForSub"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-    @click.self="cancelAddItem"
+    visible
+    aria-label="Criar modelo de item"
+    @close="cancelAddItem"
   >
     <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
       <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
@@ -1329,12 +1332,13 @@ const {
         </button>
       </div>
     </div>
-  </div>
+  </AppDialog>
 
-  <div
+  <AppDialog
     v-if="moving"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-    @click.self="cancelMove"
+    visible
+    aria-label="Mover item na hierarquia"
+    @close="cancelMove"
   >
     <div class="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
       <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
@@ -1399,10 +1403,10 @@ const {
         <button class="rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="cancelMove">
           Cancelar
         </button>
-        <button class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700" @click="saveMove">
+        <button class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="saveMove">
           Mover
         </button>
       </div>
     </div>
-  </div>
+  </AppDialog>
 </template>

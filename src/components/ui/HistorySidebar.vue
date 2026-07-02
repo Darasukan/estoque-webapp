@@ -157,7 +157,7 @@ function toggleSection(facet) {
         <section v-if="mainFacets.length" class="order-40 mt-2 border-t-2 border-b border-gray-200 bg-gray-50/70 dark:border-gray-600/70 dark:bg-gray-900/35">
           <div class="flex items-center justify-between px-3 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
             <span>Filtros principais</span>
-            <span v-if="selectedCount(mainFacets)" class="rounded-full bg-primary-600 px-1.5 py-0.5 text-[9px] text-white">{{ selectedCount(mainFacets) }}</span>
+            <span v-if="selectedCount(mainFacets)" class="rounded-full bg-primary-600 px-1.5 py-0.5 text-[9px] text-[var(--ds-primary-text)]">{{ selectedCount(mainFacets) }}</span>
           </div>
           <div v-for="facet in mainFacets" :key="facet.key" class="border-t border-gray-100 dark:border-gray-700/50">
             <button
@@ -169,7 +169,7 @@ function toggleSection(facet) {
             >
               <span class="flex items-center gap-1.5">
                 {{ facet.label }}
-                <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-white text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
+                <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-[var(--ds-primary-text)] text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
               </span>
               <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ '-rotate-90': !isExpanded(facet) }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -202,7 +202,7 @@ function toggleSection(facet) {
         <section v-if="productFacets.length" class="order-20 mt-2 border-t-2 border-b border-gray-200 bg-gray-50/70 dark:border-gray-600/70 dark:bg-gray-900/35">
           <div class="flex items-center justify-between px-3 py-2.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
             <span>Produto</span>
-            <span v-if="selectedCount(productFacets)" class="rounded-full bg-primary-600 px-1.5 py-0.5 text-[9px] text-white">{{ selectedCount(productFacets) }}</span>
+            <span v-if="selectedCount(productFacets)" class="rounded-full bg-primary-600 px-1.5 py-0.5 text-[9px] text-[var(--ds-primary-text)]">{{ selectedCount(productFacets) }}</span>
           </div>
           <div v-for="facet in productFacets" :key="facet.key" class="border-t border-gray-100 dark:border-gray-700/50">
             <button
@@ -214,7 +214,7 @@ function toggleSection(facet) {
             >
               <span class="flex items-center gap-1.5">
                 {{ facet.label }}
-                <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-white text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
+                <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-[var(--ds-primary-text)] text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
               </span>
               <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ '-rotate-90': !isExpanded(facet) }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -251,7 +251,7 @@ function toggleSection(facet) {
           >
             <span class="flex items-center gap-1.5">
               Detalhes do produto
-              <span v-if="detailSelectedCount" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-white text-[9px] font-bold flex items-center justify-center">{{ detailSelectedCount }}</span>
+              <span v-if="detailSelectedCount" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-[var(--ds-primary-text)] text-[9px] font-bold flex items-center justify-center">{{ detailSelectedCount }}</span>
             </span>
             <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ '-rotate-90': !expandedGroups.details }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -269,7 +269,7 @@ function toggleSection(facet) {
               >
                 <span class="flex items-center gap-1.5">
                   {{ facet.label }}
-                  <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-white text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
+                  <span v-if="facet.selected.length" class="w-4 h-4 rounded-full bg-primary-600 dark:bg-primary-500 text-[var(--ds-primary-text)] text-[9px] font-bold flex items-center justify-center">{{ facet.selected.length }}</span>
                 </span>
                 <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ '-rotate-90': !isExpanded(facet) }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />

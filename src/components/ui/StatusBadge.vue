@@ -31,7 +31,7 @@ const tone = computed(() => {
 })
 
 const toneClasses = computed(() => ({
-  brand: 'bg-primary-600 text-white',
+  brand: 'bg-primary-600 text-[var(--ds-primary-text)]',
   success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-700 dark:text-white',
   warning: 'bg-amber-100 text-amber-900 dark:bg-amber-700 dark:text-white',
   danger: 'bg-red-100 text-red-800 dark:bg-red-700 dark:text-white',

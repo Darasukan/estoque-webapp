@@ -5,6 +5,7 @@ import HistorySidebar from './components/ui/HistorySidebar.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
 import AppButton from './components/ui/AppButton.vue'
+import AppDialog from './components/ui/AppDialog.vue'
 import AppModal from './components/ui/AppModal.vue'
 import DashboardView from './views/DashboardView.vue'
 import { useTheme } from './composables/useTheme.js'
@@ -100,8 +101,6 @@ const requestedCadastrosTab = ref(savedUiState.cadastrosTab || 'hierarquia')
 const globalCreateOpen = ref(false)
 const globalSearchOpen = ref(false)
 const globalSearchQuery = ref('')
-const globalSearchInputRef = ref(null)
-const globalSearchDialogRef = ref(null)
 const globalSearchActiveIndex = ref(0)
 const GLOBAL_SEARCH_RECENTS_KEY = 'estoque_global_search_recents_v1'
 const globalSearchRecentIds = ref(loadStoredList(GLOBAL_SEARCH_RECENTS_KEY))
@@ -212,14 +211,6 @@ const globalSearchResults = computed(() => buildGlobalSearchResults({
 }))
 
 watch(globalSearchQuery, () => { globalSearchActiveIndex.value = 0 })
-watch(globalSearchOpen, async open => {
-  await nextTick()
-  const dialog = globalSearchDialogRef.value
-  if (!dialog) return
-  if (open && !dialog.open) dialog.showModal()
-  if (!open && dialog.open) dialog.close()
-})
-
 // Load all data from API
 async function loadAllData() {
   const sources = [
@@ -357,7 +348,6 @@ function openGlobalSearch() {
   shortcutHelpOpen.value = false
   clearShortcutPrefix()
   globalSearchActiveIndex.value = 0
-  nextTick(() => globalSearchInputRef.value?.focus())
 }
 
 function closeGlobalSearch() {
@@ -916,14 +906,12 @@ function handleGlobalShortcutKeydown(event) {
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />
 
-    <dialog
-      ref="globalSearchDialogRef"
-      class="fixed inset-0 z-50 m-0 h-screen w-screen max-w-none bg-transparent p-0 backdrop:bg-black/45"
-      aria-modal="true"
+    <AppDialog
+      :visible="globalSearchOpen"
+      align="top"
       aria-label="Busca global"
-      @cancel.prevent="closeGlobalSearch"
+      @close="closeGlobalSearch"
     >
-      <div class="flex min-h-full items-start justify-center p-4 pt-[12vh]" @click.self="closeGlobalSearch">
       <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
         <div class="border-b border-gray-200 p-3 dark:border-white/[0.08]">
           <div class="relative">
@@ -931,9 +919,9 @@ function handleGlobalShortcutKeydown(event) {
               <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" />
             </svg>
             <input
-              ref="globalSearchInputRef"
               v-model="globalSearchQuery"
               type="text"
+              autofocus
               class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
               placeholder="Buscar ou executar uma ação..."
               role="combobox"
@@ -970,8 +958,7 @@ function handleGlobalShortcutKeydown(event) {
           </div>
         </div>
       </div>
-      </div>
-    </dialog>
+    </AppDialog>
 
     <AppModal
       :visible="passwordModalOpen"
@@ -1006,13 +993,11 @@ function handleGlobalShortcutKeydown(event) {
         </form>
     </AppModal>
 
-    <div
+    <AppDialog
       v-if="shortcutHelpOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-      role="dialog"
-      aria-modal="true"
+      visible
       aria-label="Atalhos de teclado"
-      @click.self="closeShortcutHelp"
+      @close="closeShortcutHelp"
     >
       <div class="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
         <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/[0.08]">
@@ -1059,7 +1044,7 @@ function handleGlobalShortcutKeydown(event) {
           </section>
         </div>
       </div>
-    </div>
+    </AppDialog>
 
     <div
       v-if="shortcutPrefix"
