@@ -254,11 +254,7 @@ export function useItems() {
    */
   async function addVariation(itemId, values = {}, stock = 0, minStock = null, extras = {}, location = '', destinations = []) {
     const sanitizedStock = _sanitizeNumber(stock)
-    const item = items.value.find(i => i.id === itemId)
-    const inheritedMinStock = minStock === null || minStock === undefined
-      ? item?.minStock
-      : minStock
-    const sanitizedMinStock = _sanitizeNumber(inheritedMinStock)
+    const sanitizedMinStock = _sanitizeNumber(minStock ?? 0)
     if (_hasDuplicateVariation(itemId, values)) {
       return { ok: false, error: 'Já existe uma variação com esses mesmos atributos.' }
     }
@@ -288,6 +284,7 @@ export function useItems() {
     const updated = { ...v }
     if (changes.values !== undefined) updated.values = { ...changes.values }
     if (changes.stock !== undefined) updated.stock = _sanitizeNumber(changes.stock)
+    if (changes.initialStock !== undefined) updated.initialStock = _sanitizeNumber(changes.initialStock)
     if (changes.minStock !== undefined) updated.minStock = _sanitizeNumber(changes.minStock)
     if (changes.extras !== undefined) updated.extras = { ...changes.extras }
     if (changes.location !== undefined) updated.location = changes.location

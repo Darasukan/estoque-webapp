@@ -28,7 +28,7 @@ const editingPersonId = ref(null)
 const editPersonName = ref('')
 const editPersonRole = ref('')
 const editPersonStatus = ref('ativo')
-const personStatusFilter = ref('all')
+const personStatusFilter = ref(['all'])
 const personSearch = ref('')
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -56,9 +56,9 @@ const personStatusOptions = computed(() => [
   })),
 ])
 const filteredPeople = computed(() =>
-  (personStatusFilter.value === 'all'
+  (personStatusFilter.value.includes('all')
     ? people.value
-    : people.value.filter(person => personStatus(person) === personStatusFilter.value)
+    : people.value.filter(person => personStatusFilter.value.includes(personStatus(person)))
   ).filter(person => {
     const q = normalizeSearch(personSearch.value)
     if (!q) return true
@@ -213,6 +213,22 @@ function togglePageSelection() {
   selectedPersonIds.value = allPagePeopleSelected.value ? [] : pagePersonIds.value
 }
 
+function isPersonStatusFilterSelected(id) {
+  return personStatusFilter.value.includes(id)
+}
+
+function togglePersonStatusFilter(id) {
+  if (id === 'all') {
+    personStatusFilter.value = ['all']
+    return
+  }
+  const selected = personStatusFilter.value.includes('all')
+    ? []
+    : personStatusFilter.value.filter(status => status !== id)
+  if (!personStatusFilter.value.includes(id)) selected.push(id)
+  personStatusFilter.value = selected.length ? selected : ['all']
+}
+
 async function deleteAllPeopleDev() {
   if (!isDev.value || bulkDeleting.value || !people.value.length) return
   const total = people.value.length
@@ -362,21 +378,28 @@ function personStatusClass(person) {
           <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Buscar e filtrar</p>
           <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredPeople.length }} de {{ people.length }} pessoas</p>
         </div>
-        <div class="grid gap-2 sm:grid-cols-[1fr_13rem_6rem]">
+        <div class="grid gap-2 sm:grid-cols-[1fr_auto_6rem]">
           <input
             v-model="personSearch"
             type="search"
             placeholder="Buscar por nome ou cargo..."
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-600"
           />
-          <select
-            v-model="personStatusFilter"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-          >
-            <option v-for="option in personStatusOptions" :key="option.id" :value="option.id">
-              {{ option.label }} ({{ option.count }})
-            </option>
-          </select>
+          <div class="flex min-h-10 flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
+            <button
+              v-for="option in personStatusOptions"
+              :key="option.id"
+              type="button"
+              class="rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+              :class="isPersonStatusFilterSelected(option.id)
+                ? 'bg-primary-600 text-[var(--ds-primary-text)]'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100'"
+              :aria-pressed="isPersonStatusFilterSelected(option.id)"
+              @click="togglePersonStatusFilter(option.id)"
+            >
+              {{ option.label }} <span class="tabular-nums opacity-70">({{ option.count }})</span>
+            </button>
+          </div>
           <select
             v-model.number="pageSize"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"

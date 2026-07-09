@@ -1948,7 +1948,7 @@ defineExpose({
                     <span v-else-if="v.minStock > 0 && v.stock <= v.minStock" class="ml-1 text-[10px]">&#x1F7E1;</span>
                   </td>
                   <td class="px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400">
-                    {{ v.minStock > 0 ? v.minStock : '—' }}
+                    {{ v.minStock ?? 0 }}
                   </td>
                   <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400">
                     {{ v.location || selectedItem?.location || '—' }}

@@ -38,7 +38,17 @@ test('sends image and JSON schema to Gemini', async () => {
   let request
   const result = await analyzeCatalogImage({
     image: 'data:image/png;base64,AAAA',
-    catalog: { hierarchy: ['EPIs > Luvas'], examples: [] },
+    catalog: {
+      hierarchy: ['EPIs > Luvas'],
+      examples: [{
+        path: 'Vedacoes > Aneis',
+        name: 'O-ring',
+        unit: 'UN',
+        attributes: ['Diametro', 'Viton'],
+        variationAttributes: ['Diametro', 'Viton'],
+        variationExamples: [{ Diametro: '20mm', Viton: 'Sim' }]
+      }]
+    },
     apiKey: 'test-key',
     model: 'gemini-test',
     fetchImpl: async (url, options) => {
@@ -66,6 +76,8 @@ test('sends image and JSON schema to Gemini', async () => {
   assert.equal(request.options.headers['x-goog-api-key'], 'test-key')
   assert.equal(request.body.contents[0].parts[1].inlineData.data, 'AAAA')
   assert.match(request.body.contents[0].parts[0].text, /prioridade é descobrir a família\/nome genérico/i)
+  assert.match(request.body.contents[0].parts[0].text, /reutilize exatamente os nomes de atributos/i)
+  assert.match(request.body.contents[0].parts[0].text, /Viton/i)
   assert.match(request.body.contents[0].parts[0].text, /Não tente estimar medidas pela foto/i)
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json')
   assert.equal(request.body.generationConfig.responseJsonSchema.required.includes('group'), true)

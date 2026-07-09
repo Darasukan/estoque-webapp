@@ -14,6 +14,10 @@ function normalizeLocations(locations, legacyLocation = '') {
   return [...new Set(values.length ? values : [fallback].filter(Boolean))]
 }
 
+function parseJson(value, fallback) {
+  try { return JSON.parse(value) } catch { return fallback }
+}
+
 router.post('/suggest', requireAuth, async (req, res) => {
   const { image } = req.body
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
@@ -24,20 +28,35 @@ router.post('/suggest', requireAuth, async (req, res) => {
   if (image.length > 8_500_000) return res.status(413).json({ error: 'A imagem deve ter no máximo 6 MB.' })
 
   const rows = db.prepare(`
-    SELECT name, group_name, category, subcategory, unit, attributes
+    SELECT id, name, group_name, category, subcategory, unit, attributes
     FROM items ORDER BY group_name, category, subcategory, name LIMIT 300
   `).all()
+  const itemIds = new Set(rows.map(row => row.id))
+  const variationsByItem = new Map()
+  for (const row of db.prepare('SELECT item_id, vals FROM variations LIMIT 1000').all()) {
+    if (!itemIds.has(row.item_id)) continue
+    const values = parseJson(row.vals, {})
+    if (!values || typeof values !== 'object' || Array.isArray(values)) continue
+    const list = variationsByItem.get(row.item_id) || []
+    list.push(values)
+    variationsByItem.set(row.item_id, list)
+  }
   const catalog = {
     hierarchy: [...new Set(rows.map(row => [row.group_name, row.category, row.subcategory].filter(Boolean).join(' > ')))],
     examples: rows
       .filter(row => row.name !== (row.subcategory || row.category || row.group_name))
       .slice(0, 100)
-      .map(row => ({
-        path: [row.group_name, row.category, row.subcategory].filter(Boolean).join(' > '),
-        name: row.name,
-        unit: row.unit,
-        attributes: JSON.parse(row.attributes)
-      }))
+      .map(row => {
+        const variationExamples = (variationsByItem.get(row.id) || []).slice(0, 6)
+        return {
+          path: [row.group_name, row.category, row.subcategory].filter(Boolean).join(' > '),
+          name: row.name,
+          unit: row.unit,
+          attributes: parseJson(row.attributes, []),
+          variationAttributes: [...new Set(variationExamples.flatMap(values => Object.keys(values)))],
+          variationExamples
+        }
+      })
   }
 
   try {
@@ -150,19 +169,27 @@ router.post('/variations', requireAuth, (req, res) => {
 
 // PUT /api/items/variations/:id
 router.put('/variations/:id', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT id FROM variations WHERE id = ?').get(req.params.id)
+  const existing = db.prepare('SELECT id, initial_stock FROM variations WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Variação não encontrada' })
 
   const { values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
+  const requestedInitialStock = initialStock === undefined ? Number(existing.initial_stock || 0) : Number(initialStock)
+  const initialStockChanged = initialStock !== undefined && requestedInitialStock !== Number(existing.initial_stock || 0)
+  if (initialStockChanged && req.user?.id !== 'user_admin') {
+    return res.status(403).json({ error: 'Somente o admin mestre pode alterar estoque inicial.' })
+  }
+  const safeInitialStock = initialStockChanged && Number.isFinite(requestedInitialStock)
+    ? Math.max(0, Math.round(requestedInitialStock))
+    : Number(existing.initial_stock || 0)
   const normalizedLocations = normalizeLocations(locations, location)
   const primaryLocation = normalizedLocations[0] || ''
   db.prepare(`UPDATE variations SET vals=?, stock=?, min_stock=?, initial_stock=?, extras=?, location=?, locations=?, destinations=? WHERE id=?`).run(
-    JSON.stringify(values || {}), stock || 0, minStock || 0, initialStock || 0,
+    JSON.stringify(values || {}), stock || 0, minStock || 0, safeInitialStock,
     JSON.stringify(extras || {}), primaryLocation, JSON.stringify(normalizedLocations), JSON.stringify(destinations || []),
     req.params.id
   )
 
-  res.json({ id: req.params.id, values: values || {}, stock: stock || 0, minStock: minStock || 0, initialStock: initialStock || 0, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
+  res.json({ id: req.params.id, values: values || {}, stock: stock || 0, minStock: minStock || 0, initialStock: safeInitialStock, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
 })
 
 // DELETE /api/items/variations/:id

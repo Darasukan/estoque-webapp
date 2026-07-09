@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useAuth } from '../../composables/useAuth.js'
 import { stockAlertStatus, useItems } from '../../composables/useItems.js'
 import { useDestinations } from '../../composables/useDestinations.js'
 import { useToast } from '../../composables/useToast.js'
@@ -19,6 +20,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'quick-movement', 'adjust-stock', 'open-work-order'])
+const { user } = useAuth()
 const { getDestFullName } = useDestinations()
 const { editVariation } = useItems()
 const { success, error } = useToast()
@@ -29,6 +31,8 @@ const adjustOpen = ref(false)
 const adjustValue = ref('')
 const editForm = ref(variationFormForEdit(props.item, props.variation))
 const editSaving = ref(false)
+const initialStockOpen = ref(false)
+const initialStockValue = ref(0)
 
 onMounted(async () => {
   await nextTick()
@@ -37,6 +41,7 @@ onMounted(async () => {
 onUnmounted(() => dialogRef.value?.close())
 
 const status = computed(() => stockAlertStatus(props.variation, props.item))
+const canSetInitialStock = computed(() => props.canEditDetails && user.value?.id === 'user_admin')
 
 const statusConfig = {
   zero: { label: 'Sem estoque', pillClass: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
@@ -102,6 +107,8 @@ const relatedOrders = computed(() => props.workOrders.filter(order =>
 
 function resetEditForm() {
   editForm.value = variationFormForEdit(props.item, props.variation)
+  initialStockOpen.value = false
+  initialStockValue.value = Number(props.variation.initialStock ?? props.variation.stock ?? 0)
 }
 
 watch(() => props.variation.id, () => {
@@ -165,14 +172,24 @@ function removeExtraRow(index) {
   editForm.value.extrasList.splice(index, 1)
 }
 
+function startInitialStockEdit() {
+  initialStockValue.value = Number(props.variation.initialStock ?? props.variation.stock ?? 0)
+  initialStockOpen.value = true
+}
+
 async function saveEdit() {
   if (editSaving.value) return
   const validationError = validateVariationForm(props.item, editForm.value)
   if (validationError) { error(validationError); return }
+  const nextInitialStock = Number(initialStockValue.value)
+  if (initialStockOpen.value && (!Number.isFinite(nextInitialStock) || nextInitialStock < 0)) {
+    error('Estoque inicial deve ser um número válido.')
+    return
+  }
 
   editSaving.value = true
   try {
-    const result = await editVariation(props.variation.id, {
+    const changes = {
       values: { ...editForm.value.values },
       stock: props.variation.stock,
       minStock: editForm.value.minStock,
@@ -180,7 +197,9 @@ async function saveEdit() {
       location: editForm.value.locations[0] || '',
       locations: [...editForm.value.locations],
       destinations: [...editForm.value.destinations],
-    })
+    }
+    if (initialStockOpen.value && canSetInitialStock.value) changes.initialStock = nextInitialStock
+    const result = await editVariation(props.variation.id, changes)
     if (!result.ok) { error(result.error); return }
     success('Variação atualizada.')
     activeTab.value = 'data'
@@ -239,7 +258,7 @@ async function saveEdit() {
           </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400">Mínimo</p>
-            <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{{ variation.minStock || '-' }}</p>
+            <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ variation.minStock ?? 0 }}</p>
           </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
             <p class="text-xs text-gray-500 dark:text-gray-400">Status</p>
@@ -488,6 +507,43 @@ async function saveEdit() {
                 class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
               />
             </label>
+            <div v-if="canSetInitialStock" class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Estoque inicial</p>
+                  <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                    Atual: {{ Number(variation.initialStock || 0).toLocaleString('pt-BR') }} {{ item.unit }}
+                  </p>
+                </div>
+                <button
+                  v-if="!initialStockOpen"
+                  type="button"
+                  class="min-h-9 rounded-lg border border-gray-300 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  @click="startInitialStockEdit"
+                >
+                  Definir
+                </button>
+              </div>
+              <div v-if="initialStockOpen" class="mt-3 flex flex-wrap items-end gap-2">
+                <label class="min-w-36 flex-1">
+                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Novo estoque inicial</span>
+                  <input
+                    v-model.number="initialStockValue"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="min-h-10 rounded-lg px-3 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  @click="initialStockOpen = false"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
 
           <div>

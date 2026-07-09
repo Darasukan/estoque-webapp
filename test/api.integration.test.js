@@ -138,6 +138,29 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   })
   assert.equal(variation.response.status, 200)
 
+  const secondaryAdmin = await jsonRequest(url, '/api/auth/users', {
+    token,
+    body: { name: 'Admin Estoque', username: 'admin-estoque', role: 'admin', pin: 'admin-estoque-123' },
+  })
+  assert.equal(secondaryAdmin.response.status, 200)
+  const secondaryLogin = await jsonRequest(url, '/api/auth/login', {
+    body: { login: 'admin-estoque', pin: 'admin-estoque-123' },
+  })
+  assert.equal(secondaryLogin.response.status, 200)
+  const blockedInitialStock = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {
+    method: 'PUT',
+    token: secondaryLogin.data.token,
+    body: { ...variation.data, initialStock: 9 },
+  })
+  assert.equal(blockedInitialStock.response.status, 403)
+  const changedInitialStock = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {
+    method: 'PUT',
+    token,
+    body: { ...variation.data, initialStock: 7 },
+  })
+  assert.equal(changedInitialStock.response.status, 200)
+  assert.equal(changedInitialStock.data.initialStock, 7)
+
   const movement = await jsonRequest(url, '/api/movements', {
     token,
     body: {

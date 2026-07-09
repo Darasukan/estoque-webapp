@@ -62,13 +62,16 @@ function sameName(a, b) {
   return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
 }
 
-function sameValue(a, b) {
-  const normalize = value => String(value || '')
+function normalizeComparable(value) {
+  return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '')
-  return normalize(a) === normalize(b)
+}
+
+function sameValue(a, b) {
+  return normalizeComparable(a) === normalizeComparable(b)
 }
 
 function nameTokens(value) {
@@ -91,12 +94,15 @@ function itemNameContainedInSuggestion(itemName, suggestedName) {
   return itemTokens.length >= 2 && itemTokens.every(token => suggestedTokens.has(token))
 }
 
-function exactExistingItem() {
-  const data = aiCatalog.value
+function findExactItem(data) {
   return items.value.find(item =>
     samePath(item, data) &&
     sameName(item.name, data.name)
   ) || null
+}
+
+function exactExistingItem() {
+  return findExactItem(aiCatalog.value)
 }
 
 function searchExistingItem() {
@@ -105,6 +111,51 @@ function searchExistingItem() {
     samePath(item, data) &&
     itemNameContainedInSuggestion(item.name, data.name)
   ) || null
+}
+
+function canonicalizeSuggestionAttributes(suggestion) {
+  const item = findExactItem(suggestion)
+  const attributes = suggestion.attributes || []
+  if (!item) return attributes
+
+  const officialAttributes = item.attributes || []
+  const officialByKey = new Map(officialAttributes.map(attribute => [normalizeComparable(attribute), attribute]))
+  const result = []
+  const resultByKey = new Map()
+
+  function pushAttribute(name, value = '') {
+    const key = normalizeComparable(name)
+    if (!key) return
+    const existing = resultByKey.get(key)
+    if (existing) {
+      if (value && !existing.value) existing.value = value
+      return
+    }
+    const row = { name, value }
+    result.push(row)
+    resultByKey.set(key, row)
+  }
+
+  for (const attribute of attributes) {
+    const name = String(attribute?.name || '').trim()
+    const value = String(attribute?.value || '').trim()
+    const officialName = officialByKey.get(normalizeComparable(name))
+    if (officialName) {
+      pushAttribute(officialName, value)
+      continue
+    }
+
+    const officialNameFromValue = officialByKey.get(normalizeComparable(value))
+    if (officialNameFromValue) {
+      pushAttribute(officialNameFromValue, 'Sim')
+      continue
+    }
+
+    pushAttribute(name, value)
+  }
+
+  for (const attribute of officialAttributes) pushAttribute(attribute, '')
+  return result
 }
 
 const aiCatalogFoundItem = computed(() => isSearchMode.value ? searchExistingItem() : exactExistingItem())
@@ -243,7 +294,7 @@ async function onAiCatalogImageSelected(event) {
     const suggestion = await suggestCatalogFromImage({ image })
     if (run !== aiCatalogRun) return
 
-    const attributes = suggestion.attributes || []
+    const attributes = canonicalizeSuggestionAttributes(suggestion)
     aiCatalog.value = {
       ...suggestion,
       attributes: attributes.map(attribute => attribute.name).filter(Boolean),

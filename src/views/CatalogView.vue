@@ -212,6 +212,21 @@ const totalStock = computed(() => {
   return getTotalStock(viewingItem.value.id)
 })
 
+function itemHasVariationAlert(itemId) {
+  return getVariationsForItem(itemId).some(v => v.minStock > 0 && v.stock <= v.minStock)
+}
+
+function itemStockClass(item, normalClass = 'text-gray-400 dark:text-gray-500') {
+  const stock = getTotalStock(item.id)
+  if (stock <= 0) return 'text-red-500 dark:text-red-400'
+  if (itemHasVariationAlert(item.id)) return 'text-amber-500 dark:text-amber-400'
+  return normalClass
+}
+
+const totalStockClass = computed(() =>
+  viewingItem.value ? itemStockClass(viewingItem.value, 'text-green-600 dark:text-green-400') : ''
+)
+
 // ===== Variation CRUD =====
 const addingVariation = ref(false)
 const varForm = ref(emptyVariationForm())
@@ -811,13 +826,10 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         <div class="min-w-[12rem] flex-1">
           <h2 class="break-words text-lg font-bold leading-tight text-gray-800 dark:text-gray-100 sm:text-xl">{{ viewingItem.name }}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">
-            {{ viewingItem.unit }} &middot; Mín. {{ viewingItem.minStock }} &middot;
-            <span :class="totalStock < viewingItem.minStock ? 'text-red-500 dark:text-red-400 font-semibold' : 'text-green-600 dark:text-green-400 font-semibold'">
+            {{ viewingItem.unit }} &middot;
+            <span class="font-semibold tabular-nums" :class="totalStockClass">
               Estoque: {{ totalStock }}
             </span>
-          </p>
-          <p v-if="viewingItem.location" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            📍 {{ viewingItem.location }}
           </p>
         </div>
         <!-- Variation search -->
@@ -900,7 +912,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                 </td>
                 <!-- Mín -->
                 <td class="px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400">
-                  {{ v.minStock > 0 ? v.minStock : '—' }}
+                  {{ v.minStock ?? 0 }}
                 </td>
                 <!-- Local -->
                 <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400">
@@ -1148,7 +1160,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           </div>
           <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate mb-1">{{ item.name }}</p>
           <p class="text-xs tabular-nums"
-            :class="getTotalStock(item.id) <= 0 ? 'text-red-500 dark:text-red-400' : getTotalStock(item.id) < item.minStock ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'">
+            :class="itemStockClass(item)">
             Estoque: {{ getTotalStock(item.id) }}
           </p>
         </button>

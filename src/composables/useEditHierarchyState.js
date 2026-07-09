@@ -1,7 +1,6 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useItems } from './useItems.js'
 import { useToast } from './useToast.js'
-import { useLocations } from './useLocations.js'
 import { units } from '../utils/units.js'
 import { suggestCatalogFromImage } from '../services/api.js'
 
@@ -21,7 +20,6 @@ const {
 } = useItems()
 
 const { success, error } = useToast()
-const { activeLocais, groupedLocais } = useLocations()
 
 // Returns unique extra-field keys used across all variations of an item
 function getItemExtraKeys(itemId) {
@@ -377,53 +375,6 @@ function cancelEditUnit() {
   editUnitValue.value = ''
 }
 
-// ===== Item minStock editing =====
-const editingMinStockItemId = ref(null)
-const editMinStockValue = ref(0)
-
-function startEditMinStock(item) {
-  editingMinStockItemId.value = item.id
-  editMinStockValue.value = item.minStock ?? 0
-}
-
-function saveEditMinStock(itemId) {
-  editItem(itemId, { minStock: Number(editMinStockValue.value) || 0 })
-  editingMinStockItemId.value = null
-}
-
-function cancelEditMinStock() {
-  editingMinStockItemId.value = null
-}
-
-// ===== Item location editing =====
-const editingLocationItemId = ref(null)
-const editLocationValue = ref('')
-
-function startEditLocation(item) {
-  editingLocationItemId.value = item.id
-  editLocationValue.value = item.location || ''
-}
-
-function saveEditLocation(itemId) {
-  editItem(itemId, { location: editLocationValue.value.trim() })
-  editingLocationItemId.value = null
-  editLocationValue.value = ''
-}
-
-function cancelEditLocation() {
-  editingLocationItemId.value = null
-  editLocationValue.value = ''
-}
-
-function onLocationChange(itemId) {
-  saveEditLocation(itemId)
-}
-
-function onEditLocationKeydown(e, itemId) {
-  if (e.key === 'Enter') saveEditLocation(itemId)
-  else if (e.key === 'Escape') cancelEditLocation()
-}
-
 function isEditingAttr(itemId, attrName) {
   return editingAttr.value?.itemId === itemId && editingAttr.value?.oldName === attrName
 }
@@ -434,8 +385,6 @@ const categoryDirectKey = '__category_direct__'
 const addingItemForSub = ref(null)
 const newItemName = ref('')
 const newItemUnit = ref('UN')
-const newItemMinStock = ref(0)
-const newItemLocation = ref('')
 const newItemAttrs = ref([])
 const newItemAttrInput = ref('')
 
@@ -514,18 +463,12 @@ function inheritedItemAttrs(sub) {
 function getItemDefaultsForAdd(sub) {
   const isGroupDirect = sub === groupDirectKey
   const targetCategory = isGroupDirect ? null : (selectedCategory.value || null)
-  const targetSub = sub === categoryDirectKey || isGroupDirect ? null : sub
   const scopedItems = items.value.filter(i =>
     i.group === selectedGroup.value &&
     (targetCategory ? i.category === targetCategory : !i.category)
   )
-  const subItems = targetSub
-    ? getItemsForSubcategory(selectedGroup.value, targetCategory, targetSub)
-    : (isGroupDirect ? groupDirectItems.value : categoryDirectItems.value)
   return {
     unit: scopedItems[0]?.unit || 'UN',
-    minStock: subItems[0]?.minStock ?? 0,
-    location: subItems[0]?.location || scopedItems[0]?.location || '',
   }
 }
 
@@ -556,8 +499,6 @@ function startAddItem(sub) {
   addingItemForSub.value = sub
   newItemName.value = ''
   newItemUnit.value = defaults.unit
-  newItemMinStock.value = defaults.minStock
-  newItemLocation.value = defaults.location
   newItemAttrs.value = inheritedItemAttrs(sub)
   newItemAttrInput.value = ''
   cancelEdit()
@@ -568,8 +509,6 @@ function cancelAddItem() {
   addingItemForSub.value = null
   newItemName.value = ''
   newItemUnit.value = 'UN'
-  newItemMinStock.value = 0
-  newItemLocation.value = ''
   newItemAttrs.value = []
   newItemAttrInput.value = ''
 }
@@ -599,9 +538,7 @@ async function saveAddItem(sub) {
     subcategory: targetSub || null,
     name: newItemName.value.trim() || null,
     unit: newItemUnit.value || 'UN',
-    minStock: newItemMinStock.value,
     attributes: [...newItemAttrs.value],
-    location: newItemLocation.value || ''
   })
   if (!result.ok) { error(result.error); return }
   const label = targetSub || targetCategory || selectedGroup.value
@@ -1085,8 +1022,6 @@ async function organizeSubcategoriesAlphabetically() {
 
   return {
     units,
-    activeLocais,
-    groupedLocais,
     uniqueGroups,
     getCategoriesForGroup,
     getSubcategoriesForCategory,
@@ -1142,18 +1077,6 @@ async function organizeSubcategoriesAlphabetically() {
     startEditUnit,
     saveEditUnit,
     cancelEditUnit,
-    editingMinStockItemId,
-    editMinStockValue,
-    startEditMinStock,
-    saveEditMinStock,
-    cancelEditMinStock,
-    editingLocationItemId,
-    editLocationValue,
-    startEditLocation,
-    saveEditLocation,
-    cancelEditLocation,
-    onLocationChange,
-    onEditLocationKeydown,
     isEditingAttr,
     groupDirectItems,
     categoryDirectItems,
@@ -1167,8 +1090,6 @@ async function organizeSubcategoriesAlphabetically() {
     addingItemForSub,
     newItemName,
     newItemUnit,
-    newItemMinStock,
-    newItemLocation,
     newItemAttrs,
     newItemAttrInput,
     newItemContextLabel,

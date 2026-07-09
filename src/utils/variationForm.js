@@ -6,16 +6,13 @@ export function variationFormForItem(item) {
   return {
     ...emptyVariationForm(),
     values: Object.fromEntries((item?.attributes || []).map(attribute => [attribute, ''])),
-    minStock: item?.minStock || 0,
-    location: item?.location || '',
-    locations: item?.location ? [item.location] : [],
   }
 }
 
 export function variationFormForEdit(item, variation) {
   const locations = variation.locations?.length
     ? [...variation.locations]
-    : [variation.location].filter(Boolean)
+    : [variation.location || item?.location].filter(Boolean)
   return {
     values: Object.fromEntries((item?.attributes || []).map(attribute => [attribute, variation.values?.[attribute] || ''])),
     stock: variation.stock,

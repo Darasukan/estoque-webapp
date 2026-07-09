@@ -4,8 +4,6 @@ import AppDialog from '../components/ui/AppDialog.vue'
 
 const {
   units,
-  activeLocais,
-  groupedLocais,
   uniqueGroups,
   getCategoriesForGroup,
   getSubcategoriesForCategory,
@@ -60,18 +58,6 @@ const {
   startEditUnit,
   saveEditUnit,
   cancelEditUnit,
-  editingMinStockItemId,
-  editMinStockValue,
-  startEditMinStock,
-  saveEditMinStock,
-  cancelEditMinStock,
-  editingLocationItemId,
-  editLocationValue,
-  startEditLocation,
-  saveEditLocation,
-  cancelEditLocation,
-  onLocationChange,
-  onEditLocationKeydown,
   isEditingAttr,
   groupDirectItems,
   categoryDirectItems,
@@ -84,8 +70,6 @@ const {
   addingItemForSub,
   newItemName,
   newItemUnit,
-  newItemMinStock,
-  newItemLocation,
   newItemAttrs,
   newItemAttrInput,
   newItemContextLabel,
@@ -362,7 +346,7 @@ const {
 
             <div v-if="groupDirectItems.length" class="divide-y divide-gray-100 dark:divide-gray-700/50">
               <div v-for="item in groupDirectItems" :key="item.id" class="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                <div>
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.name }}</p>
                   <div class="mt-1 flex flex-wrap gap-1">
                     <span v-for="attr in (item.attributes || [])" :key="attr" class="px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">{{ attr }}</span>
@@ -672,7 +656,11 @@ const {
                   <td class="hidden"></td>
 
                   <!-- Row actions -->
-                  <td class="absolute right-3 top-3 block" @click.stop>
+                  <td
+                    v-if="isDeleting('subcategory', selectedGroup, selectedCategory, sub) || !isEditing('subcategory', sub, selectedGroup, selectedCategory)"
+                    class="absolute right-3 top-3 block"
+                    @click.stop
+                  >
                     <template v-if="isDeleting('subcategory', selectedGroup, selectedCategory, sub)">
                       <div class="flex items-center gap-1">
                         <span class="text-[11px] text-red-500 font-medium whitespace-nowrap">Excluir?</span>
@@ -873,7 +861,7 @@ const {
             >
               <!-- Card header -->
               <div class="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
-                <div>
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">{{ item.name }}</p>
                   <!-- Unit badge (click to edit) -->
                   <template v-if="editingUnitItemId === item.id">
@@ -894,66 +882,6 @@ const {
                       @click.stop="startEditUnit(item)"
                     >{{ item.unit }}</button>
                   </template>
-                  <!-- MinStock (click to edit) -->
-                  <template v-if="editingMinStockItemId === item.id">
-                    <span class="inline-flex items-center gap-1 ml-1.5 mt-1">
-                      <span class="text-[11px] text-gray-400">mín.</span>
-                      <input
-                        v-model="editMinStockValue"
-                        type="number"
-                        min="0"
-                        step="1"
-                        class="w-14 px-1 py-0.5 text-[11px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                        @keydown.enter="saveEditMinStock(item.id)"
-                        @keydown.escape="cancelEditMinStock"
-                        @blur="saveEditMinStock(item.id)"
-                        autofocus
-                      />
-                    </span>
-                  </template>
-                  <template v-else>
-                    <button
-                      class="text-[11px] ml-1.5 transition-colors cursor-pointer"
-                      :class="item.minStock > 0
-                        ? 'text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400'
-                        : 'text-gray-300 dark:text-gray-600 hover:text-primary-500 dark:hover:text-primary-400'"
-                      title="Clique para alterar o estoque mínimo"
-                      @click.stop="startEditMinStock(item)"
-                    >{{ item.minStock > 0 ? `mín. ${item.minStock}` : 'mín. 0' }}</button>
-                  </template>
-                  <!-- Location -->
-                  <div class="mt-1.5">
-                    <template v-if="editingLocationItemId === item.id">
-                      <div class="flex items-center gap-1">
-                        <span class="text-[11px] text-gray-400">📍</span>
-                        <select
-                          v-model="editLocationValue"
-                          class="flex-1 px-1.5 py-0.5 text-[11px] border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
-                          @change="onLocationChange(item.id)"
-                          @keydown.escape="cancelEditLocation"
-                          autofocus
-                        >
-                          <option value="">— Sem local —</option>
-                          <template v-for="g in groupedLocais" :key="g.parent.id">
-                            <option :value="g.parent.name">{{ g.parent.name }}</option>
-                            <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;↳ {{ c.name }}</option>
-                          </template>
-                        </select>
-                        <button class="p-0.5 text-gray-400 hover:text-gray-600" @click.stop="cancelEditLocation">
-                          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    </template>
-                    <template v-else>
-                      <button
-                        class="inline-flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 transition-colors"
-                        @click.stop="startEditLocation(item)"
-                      >
-                        <span>📍</span>
-                        <span>{{ item.location || 'Definir local...' }}</span>
-                      </button>
-                    </template>
-                  </div>
                 </div>
                 <div v-if="isDeleting('item', item.id, item.name)" class="flex shrink-0 items-center gap-1">
                   <button class="rounded bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600" @click.stop="confirmDelete">Sim</button>
@@ -1038,71 +966,8 @@ const {
 
             </div>
 
-            <!-- Add item card -->
-            <template v-if="false">
-              <div class="rounded-xl border border-primary-300 dark:border-primary-700 bg-white dark:bg-gray-800 p-4 shadow-sm">
-                <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Novo modelo</p>
-                <input
-                  v-model="newItemName"
-                  :placeholder="`Nome (padrão: ${selectedSubcategory})`"
-                  class="w-full bg-transparent text-sm font-bold text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none"
-                  @keydown="onNewItemKeydown"
-                  autofocus
-                />
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <select v-model="newItemUnit" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 outline-none dark:bg-gray-700 dark:text-gray-300">
-                    <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
-                  </select>
-                  <label class="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                    min.
-                    <input v-model="newItemMinStock" type="number" min="0" step="1" class="w-16 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 outline-none dark:bg-gray-700 dark:text-gray-300" />
-                  </label>
-                </div>
-                <select v-model="newItemLocation" class="mt-3 w-full rounded bg-transparent text-[11px] text-gray-400 outline-none hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400">
-                  <option value="">Definir local...</option>
-                  <template v-for="g in groupedLocais" :key="g.parent.id">
-                    <option :value="g.parent.name">{{ g.parent.name }}</option>
-                    <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;{{ c.name }}</option>
-                  </template>
-                </select>
-                <p class="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Atributos</p>
-                <div class="flex flex-wrap gap-1">
-                  <span
-                    v-for="(attr, i) in newItemAttrs"
-                    :key="attr"
-                    class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
-                  >
-                    {{ attr }}
-                    <button class="text-primary-400 hover:text-red-500" @click.stop="newItemAttrs.splice(i, 1)">
-                      <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                    </button>
-                  </span>
-                  <input
-                    v-model="newItemAttrInput"
-                    placeholder="+ atributo"
-                    class="min-w-[90px] rounded border border-dashed border-gray-300 bg-transparent px-1.5 py-0.5 text-[11px] text-gray-700 placeholder-gray-400 outline-none focus:border-primary-400 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-500"
-                    @keydown="onNewItemAttrKeydown"
-                  />
-                </div>
-                <div class="mt-4 flex gap-2">
-                  <button
-                    class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-[var(--ds-primary-text)] hover:bg-primary-700 transition-colors"
-                    @click="saveAddItem(selectedSubcategory)"
-                  >
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                    Salvar
-                  </button>
-                  <button
-                    class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                    @click="cancelAddItem"
-                  >Cancelar</button>
-                </div>
-              </div>
-            </template>
-
             <!-- "+" new item button card -->
             <button
-              v-else
               class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-primary-400 dark:hover:border-primary-600 text-gray-400 dark:text-gray-500 hover:text-primary-500 dark:hover:text-primary-400 flex flex-col items-center justify-center gap-2 p-6 transition-colors min-h-[120px]"
               @click="startAddItem(selectedSubcategory)"
             >
@@ -1272,28 +1137,12 @@ const {
           />
         </label>
 
-        <div class="grid gap-3 md:grid-cols-[180px_120px_1fr]">
-          <label class="block">
-            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Unidade</span>
-            <select v-model="newItemUnit" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
-              <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Minimo</span>
-            <input v-model="newItemMinStock" type="number" min="0" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
-          </label>
-          <label class="block">
-            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Local</span>
-            <select v-model="newItemLocation" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
-              <option value="">Definir local...</option>
-              <template v-for="g in groupedLocais" :key="g.parent.id">
-                <option :value="g.parent.name">{{ g.parent.name }}</option>
-                <option v-for="c in g.children" :key="c.id" :value="g.parent.name + ' > ' + c.name">&nbsp;&nbsp;{{ c.name }}</option>
-              </template>
-            </select>
-          </label>
-        </div>
+        <label class="block max-w-[180px]">
+          <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Unidade</span>
+          <select v-model="newItemUnit" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+            <option v-for="u in units" :key="u.value" :value="u.value">{{ u.label }}</option>
+          </select>
+        </label>
 
         <div>
           <p class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos</p>

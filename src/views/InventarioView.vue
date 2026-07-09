@@ -39,7 +39,8 @@ const { success, error } = useToast()
 const inventorySections = ['estoque', 'epis', 'fechamentos']
 const inventorySection = ref(inventorySections.includes(props.initialSection) ? props.initialSection : 'estoque')
 const columnMenuOpen = ref(false)
-const visibleColumns = ref({
+const VISIBLE_COLUMNS_KEY = 'inventory_visible_columns'
+const DEFAULT_VISIBLE_COLUMNS = {
   variation: true,
   location: true,
   destinations: false,
@@ -48,7 +49,18 @@ const visibleColumns = ref({
   status: true,
   history: false,
   adjust: true,
-})
+}
+
+function loadVisibleColumns() {
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(VISIBLE_COLUMNS_KEY) || '{}')
+    return Object.fromEntries(Object.entries(saved).filter(([key, value]) => key in DEFAULT_VISIBLE_COLUMNS && typeof value === 'boolean'))
+  } catch {
+    return {}
+  }
+}
+
+const visibleColumns = ref({ ...DEFAULT_VISIBLE_COLUMNS, ...loadVisibleColumns() })
 
 const columnOptions = computed(() => [
   { key: 'variation', label: 'Variação' },
@@ -95,6 +107,12 @@ function toggleColumn(key) {
     [key]: !isColumnVisible(key),
   }
 }
+
+watch(visibleColumns, columns => {
+  try {
+    globalThis.localStorage?.setItem(VISIBLE_COLUMNS_KEY, JSON.stringify(columns))
+  } catch {}
+}, { deep: true })
 
 // ===== Search =====
 const searchQuery = ref(props.initialSearch || '')
@@ -1419,8 +1437,7 @@ function exportCSV() {
 
                 <!-- Mín. -->
                 <td v-if="isColumnVisible('min')" class="px-4 py-3 text-center">
-                  <span v-if="row.variation.minStock > 0" class="text-gray-600 dark:text-gray-400">{{ row.variation.minStock }}</span>
-                  <span v-else class="text-gray-300 dark:text-gray-600">—</span>
+                  <span class="tabular-nums text-gray-600 dark:text-gray-400">{{ row.variation.minStock ?? 0 }}</span>
                 </td>
 
                 <!-- Status pill -->
