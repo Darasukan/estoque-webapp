@@ -5,7 +5,6 @@ import DestinationsTab from '../components/cadastros/DestinationsTab.vue'
 import LocationsTab from '../components/cadastros/LocationsTab.vue'
 import PeopleTab from '../components/cadastros/PeopleTab.vue'
 import SuppliersTab from '../components/cadastros/SuppliersTab.vue'
-import RolesTab from '../components/cadastros/RolesTab.vue'
 import EpisTab from '../components/cadastros/EpisTab.vue'
 import UsersTab from '../components/cadastros/UsersTab.vue'
 
@@ -23,7 +22,6 @@ const cadastroTabs = computed(() => [
   { id: 'locais', label: 'Locais' },
   { id: 'pessoas', label: 'Pessoas' },
   { id: 'fornecedores', label: 'Fornecedores' },
-  { id: 'cargos', label: 'Cargos' },
   { id: 'epis', label: 'EPIs' },
   ...(isAdmin.value ? [{ id: 'operadores', label: 'Operadores' }] : []),
 ])
@@ -50,7 +48,7 @@ watch(isAdmin, admin => {
         :key="tab.id"
         type="button"
         class="ds-segmented-item"
-        :class="activeSubTab === tab.id ? 'ds-segmented-item-active' : ''"
+        :class="activeSubTab === tab.id || (tab.id === 'pessoas' && activeSubTab === 'cargos') ? 'ds-segmented-item-active' : ''"
         @click="activeSubTab = tab.id"
       >{{ tab.label }}</button>
     </nav>
@@ -63,16 +61,16 @@ watch(isAdmin, admin => {
   <DestinationsTab v-else-if="activeSubTab === 'destinos'" />
 
   <!-- ===== Pessoas ===== -->
-  <PeopleTab v-else-if="activeSubTab === 'pessoas'" />
+  <PeopleTab
+    v-else-if="activeSubTab === 'pessoas' || activeSubTab === 'cargos'"
+    :initial-section="activeSubTab === 'cargos' ? 'cargos' : 'funcionarios'"
+  />
 
   <!-- ===== Fornecedores ===== -->
   <SuppliersTab v-else-if="activeSubTab === 'fornecedores'" />
 
   <!-- ===== Locais ===== -->
   <LocationsTab v-else-if="activeSubTab === 'locais'" />
-
-  <!-- ===== Cargos ===== -->
-  <RolesTab v-else-if="activeSubTab === 'cargos'" />
 
   <!-- ===== EPIs ===== -->
   <EpisTab v-else-if="activeSubTab === 'epis'" @quick-movement="emit('quick-movement', $event)" />

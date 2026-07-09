@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, inject } from 'vue'
-import { useItems } from '../composables/useItems.js'
+import { stockAlertTransition, useItems } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useToast } from '../composables/useToast.js'
 import { useDestinations } from '../composables/useDestinations.js'
@@ -15,6 +15,7 @@ import {
 } from '../utils/variationForm.js'
 import VariationSheet from '../components/ui/VariationSheet.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
+import AiCatalogDialog from '../components/catalog/AiCatalogDialog.vue'
 
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
@@ -221,6 +222,8 @@ const directVariationSubcategory = ref('')
 const directVariationItemId = ref('')
 const sheetVariationId = ref('')
 const sheetInitialTab = ref('data')
+const aiCatalogOpen = ref(false)
+const aiCatalogSearchOpen = ref(false)
 const sheetVariation = computed(() => itemVariations.value.find(v => v.id === sheetVariationId.value) || null)
 
 const directVariationCategories = computed(() =>
@@ -305,6 +308,39 @@ function startDirectVariation() {
     const el = document.querySelector('.direct-variation-select')
     if (el) el.focus()
   })
+}
+
+function startAiCatalog() {
+  aiCatalogOpen.value = true
+}
+
+function startAiCatalogSearch() {
+  aiCatalogSearchOpen.value = true
+}
+
+async function onAiCatalogSaved(item, options = {}) {
+  if (options.keepOpen) return
+  aiCatalogOpen.value = false
+  setActiveGroup(item.group || null)
+  setActiveCategory(item.category || null)
+  setActiveSubcategory(item.subcategory || null)
+  closeItem()
+  await nextTick()
+  openItem(item)
+}
+
+async function onAiCatalogFound(item, options = {}) {
+  aiCatalogSearchOpen.value = false
+  setActiveGroup(item.group || null)
+  setActiveCategory(item.category || null)
+  setActiveSubcategory(item.subcategory || null)
+  closeItem()
+  await nextTick()
+  openItem(item)
+  if (options.variationId) {
+    const variation = variations.value.find(row => row.id === options.variationId)
+    if (variation) openVariationSheet(variation)
+  }
 }
 
 function onDirectVariationGroupChange() {
@@ -570,13 +606,18 @@ async function adjustSheetStock(delta) {
   }
   const type = delta > 0 ? 'entrada' : 'saida'
   try {
-    await addMovement(type, sheetVariation.value, viewingItem.value, qty, {
+    const movement = await addMovement(type, sheetVariation.value, viewingItem.value, qty, {
       supplier: '',
       requestedBy: '',
       destination: '',
       docRef: 'AJUSTE',
       note: 'Ajuste manual pela ficha da variação.',
     })
+    const status = stockAlertTransition(movement, sheetVariation.value, viewingItem.value)
+    if (status) error(status === 'zero'
+      ? `${viewingItem.value.name} ficou sem estoque.`
+      : `${viewingItem.value.name} entrou em alerta de estoque: ${movement.stockAfter} ${viewingItem.value.unit}.`
+    )
     success(type === 'entrada' ? 'Entrada de ajuste registrada.' : 'Saída de ajuste registrada.')
   } catch (e) {
     error(e.message)
@@ -679,7 +720,25 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 
 <template>
   <div>
-    <div v-if="isAdmin && !viewingItem" class="mb-4 flex justify-end">
+    <div v-if="isLoggedIn && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2">
+      <button
+        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+        @click="startAiCatalogSearch"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6.05 6.05a7.5 7.5 0 0 0 10.6 10.6Z" />
+        </svg>
+        Pesquisar com IA
+      </button>
+      <button
+        class="inline-flex items-center gap-1.5 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/30"
+        @click="startAiCatalog"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+        </svg>
+        Catalogar com IA
+      </button>
       <button
         class="inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500"
         @click="startDirectVariation"
@@ -743,14 +802,14 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
       </div>
 
       <!-- Item header -->
-      <div class="flex items-center gap-4 mb-5">
+      <div class="mb-5 flex flex-wrap items-center gap-3 sm:gap-4">
         <div class="w-12 h-12 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center flex-shrink-0">
           <svg class="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
           </svg>
         </div>
-        <div class="flex-1 min-w-0">
-          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ viewingItem.name }}</h2>
+        <div class="min-w-[12rem] flex-1">
+          <h2 class="break-words text-lg font-bold leading-tight text-gray-800 dark:text-gray-100 sm:text-xl">{{ viewingItem.name }}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">
             {{ viewingItem.unit }} &middot; Mín. {{ viewingItem.minStock }} &middot;
             <span :class="totalStock < viewingItem.minStock ? 'text-red-500 dark:text-red-400 font-semibold' : 'text-green-600 dark:text-green-400 font-semibold'">
@@ -762,7 +821,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           </p>
         </div>
         <!-- Variation search -->
-        <div class="relative w-52">
+        <div class="relative w-full sm:w-52">
           <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
@@ -783,8 +842,8 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           </button>
         </div>
         <button
-          v-if="isAdmin"
-          class="px-4 py-2 text-sm font-medium bg-primary-700 dark:bg-primary-600 text-[var(--ds-primary-text)] rounded-lg hover:bg-primary-800 dark:hover:bg-primary-500 transition-colors flex items-center gap-1.5 flex-shrink-0"
+          v-if="isLoggedIn"
+          class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500 sm:w-auto sm:flex-shrink-0"
           @click="startAddVariation"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1180,6 +1239,18 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
       </div>
     </template>
   </div>
+
+  <AiCatalogDialog
+    v-if="aiCatalogOpen"
+    @close="aiCatalogOpen = false"
+    @saved="onAiCatalogSaved"
+  />
+  <AiCatalogDialog
+    v-if="aiCatalogSearchOpen"
+    mode="search"
+    @close="aiCatalogSearchOpen = false"
+    @found="onAiCatalogFound"
+  />
 
   <VariationSheet
     v-if="viewingItem && sheetVariation"

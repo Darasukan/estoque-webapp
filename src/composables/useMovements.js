@@ -43,6 +43,7 @@ export function useMovements() {
     // Update local variation stock from server response
     variation.stock = created.stockAfter
     movements.value.unshift(created)
+    return created
   }
 
   async function addMovementBatch(type, lines, fields = {}) {

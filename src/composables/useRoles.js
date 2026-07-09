@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import * as api from '../services/api.js'
+import { formatRoleName } from './usePeople.js'
 
 // Singleton state
 const roles = ref([])
@@ -14,7 +15,10 @@ function sortByName(list) {
 
 export function useRoles() {
   async function loadData() {
-    roles.value = sortByName(await api.getRoles())
+    roles.value = sortByName((await api.getRoles()).map(role => ({
+      ...role,
+      name: formatRoleName(role.name),
+    })))
   }
 
   const activeRoles = computed(() =>
@@ -22,7 +26,7 @@ export function useRoles() {
   )
 
   async function addRole(name, description = '') {
-    const trimmed = name.trim()
+    const trimmed = formatRoleName(name)
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (roles.value.some(r => r.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe um cargo com esse nome.' }
@@ -41,13 +45,17 @@ export function useRoles() {
     const r = roles.value.find(r => r.id === id)
     if (!r) return { ok: false, error: 'Cargo não encontrado.' }
     if (changes.name !== undefined) {
-      const trimmed = changes.name.trim()
+      const trimmed = formatRoleName(changes.name)
       if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
       if (roles.value.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe um cargo com esse nome.' }
       }
     }
-    const updated = await api.updateRole(id, { ...r, ...changes })
+    const updated = await api.updateRole(id, {
+      ...r,
+      ...changes,
+      name: changes.name === undefined ? r.name : formatRoleName(changes.name),
+    })
     Object.assign(r, updated)
     roles.value = sortByName(roles.value)
     return { ok: true }

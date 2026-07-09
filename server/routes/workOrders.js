@@ -130,6 +130,24 @@ function resolveDestinationName(destinationId) {
   return destinationId ? getDestinationFullName(db, destinationId) : ''
 }
 
+function resolveDestinationLeafName(destinationId, storedName = '') {
+  if (destinationId) {
+    const row = db.prepare('SELECT name FROM destinations WHERE id = ?').get(destinationId)
+    if (row?.name) return row.name
+  }
+  const name = clean(storedName)
+  if (!name) return ''
+  if (name.includes('>')) return name.split('>').pop().trim()
+  const rows = db.prepare('SELECT * FROM destinations WHERE lower(name) = lower(?) ORDER BY active DESC').all(name)
+  return rows.length === 1 ? rows[0].name : name
+}
+
+function resolvePersonName(storedName = '') {
+  const name = clean(storedName)
+  if (!name) return ''
+  return db.prepare('SELECT name FROM people WHERE lower(name) = lower(?)').get(name)?.name || name
+}
+
 function destinationIsActive(destinationId) {
   if (!destinationId) return false
   return !!db.prepare('SELECT id FROM destinations WHERE id = ? AND active = 1').get(destinationId)
@@ -259,6 +277,11 @@ function mapWorkOrder(r) {
     r.maintenance_location_type === 'interna'
       ? (r.maintenance_destination_name || '')
       : (r.maintenance_external_location || '')
+  const destinationName = resolveDestinationLeafName(r.destination_id, r.destination_name)
+  const originDestinationName = resolveDestinationLeafName(r.motor_origin_destination_id, r.motor_origin_destination_name)
+  const maintenanceDestinationName = resolveDestinationLeafName(r.maintenance_destination_id, r.maintenance_destination_name)
+  const requestedByName = resolvePersonName(r.requested_by)
+  const professionalName = resolvePersonName(r.maintenance_professional)
   return {
     id: r.id,
     number: r.number,
@@ -275,26 +298,26 @@ function mapWorkOrder(r) {
     motorEventToDestination: motorEvent?.to_destination || '',
     motorEventNotes: motorEvent?.notes || '',
     destinationId: r.destination_id,
-    destinationName: r.destination_name,
-    equipment: r.equipment || r.destination_name || '',
+    destinationName,
+    equipment: r.destination_id ? destinationName : (r.equipment || destinationName || ''),
     motorOriginDestinationId: r.motor_origin_destination_id || '',
-    motorOriginDestinationName: r.motor_origin_destination_name || '',
+    motorOriginDestinationName: originDestinationName,
     maintenanceLocationType: r.maintenance_location_type || '',
     maintenanceDestinationId: r.maintenance_destination_id || '',
-    maintenanceDestinationName: r.maintenance_destination_name || '',
+    maintenanceDestinationName,
     maintenanceExternalLocation: r.maintenance_external_location || '',
     maintenanceExternalOrderNumber: r.maintenance_external_order_number || '',
-    maintenanceLocationName: maintenanceLocationName || r.destination_name || '',
+    maintenanceLocationName: maintenanceLocationName || destinationName || '',
     serviceType: r.service_type || 'Outros',
     requestDate: r.request_date || '',
     requestTime: r.request_time || '',
-    requestedBy: r.requested_by,
+    requestedBy: requestedByName,
     note: r.note,
     maintenanceStartDate: r.maintenance_start_date || '',
     maintenanceStartTime: r.maintenance_start_time || '',
     maintenanceEndDate: r.maintenance_end_date || '',
     maintenanceEndTime: r.maintenance_end_time || '',
-    maintenanceProfessional: r.maintenance_professional || '',
+    maintenanceProfessional: professionalName,
     maintenanceMaterials: r.maintenance_materials || '',
     maintenanceNote: r.maintenance_note || '',
     motorStatusAfterMaintenance: r.motor_status_after_maintenance || '',
@@ -376,7 +399,7 @@ router.get('/report/by-destination', (req, res) => {
   const destMap = {} // { destinationName: { destinationId, orders: [...], looseSaidas: [...] } }
 
   for (const o of orders) {
-    const key = o.destination_name || 'Sem destino'
+    const key = resolveDestinationLeafName(o.destination_id, o.destination_name) || 'Sem destino'
     if (!destMap[key]) destMap[key] = { destinationId: o.destination_id, destinationName: key, orders: [], looseSaidas: [] }
     const woItems = allWoItems.filter(it => it.work_order_id === o.id).map(mapWorkOrderItem)
     destMap[key].orders.push({ ...mapWorkOrder(o), items: woItems })

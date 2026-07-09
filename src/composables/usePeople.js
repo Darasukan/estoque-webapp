@@ -1,5 +1,8 @@
 import { ref, computed } from 'vue'
 import * as api from '../services/api.js'
+import { formatPersonName, formatRoleName } from '../utils/nameFormat.js'
+
+export { formatPersonName, formatRoleName }
 
 // Singleton state
 const people = ref([])
@@ -25,7 +28,11 @@ export function personStatusLabel(status) {
 
 export function usePeople() {
   async function loadData() {
-    people.value = sortByName(await api.getPeople())
+    people.value = sortByName((await api.getPeople()).map(person => ({
+      ...person,
+      name: formatPersonName(person.name),
+      role: formatRoleName(person.role),
+    })))
   }
 
   const activePeople = computed(() =>
@@ -33,14 +40,14 @@ export function usePeople() {
   )
 
   async function addPerson(name, role = '', status = 'ativo') {
-    const trimmed = name.trim()
+    const trimmed = formatPersonName(name)
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (people.value.some(p => p.name.toLowerCase() === trimmed.toLowerCase())) {
       return { ok: false, error: 'Já existe uma pessoa com esse nome.' }
     }
     const created = await api.createPerson({
       name: trimmed,
-      role: role.trim(),
+      role: formatRoleName(role),
       status,
       active: status === 'ativo',
     })
@@ -53,13 +60,18 @@ export function usePeople() {
     const p = people.value.find(p => p.id === id)
     if (!p) return { ok: false, error: 'Pessoa não encontrada.' }
     if (changes.name !== undefined) {
-      const trimmed = changes.name.trim()
+      const trimmed = formatPersonName(changes.name)
       if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
       if (people.value.some(x => x.id !== id && x.name.toLowerCase() === trimmed.toLowerCase())) {
         return { ok: false, error: 'Já existe uma pessoa com esse nome.' }
       }
     }
-    const updated = await api.updatePerson(id, { ...p, ...changes })
+    const updated = await api.updatePerson(id, {
+      ...p,
+      ...changes,
+      name: changes.name === undefined ? p.name : formatPersonName(changes.name),
+      role: changes.role === undefined ? p.role : formatRoleName(changes.role),
+    })
     Object.assign(p, updated)
     people.value = sortByName(people.value)
     return { ok: true }

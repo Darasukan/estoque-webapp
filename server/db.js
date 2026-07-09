@@ -1,31 +1,15 @@
 import Database from 'better-sqlite3'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { dirname, isAbsolute, join, resolve } from 'path'
+import { mkdirSync } from 'fs'
+import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { argValue, loadEnvFile, resolveEnvPath } from './env.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const envArg = process.argv.find(arg => arg.startsWith('--env='))
-export const ENV_FILE = envArg ? envArg.slice('--env='.length) : '.env'
-
-function loadEnvFile() {
-  const envPath = resolve(process.cwd(), ENV_FILE)
-  if (!existsSync(envPath)) return
-  const lines = readFileSync(envPath, 'utf8').split(/\r?\n/)
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue
-    const index = trimmed.indexOf('=')
-    const key = trimmed.slice(0, index).trim()
-    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, '')
-    if (key && process.env[key] === undefined) process.env[key] = value
-  }
-}
-
-loadEnvFile()
+export const ENV_FILE = loadEnvFile(argValue('env', '.env'))
 
 export const DB_PATH = process.env.DB_PATH
-  ? (isAbsolute(process.env.DB_PATH) ? process.env.DB_PATH : resolve(process.cwd(), process.env.DB_PATH))
+  ? resolveEnvPath(process.env.DB_PATH)
   : join(__dirname, 'estoque.db')
 
 mkdirSync(dirname(DB_PATH), { recursive: true })

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, inject, onMounted, onBeforeUnmount } from 'vue'
 import { useWorkOrders } from '../composables/useWorkOrders.js'
-import { useItems } from '../composables/useItems.js'
+import { stockAlertTransition, useItems } from '../composables/useItems.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
 import { useMovements } from '../composables/useMovements.js'
@@ -2018,6 +2018,12 @@ async function handleAddMaterial() {
     const liveVar = variations.value.find(v => v.id === matSelectedVariation.value.id)
     if (liveVar) liveVar.stock = result.newStock
     if (result.movement) movements.value.unshift(result.movement)
+    const item = result.movement ? items.value.find(i => i.id === result.movement.itemId) : null
+    const status = stockAlertTransition(result.movement, liveVar, item)
+    if (status) showError(status === 'zero'
+      ? `${result.movement.itemName} ficou sem estoque.`
+      : `${result.movement.itemName} entrou em alerta de estoque: ${result.movement.stockAfter} ${result.movement.itemUnit}.`
+    )
     success('Material adicionado à OS')
     cancelAddMaterial()
   } catch (e) { showError(e.message) }

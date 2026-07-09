@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, inject } from 'vue'
-import { useItems } from '../composables/useItems.js'
+import { stockAlertTransition, useItems } from '../composables/useItems.js'
 import { useMovements } from '../composables/useMovements.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import { usePeople } from '../composables/usePeople.js'
@@ -42,7 +42,7 @@ const { movements, addMovementBatch, editMovement, deleteMovement } = useMovemen
 const { destinations, activeDestinations, groupedDestinations, getDestinationName, getDestFullName } = useDestinations()
 const { activePeople } = usePeople()
 const { activeSuppliers, ensureSupplier } = useSuppliers()
-const { workOrders, linkMovement } = useWorkOrders()
+const { workOrders } = useWorkOrders()
 const { success, error } = useToast()
 
 const emit = defineEmits(['update:browsing', 'update:subTab'])
@@ -120,7 +120,6 @@ const form = ref({
 const docType = ref('sem') // 'nf' | 'pedido' | 'sem' — only used for entrada
 const confirmPending = ref(false)
 const movementFormAttempted = ref(false)
-const selectedWorkOrderId = ref('') // optional OS link for saída
 const suppressFlowReset = ref(false)
 
 function selectDocType(v) {
@@ -182,7 +181,6 @@ function resetFlow() {
   docType.value = 'sem'
   confirmPending.value = false
   movementFormAttempted.value = false
-  selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
@@ -192,7 +190,6 @@ function resetFlow() {
 
 function adaptFormForSubTab(tab) {
   confirmPending.value = false
-  selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
@@ -332,7 +329,6 @@ function resetCurrentItem() {
   destSelectVal.value = ''
   movementDestinationId.value = ''
   docType.value = 'sem'
-  selectedWorkOrderId.value = ''
   personDropdownOpen.value = false
   supplierDropdownOpen.value = false
   destDropdownOpen.value = false
@@ -1131,6 +1127,7 @@ async function confirmQuickExitQueue() {
       const updatedVar = variations.value.find(v => v.id === movement.variationId)
       if (updatedVar) updatedVar.stock = movement.stockAfter
     }
+    for (const movement of created) notifyStockAlert(movement)
     successWithHistoryAction(`${created.length} saída${created.length === 1 ? '' : 's'} registrada${created.length === 1 ? '' : 's'}.`)
     quickExitQueue.value = []
     nextTick(() => focusRef(quickExitSearchInputEl))
@@ -1140,15 +1137,6 @@ async function confirmQuickExitQueue() {
     quickExitPending.value = false
   }
 }
-
-// Work orders filtered by the destination selected in the saída form
-const filteredWorkOrders = computed(() => {
-  const dest = form.value.destination.trim()
-  if (!dest) return workOrders.value
-  return workOrders.value.filter(wo =>
-    wo.destinationName === dest || wo.equipment === dest || wo.destinationId === dest
-  )
-})
 
 function commonMovementFields() {
   return {
@@ -1199,8 +1187,6 @@ async function confirmCurrentMovement() {
   if (!liveVar) { error('Variacao nao encontrada.'); return }
 
   const line = currentMovementLine(liveVar)
-  const woId = selectedWorkOrderId.value
-
   try {
     confirmPending.value = true
     await ensureSuppliersForLines([line])
@@ -1209,14 +1195,7 @@ async function confirmCurrentMovement() {
       const updatedVar = variations.value.find(v => v.id === movement.variationId)
       if (updatedVar) updatedVar.stock = movement.stockAfter
     }
-
-    if (woId && activeSubTab.value === 'saida') {
-      try {
-        for (const movement of created) await linkMovement(woId, movement.id)
-      } catch (e) {
-        error('Movimentacao criada, mas houve falha ao vincular a OS: ' + e.message)
-      }
-    }
+    for (const movement of created) notifyStockAlert(movement)
 
     successWithHistoryAction(`${activeSubTab.value === 'entrada' ? 'Entrada' : 'Saida'} registrada com sucesso.`)
     resetCurrentItem()
@@ -1250,6 +1229,19 @@ function variationLabel(v, item) {
     if (val) parts.push(`${k}: ${val}`)
   }
   return parts.length ? parts.join(' · ') : '—'
+}
+
+function notifyStockAlert(movement) {
+  const variation = variations.value.find(v => v.id === movement.variationId)
+  const item = items.value.find(i => i.id === movement.itemId)
+  const status = stockAlertTransition(movement, variation, item)
+  if (!status) return
+  const detail = variation ? ` (${variationLabel({ ...variation, values: movement.variationValues, extras: movement.variationExtras }, item)})` : ''
+  const unit = movement.itemUnit || item?.unit || ''
+  error(status === 'zero'
+    ? `${movement.itemName || item?.name || 'Produto'}${detail} ficou sem estoque.`
+    : `${movement.itemName || item?.name || 'Produto'}${detail} entrou em alerta de estoque: ${movement.stockAfter} ${unit}.`
+  )
 }
 
 function formatCurrency(value) {
@@ -2260,22 +2252,6 @@ defineExpose({
               />
             </div>
           </template>
-
-          <!-- Ordem de Serviço (saída only, optional) -->
-          <div v-if="activeSubTab === 'saida'" class="md:col-span-2">
-            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Ordem de Serviço (opcional)</label>
-            <select
-              v-model="selectedWorkOrderId"
-              class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-            >
-              <option value="">Nenhuma</option>
-              <option
-                v-for="wo in filteredWorkOrders"
-                :key="wo.id"
-                :value="wo.id"
-              >OS #{{ wo.number }} - {{ wo.equipment || wo.destinationName || wo.title }}</option>
-            </select>
-          </div>
 
           <!-- Observação (both) -->
           <div class="md:col-span-2">

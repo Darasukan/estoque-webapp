@@ -1166,161 +1166,29 @@
     background: rgba(255, 255, 255, 0.14) !important;
   }
 
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    min-height: 2.5rem;
-    overflow: hidden;
-    border-radius: var(--ds-radius-control);
-    background: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.65) !important;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions button {
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-add-group-button,
+  .dark .hierarchy-group-sidebar .hierarchy-add-group-button {
+    width: 100%;
     min-height: 2.5rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.25rem;
-    padding: 0 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    line-height: 1;
-    position: relative;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new span,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new svg {
-    color: #111827 !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
-    content: "";
-    position: absolute;
-    top: 0.45rem;
-    right: 0;
-    bottom: 0.45rem;
-    width: 1px;
-    background: rgba(31, 36, 41, 0.22);
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai {
-    background: var(--ds-active-bg) !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai span,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai svg {
-    color: var(--ds-active-text) !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new:hover {
-    background: #f3f4f6 !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover {
-    background: #fde68a !important;
-  }
-
-  .dark .hierarchy-group-sidebar .hierarchy-quick-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    min-height: 2.5rem;
-    overflow: hidden;
-    border: 1px solid var(--ds-border);
     border-radius: var(--ds-radius-control);
-    background: var(--ds-surface);
-  }
-
-  .dark .hierarchy-group-sidebar .hierarchy-quick-actions button {
-    min-height: 2.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-    padding: 0 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    line-height: 1;
-    position: relative;
-    color: var(--ds-text-soft);
-  }
-
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
-    content: "";
-    position: absolute;
-    top: 0.45rem;
-    right: 0;
-    bottom: 0.45rem;
-    width: 1px;
-    background: var(--ds-border);
-  }
-
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai {
-    background: var(--ds-active-bg);
-    color: var(--ds-active-text);
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-actions {
-    display: grid;
-    grid-template-columns: 1fr 0.72fr;
-    gap: 0.5rem;
-    min-height: 2.5rem;
-    padding: 0 !important;
-    overflow: visible;
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-actions button,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-actions button {
-    min-height: 2.75rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new {
     background: var(--ds-brand) !important;
+    color: var(--ds-primary-text) !important;
+    font-size: 0.75rem;
+    font-weight: 700;
   }
 
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new span,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new span {
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-add-group-button span,
+  .dark .hierarchy-group-sidebar .hierarchy-add-group-button span {
     color: var(--ds-primary-text) !important;
   }
 
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new::after,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new::after {
-    display: none;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai {
-    background: rgba(255, 255, 255, 0.08) !important;
-    border-color: rgba(245, 158, 11, 0.46);
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai,
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai span,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai span {
-    color: #fde68a !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-new:hover,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-new:hover {
+  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-add-group-button:hover,
+  .dark .hierarchy-group-sidebar .hierarchy-add-group-button:hover {
     background: var(--ds-brand-hover) !important;
-  }
-
-  :root:not(.dark) .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover,
-  .dark .hierarchy-group-sidebar .hierarchy-quick-action-ai:hover {
-    background: rgba(245, 158, 11, 0.18) !important;
   }
 
   :root:not(.dark) .hierarchy-group-sidebar input,

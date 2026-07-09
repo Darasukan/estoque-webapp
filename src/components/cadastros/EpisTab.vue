@@ -467,11 +467,7 @@ function quickMovement(record) {
 
 <template>
   <div>
-    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">EPIs</h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Obrigatoriedade e periodicidade por cargo, com controle por pessoa.</p>
-      </div>
+    <div class="mb-5 flex flex-wrap items-start justify-start gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
       <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
         <button
           v-for="tab in [{ id: 'cargo', label: 'Por cargo' }, { id: 'pessoas', label: 'Por pessoa' }]"

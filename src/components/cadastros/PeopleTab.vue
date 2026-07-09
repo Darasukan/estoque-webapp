@@ -1,25 +1,97 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { PERSON_STATUSES, personStatusLabel, usePeople } from '../../composables/usePeople.js'
+import { computed, inject, ref, watch } from 'vue'
+import { PERSON_STATUSES, formatRoleName, personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useRoles } from '../../composables/useRoles.js'
 import { useToast } from '../../composables/useToast.js'
+import { parsePeopleCsv } from '../../utils/peopleCsv.js'
+import RolesTab from './RolesTab.vue'
 
+const props = defineProps({
+  initialSection: { type: String, default: 'funcionarios' },
+})
 const { people, addPerson, editPerson, togglePersonActive, deletePerson } = usePeople()
-const { activeRoles } = useRoles()
+const { roles, activeRoles, addRole } = useRoles()
 const { success, error } = useToast()
+const environmentBadge = inject('environmentBadge', ref(null))
+const isDev = computed(() =>
+  import.meta.env.DEV ||
+  environmentBadge.value?.env === 'DEV' ||
+  (window.location.hostname === 'localhost' && window.location.port === '3001')
+)
 
 const newPersonName = ref('')
 const newPersonRole = ref('')
 const newPersonStatus = ref('ativo')
 const addingPerson = ref(false)
+const peopleSection = ref(props.initialSection === 'cargos' ? 'cargos' : 'funcionarios')
 const editingPersonId = ref(null)
 const editPersonName = ref('')
 const editPersonRole = ref('')
 const editPersonStatus = ref('ativo')
+const personStatusFilter = ref('all')
+const personSearch = ref('')
+const currentPage = ref(1)
+const pageSize = ref(20)
+const selectedPersonIds = ref([])
+const csvInput = ref(null)
+const csvImporting = ref(false)
+const csvImportSummary = ref('')
+const bulkDeleting = ref(false)
 const personSaving = ref(false)
+const personStatusFilterLabels = {
+  ativo: 'Ativas',
+  inativo: 'Inativas',
+  demitido: 'Demitidas',
+  afastado: 'Afastadas',
+}
 
 const canAddPerson = computed(() => newPersonName.value.trim().length > 0 && !personSaving.value)
 const canEditPerson = computed(() => editPersonName.value.trim().length > 0 && !personSaving.value)
+const personStatusOptions = computed(() => [
+  { id: 'all', label: 'Todas', count: people.value.length },
+  ...PERSON_STATUSES.map(status => ({
+    ...status,
+    label: personStatusFilterLabels[status.id] || status.label,
+    count: people.value.filter(person => personStatus(person) === status.id).length,
+  })),
+])
+const filteredPeople = computed(() =>
+  (personStatusFilter.value === 'all'
+    ? people.value
+    : people.value.filter(person => personStatus(person) === personStatusFilter.value)
+  ).filter(person => {
+    const q = normalizeSearch(personSearch.value)
+    if (!q) return true
+    return [person.name, person.role, personStatusLabel(personStatus(person))]
+      .some(value => normalizeSearch(value).includes(q))
+  })
+)
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredPeople.value.length / pageSize.value)))
+const paginatedPeople = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredPeople.value.slice(start, start + pageSize.value)
+})
+const pagePersonIds = computed(() => paginatedPeople.value.map(person => person.id))
+const selectedPeople = computed(() => people.value.filter(person => selectedPersonIds.value.includes(person.id)))
+const allPagePeopleSelected = computed(() =>
+  pagePersonIds.value.length > 0 && pagePersonIds.value.every(id => selectedPersonIds.value.includes(id))
+)
+
+watch([personStatusFilter, personSearch, pageSize], () => {
+  currentPage.value = 1
+  selectedPersonIds.value = []
+})
+watch(() => props.initialSection, section => {
+  peopleSection.value = section === 'cargos' ? 'cargos' : 'funcionarios'
+})
+watch(currentPage, () => { selectedPersonIds.value = [] })
+watch(people, () => {
+  const ids = new Set(people.value.map(person => person.id))
+  selectedPersonIds.value = selectedPersonIds.value.filter(id => ids.has(id))
+})
+watch(totalPages, total => {
+  if (currentPage.value > total) currentPage.value = total
+})
 
 function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = ''; newPersonStatus.value = 'ativo' }
 function cancelAddPerson() { addingPerson.value = false }
@@ -34,6 +106,57 @@ async function confirmAddPerson() {
   } finally {
     personSaving.value = false
   }
+}
+async function importPeopleCsv(event) {
+  const file = event.target.files?.[0]
+  if (!file || csvImporting.value) return
+  csvImporting.value = true
+  csvImportSummary.value = ''
+  try {
+    const parsed = parsePeopleCsv(await file.text())
+    if (!parsed.rows.length) {
+      error('CSV sem pessoas validas.')
+      return
+    }
+
+    const rolesCreated = await createMissingRoles(parsed.rows)
+    let created = 0
+    let failed = parsed.skipped
+    for (const row of parsed.rows) {
+      try {
+        const result = await addPerson(row.name, row.role, 'ativo')
+        if (result.ok) created += 1
+        else failed += 1
+      } catch {
+        failed += 1
+      }
+    }
+
+    csvImportSummary.value = [
+      `${created} pessoa(s) importada(s).`,
+      rolesCreated ? `${rolesCreated} cargo(s) cadastrado(s).` : '',
+      failed ? `${failed} linha(s) ignorada(s).` : '',
+    ].filter(Boolean).join(' ')
+    if (created) success(csvImportSummary.value)
+    else error('Nenhuma pessoa foi importada.')
+  } finally {
+    csvImporting.value = false
+    if (csvInput.value) csvInput.value.value = ''
+  }
+}
+
+async function createMissingRoles(rows) {
+  const known = new Set(roles.value.map(role => normalizeSearch(role.name)))
+  let created = 0
+  for (const row of rows) {
+    const roleName = formatRoleName(row.role)
+    const key = normalizeSearch(roleName)
+    if (!key || known.has(key)) continue
+    const result = await addRole(roleName)
+    known.add(key)
+    if (result.ok) created += 1
+  }
+  return created
 }
 function startEditPerson(p) {
   editingPersonId.value = p.id
@@ -65,8 +188,66 @@ function onDeletePerson(p) {
   success('Pessoa removida.')
 }
 
+async function deleteSelectedPeople() {
+  const rows = selectedPeople.value
+  if (!rows.length || bulkDeleting.value) return
+  if (!confirm(`Excluir ${rows.length} pessoa(s) selecionada(s)?`)) return
+  bulkDeleting.value = true
+  try {
+    let removed = 0
+    for (const person of rows) {
+      try {
+        await deletePerson(person.id)
+        removed += 1
+      } catch {}
+    }
+    selectedPersonIds.value = []
+    if (removed) success(`${removed} pessoa(s) removida(s).`)
+    if (removed < rows.length) error(`${rows.length - removed} pessoa(s) não foram removida(s).`)
+  } finally {
+    bulkDeleting.value = false
+  }
+}
+
+function togglePageSelection() {
+  selectedPersonIds.value = allPagePeopleSelected.value ? [] : pagePersonIds.value
+}
+
+async function deleteAllPeopleDev() {
+  if (!isDev.value || bulkDeleting.value || !people.value.length) return
+  const total = people.value.length
+  if (!confirm(`DEV: remover TODAS as ${total} pessoa(s)?`)) return
+  bulkDeleting.value = true
+  try {
+    let removed = 0
+    for (const person of [...people.value]) {
+      try {
+        await deletePerson(person.id)
+        removed += 1
+      } catch {}
+    }
+    selectedPersonIds.value = []
+    if (removed) success(`DEV: ${removed} pessoa(s) removida(s).`)
+    if (removed < total) error('Algumas pessoas não foram removidas.')
+  } finally {
+    bulkDeleting.value = false
+  }
+}
+
+function personStatus(person) {
+  return person.status || (person.active ? 'ativo' : 'inativo')
+}
+
+function normalizeSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
 function personStatusClass(person) {
-  const status = person.status || (person.active ? 'ativo' : 'inativo')
+  const status = personStatus(person)
   if (status === 'ativo') return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
   if (status === 'afastado') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
   if (status === 'demitido') return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
@@ -76,20 +257,60 @@ function personStatusClass(person) {
 <template>
 <!-- ===== Pessoas ===== -->
   <div>
-    <div class="max-w-2xl">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Pessoas</h2>
-          <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Colaboradores que retiram materiais do estoque.</p>
+    <div class="w-full">
+      <p v-if="csvImportSummary" class="mb-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">{{ csvImportSummary }}</p>
+
+      <template v-if="peopleSection === 'funcionarios'">
+      <div class="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+        <nav class="ds-segmented inline-flex" aria-label="Seções de pessoas">
+          <button
+            type="button"
+            class="ds-segmented-item"
+            :class="peopleSection === 'funcionarios' ? 'ds-segmented-item-active' : ''"
+            @click="peopleSection = 'funcionarios'"
+          >
+            Funcionários
+          </button>
+          <button
+            type="button"
+            class="ds-segmented-item"
+            :class="peopleSection === 'cargos' ? 'ds-segmented-item-active' : ''"
+            @click="peopleSection = 'cargos'"
+          >
+            Cargos
+          </button>
+        </nav>
+        <div class="flex flex-wrap gap-2">
+          <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">
+            {{ csvImporting ? 'Importando...' : 'Importar CSV' }}
+            <input
+              ref="csvInput"
+              type="file"
+              accept=".csv,text/csv"
+              class="hidden"
+              :disabled="csvImporting"
+              @change="importPeopleCsv"
+            />
+          </label>
+          <button
+            v-if="!addingPerson"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700"
+            @click="startAddPerson"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            Nova pessoa
+          </button>
+          <button
+            v-if="isDev"
+            type="button"
+            class="inline-flex items-center justify-center rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
+            :disabled="bulkDeleting || !people.length"
+            title="Disponível apenas no ambiente de desenvolvimento"
+            @click="deleteAllPeopleDev"
+          >
+            {{ bulkDeleting ? 'Removendo...' : 'Remover tudo do DEV' }}
+          </button>
         </div>
-        <button
-          v-if="!addingPerson"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
-          @click="startAddPerson"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          Nova pessoa
-        </button>
       </div>
 
       <!-- Add form -->
@@ -113,7 +334,7 @@ function personStatusClass(person) {
           </select>
         </div>
         <div v-else class="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-          Nenhum cargo cadastrado. Adicione na aba <strong>Cargos</strong> para vincular.
+          Nenhum cargo cadastrado. Adicione na sub-aba <strong>Cargos</strong> para vincular.
         </div>
         <select
           v-model="newPersonStatus"
@@ -136,10 +357,60 @@ function personStatusClass(person) {
       </div>
 
       <!-- People table -->
+      <div class="mb-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+        <div>
+          <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Buscar e filtrar</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredPeople.length }} de {{ people.length }} pessoas</p>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-[1fr_13rem_6rem]">
+          <input
+            v-model="personSearch"
+            type="search"
+            placeholder="Buscar por nome ou cargo..."
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-600"
+          />
+          <select
+            v-model="personStatusFilter"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          >
+            <option v-for="option in personStatusOptions" :key="option.id" :value="option.id">
+              {{ option.label }} ({{ option.count }})
+            </option>
+          </select>
+          <select
+            v-model.number="pageSize"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          >
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+            <option :value="40">40</option>
+          </select>
+        </div>
+      </div>
       <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <table v-if="people.length" class="w-full text-sm">
+        <div v-if="selectedPersonIds.length" class="flex flex-col gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs dark:border-red-900/40 dark:bg-red-950/20 sm:flex-row sm:items-center sm:justify-between">
+          <span class="font-semibold text-red-700 dark:text-red-300">{{ selectedPersonIds.length }} pessoa(s) selecionada(s)</span>
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="bulkDeleting"
+            @click="deleteSelectedPeople"
+          >
+            {{ bulkDeleting ? 'Removendo...' : 'Excluir selecionadas' }}
+          </button>
+        </div>
+        <table v-if="filteredPeople.length" class="w-full text-sm">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+              <th class="w-10 px-3 py-2.5 text-center">
+                <input
+                  type="checkbox"
+                  class="ds-table-checkbox"
+                  :checked="allPagePeopleSelected"
+                  title="Selecionar pessoas desta página"
+                  @change="togglePageSelection"
+                />
+              </th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Cargo</th>
               <th class="text-center px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Status</th>
@@ -148,11 +419,20 @@ function personStatusClass(person) {
           </thead>
           <tbody>
             <tr
-              v-for="p in people"
+              v-for="p in paginatedPeople"
               :key="p.id"
               class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
               :class="{ 'opacity-50': !p.active }"
             >
+              <td class="w-10 px-3 py-3 text-center">
+                <input
+                  v-model="selectedPersonIds"
+                  type="checkbox"
+                  class="ds-table-checkbox"
+                  :value="p.id"
+                  :aria-label="`Selecionar ${p.name}`"
+                />
+              </td>
               <!-- Editing row -->
               <template v-if="editingPersonId === p.id">
                 <td class="px-4 py-2">
@@ -190,7 +470,7 @@ function personStatusClass(person) {
                     class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
                     :class="personStatusClass(p)"
                     @click="togglePersonActive(p.id)"
-                  >{{ personStatusLabel(p.status || (p.active ? 'ativo' : 'inativo')) }}</button>
+                  >{{ personStatusLabel(personStatus(p)) }}</button>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center justify-center gap-0.5">
@@ -207,6 +487,19 @@ function personStatusClass(person) {
           </tbody>
         </table>
 
+        <div v-if="filteredPeople.length" class="flex flex-col gap-2 border-t border-gray-200 bg-gray-50/70 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+          <span>Página {{ currentPage }} de {{ totalPages }} · {{ filteredPeople.length }} registro(s)</span>
+          <div class="flex items-center gap-1">
+            <button type="button" class="rounded-lg px-2 py-1 hover:bg-gray-200 disabled:opacity-40 dark:hover:bg-gray-700" :disabled="currentPage <= 1" @click="currentPage--">Anterior</button>
+            <button type="button" class="rounded-lg px-2 py-1 hover:bg-gray-200 disabled:opacity-40 dark:hover:bg-gray-700" :disabled="currentPage >= totalPages" @click="currentPage++">Próxima</button>
+          </div>
+        </div>
+
+        <div v-else-if="people.length" class="px-6 py-12 text-center text-gray-400 dark:text-gray-500">
+          <p class="text-sm">Nenhuma pessoa encontrada.</p>
+          <p class="text-xs mt-1">Troque a busca ou o filtro para ver outros cadastros.</p>
+        </div>
+
         <!-- Empty state -->
         <div v-else class="px-6 py-12 text-center text-gray-400 dark:text-gray-500">
           <svg class="w-10 h-10 mx-auto mb-2 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -216,6 +509,43 @@ function personStatusClass(person) {
           <p class="text-xs mt-1">Clique em <strong>Nova pessoa</strong> para adicionar.</p>
         </div>
       </div>
+      </template>
+
+      <RolesTab v-else>
+        <template #toolbar-start>
+          <nav class="ds-segmented inline-flex" aria-label="Seções de pessoas">
+            <button
+              type="button"
+              class="ds-segmented-item"
+              :class="peopleSection === 'funcionarios' ? 'ds-segmented-item-active' : ''"
+              @click="peopleSection = 'funcionarios'"
+            >
+              Funcionários
+            </button>
+            <button
+              type="button"
+              class="ds-segmented-item"
+              :class="peopleSection === 'cargos' ? 'ds-segmented-item-active' : ''"
+              @click="peopleSection = 'cargos'"
+            >
+              Cargos
+            </button>
+          </nav>
+        </template>
+        <template #toolbar-actions>
+          <label class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">
+            {{ csvImporting ? 'Importando...' : 'Importar CSV' }}
+            <input
+              ref="csvInput"
+              type="file"
+              accept=".csv,text/csv"
+              class="hidden"
+              :disabled="csvImporting"
+              @change="importPeopleCsv"
+            />
+          </label>
+        </template>
+      </RolesTab>
     </div>
   </div>
 </template>

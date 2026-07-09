@@ -32,6 +32,9 @@ npm run db:reset:dev
 
 # Produção exige confirmação explícita e cria backup antes de apagar
 npm run db:reset:prod -- --confirm=APAGAR_PRODUCAO
+
+# Enviar pessoas e cargos cadastrados no DEV para o PROD
+npm run prod:promote-people -- --confirm=ENVIAR_PESSOAS_CARGOS_PARA_PROD
 ```
 
 ## Instalação
@@ -72,6 +75,57 @@ npm start
 ```
 
 `npm start` faz o build e inicia o servidor usando `.env.prod`. `npm run start:prod` é um alias explícito do mesmo comando.
+
+### Verificação local
+
+```powershell
+npm test
+npm run smoke:local
+```
+
+O smoke test sobe uma API isolada, verifica saúde, autenticação, proteção de escrita, criação de item, variação e movimentação de estoque.
+
+O estado básico do servidor também pode ser consultado em:
+
+```text
+GET /api/health
+```
+
+### Inicialização automática no Windows
+
+Com o `.env.prod` configurado:
+
+```powershell
+npm run windows:install
+```
+
+Isso cria a tarefa `Estoque Webapp` no Agendador de Tarefas para iniciar no logon. O log fica em `logs/estoque-server.log`.
+
+Para remover:
+
+```powershell
+npm run windows:uninstall
+```
+
+### Backup e restauração
+
+Os backups automáticos ficam em `server/backups` por padrão. Para restaurar, primeiro pare o servidor e execute:
+
+```powershell
+npm run backup:restore -- --env=.env.prod --file="server/backups/estoque-AAAA-MM-DD.db" --confirm=RESTAURAR_BACKUP
+```
+
+Antes da troca, o comando valida o backup e preserva uma cópia do banco atual na pasta de backups.
+
+### Acesso pela rede
+
+O servidor aceita a própria origem e acessos locais. Se o frontend e a API usarem origens diferentes na rede, liste-as separadas por vírgula:
+
+```text
+CORS_ORIGINS=http://192.168.0.20:5173,http://estoque.local
+```
+
+As tentativas de login são limitadas, respostas recebem cabeçalhos de segurança e requisições da API geram logs estruturados.
 
 ## Autenticação e permissões
 
@@ -179,6 +233,11 @@ npm run dev             # API com watch + Vite em modo dev
 npm run build           # build frontend
 npm start               # build + servidor usando .env.prod
 npm run start:prod      # alias explícito de produção
+npm run smoke:local     # fluxo integrado da API em banco temporário
+npm run backup:restore -- --env=.env.prod --file=CAMINHO --confirm=RESTAURAR_BACKUP
+npm run windows:install # inicia automaticamente no logon do Windows
+npm run windows:uninstall
+npm run prod:promote-people -- --confirm=ENVIAR_PESSOAS_CARGOS_PARA_PROD  # copia/atualiza pessoas e cargos do dev para prod
 npm run db:seed:dev     # popula banco dev com seed
 npm run db:reset:dev    # limpa banco dev
 npm run db:reset:prod -- --confirm=APAGAR_PRODUCAO  # backup + reset protegido

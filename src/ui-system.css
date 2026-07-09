@@ -181,6 +181,38 @@
     border-radius: var(--ds-radius-control);
   }
 
+  .ds-table-checkbox {
+    appearance: none;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin: 0;
+    cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--ds-text-soft) 55%, transparent);
+    border-radius: 4px;
+    background-color: color-mix(in srgb, var(--ds-surface) 80%, transparent);
+    vertical-align: middle;
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .ds-table-checkbox:hover {
+    border-color: var(--ds-text-soft);
+    background-color: var(--ds-surface-hover);
+  }
+
+  .ds-table-checkbox:checked {
+    border-color: var(--ds-brand);
+    background-color: var(--ds-brand);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8.25 6.5 11 12.5 5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 0.75rem 0.75rem;
+  }
+
+  .ds-table-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-brand) 28%, transparent);
+  }
+
   .ds-page :where(table:not(.ds-table)) {
     border-collapse: collapse;
     font-variant-numeric: tabular-nums;

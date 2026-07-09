@@ -1332,7 +1332,7 @@ function exportCSV() {
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
               <tr
-                v-for="row in paginatedRows"
+                v-for="(row, rowIndex) in paginatedRows"
                 :key="row.variation.id"
                 class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
                 @click="openVariationSheet(row)"
@@ -1502,7 +1502,8 @@ function exportCSV() {
                     </div>
                     <div
                       v-if="movementMenuId === row.variation.id"
-                      class="absolute right-0 top-9 z-20 w-32 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
+                      class="absolute right-0 z-20 w-32 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
+                      :class="rowIndex >= paginatedRows.length - 2 ? 'bottom-9' : 'top-9'"
                     >
                       <button
                         type="button"

@@ -107,13 +107,13 @@ async function onDelete(supplier) {
 
 <template>
   <div class="max-w-4xl">
-    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Fornecedores</h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-          Cadastros usados nas entradas de estoque. Se digitar um novo fornecedor durante a entrada, ele nasce aqui.
-        </p>
-      </div>
+    <div class="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+      <input
+        v-model="search"
+        type="search"
+        placeholder="Buscar fornecedor..."
+        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:max-w-sm"
+      />
       <button
         v-if="!adding"
         type="button"
@@ -153,15 +153,6 @@ async function onDelete(supplier) {
         <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!canAddSupplier" @click="confirmAdd">{{ supplierSaving ? 'Salvando...' : 'Salvar' }}</button>
         <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="supplierSaving" @click="cancelAdd">Cancelar</button>
       </div>
-    </div>
-
-    <div class="mb-3">
-      <input
-        v-model="search"
-        type="search"
-        placeholder="Buscar fornecedor..."
-        class="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-      />
     </div>
 
     <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">

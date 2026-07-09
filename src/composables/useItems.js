@@ -16,6 +16,13 @@ export function stockAlertStatus(variation, item) {
   return 'ok'
 }
 
+export function stockAlertTransition(movement, variation, item) {
+  if (!movement || movement.type !== 'saida' || !variation || !item) return ''
+  const before = stockAlertStatus({ ...variation, stock: movement.stockBefore }, item)
+  const after = stockAlertStatus({ ...variation, stock: movement.stockAfter }, item)
+  return after !== 'ok' && after !== before ? after : ''
+}
+
 // Shared state (singleton)
 const items = ref([])
 const variations = ref([])

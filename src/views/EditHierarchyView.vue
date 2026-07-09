@@ -286,12 +286,9 @@ const {
             </button>
           </div>
         </div>
-        <div v-else class="hierarchy-quick-actions">
-          <button class="hierarchy-quick-action-new" @click="startAddGroup">
+        <div v-else>
+          <button class="hierarchy-add-group-button" @click="startAddGroup">
             <span aria-hidden="true">+</span> Novo
-          </button>
-          <button class="hierarchy-quick-action-ai" @click="startAiCatalog">
-            <span aria-hidden="true">+</span> IA
           </button>
         </div>
       </div>

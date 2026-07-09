@@ -74,6 +74,9 @@ function validateMovementSupplier(fields) {
 }
 
 function toMovement(row) {
+  const person = row.requested_by_person_id
+    ? db.prepare('SELECT name FROM people WHERE id = ?').get(row.requested_by_person_id)
+    : null
   return {
     id: row.id,
     type: row.type,
@@ -92,7 +95,7 @@ function toMovement(row) {
     date: row.date,
     supplier: row.supplier,
     unitCost: row.unit_cost ?? null,
-    requestedBy: row.requested_by,
+    requestedBy: person?.name || row.requested_by,
     requestedByPersonId: row.requested_by_person_id || '',
     destination: row.destination,
     docRef: row.doc_ref,
@@ -398,12 +401,10 @@ router.delete('/:id', requireAuth, (req, res) => {
   if (!m) return res.status(404).json({ error: 'Movimentacao nao encontrada' })
 
   const variation = db.prepare('SELECT stock FROM variations WHERE id = ?').get(m.variation_id)
-  if (!variation) return res.status(404).json({ error: 'Variacao nao encontrada' })
-
-  const newStock = m.type === 'entrada'
-    ? variation.stock - m.qty
-    : variation.stock + m.qty
-  if (newStock < 0) {
+  const newStock = variation
+    ? (m.type === 'entrada' ? variation.stock - m.qty : variation.stock + m.qty)
+    : null
+  if (newStock !== null && newStock < 0) {
     return res.status(400).json({ error: 'Nao e possivel excluir esta entrada porque o estoque ficaria negativo.' })
   }
 
@@ -411,7 +412,7 @@ router.delete('/:id', requireAuth, (req, res) => {
   const removedWorkOrderItemIds = linkedItems.map(i => i.id)
 
   const removeMovement = db.transaction(() => {
-    db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, m.variation_id)
+    if (newStock !== null) db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(newStock, m.variation_id)
     db.prepare('DELETE FROM work_order_items WHERE movement_id = ?').run(req.params.id)
     db.prepare('DELETE FROM movements WHERE id = ?').run(req.params.id)
   })

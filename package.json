@@ -12,6 +12,11 @@
     "start": "node server/scripts/start.js",
     "start:prod": "node server/scripts/start.js",
     "server:prod": "node server/scripts/start.js",
+    "smoke:local": "node --test test/api.integration.test.js",
+    "backup:restore": "node server/scripts/restoreBackup.js",
+    "prod:promote-people": "node server/scripts/promotePeopleRoles.js --from=.env.dev --to=.env.prod",
+    "windows:install": "powershell -NoProfile -ExecutionPolicy Bypass -File server/scripts/installWindowsTask.ps1",
+    "windows:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File server/scripts/uninstallWindowsTask.ps1",
     "db:seed:dev": "node server/scripts/seedDatabase.js --env=.env.dev --mode=seed",
     "db:reset:dev": "node server/scripts/seedDatabase.js --env=.env.dev --mode=reset",
     "db:reset:prod": "node server/scripts/seedDatabase.js --env=.env.prod --mode=reset"

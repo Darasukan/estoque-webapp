@@ -53,6 +53,7 @@ const localBrandName = ref('Estoque')
 const environmentBadge = ref(null)
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
+provide('environmentBadge', environmentBadge)
 const UI_STATE_KEY = 'estoque_ui_state_v1'
 
 function loadUiState() {

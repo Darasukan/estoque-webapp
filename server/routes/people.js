@@ -70,9 +70,17 @@ router.put('/:id', requireAuth, (req, res) => {
   const dup = db.prepare('SELECT id FROM people WHERE lower(name) = lower(?) AND id != ?').get(name, req.params.id)
   if (dup) return res.status(409).json({ error: 'Nome ja existe' })
 
-  db.prepare('UPDATE people SET name=?, role_text=?, active=?, status=? WHERE id=?').run(
-    name, role, active ? 1 : 0, status, req.params.id
-  )
+  db.transaction(() => {
+    db.prepare('UPDATE people SET name=?, role_text=?, active=?, status=? WHERE id=?').run(
+      name, role, active ? 1 : 0, status, req.params.id
+    )
+    if (current.name.toLowerCase() !== name.toLowerCase()) {
+      db.prepare('UPDATE movements SET requested_by = ? WHERE requested_by_person_id = ? OR lower(requested_by) = lower(?)').run(name, req.params.id, current.name)
+      db.prepare('UPDATE work_orders SET requested_by = ? WHERE lower(requested_by) = lower(?)').run(name, current.name)
+      db.prepare('UPDATE work_orders SET maintenance_professional = ? WHERE lower(maintenance_professional) = lower(?)').run(name, current.name)
+      db.prepare('UPDATE motor_events SET performed_by = ? WHERE lower(performed_by) = lower(?)').run(name, current.name)
+    }
+  })()
   res.json({ id: req.params.id, name, role, active, status })
 })
 

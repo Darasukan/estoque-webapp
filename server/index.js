@@ -1,5 +1,4 @@
 import express from 'express'
-import cors from 'cors'
 import os from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -9,6 +8,7 @@ import db, { DB_PATH, ENV_FILE } from './db.js'
 import { getBackupSettings, startBackupScheduler } from './backup.js'
 
 import { requireAuth, requireRole } from './middleware/auth.js'
+import { apiErrorHandler, corsMiddleware, loginRateLimit, requestLogger, securityHeaders } from './middleware/security.js'
 import authRoutes from './routes/auth.js'
 import itemRoutes from './routes/items.js'
 import movementRoutes from './routes/movements.js'
@@ -29,13 +29,30 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }))
+app.disable('x-powered-by')
+app.use(securityHeaders)
+app.use(corsMiddleware())
+app.use(requestLogger)
 app.use(express.json({ limit: '10mb' }))
 
 // ===== API Routes =====
 
 // Auth (no auth required for login)
+app.use('/api/auth/login', loginRateLimit)
 app.use('/api/auth', authRoutes)
+app.get('/api/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get()
+    res.json({
+      ok: true,
+      database: 'ok',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    })
+  } catch {
+    res.status(503).json({ ok: false, database: 'error' })
+  }
+})
 app.get('/api/meta', (req, res) => {
   res.json({
     env: ENV_FILE.endsWith('.prod') ? 'PROD' : 'DEV',
@@ -61,6 +78,8 @@ app.use('/api/seed', seedRoutes)
 app.use('/api/work-orders', workOrderRoutes)
 app.use('/api/motors', motorRoutes)
 app.use('/api/closings', closingRoutes)
+app.use('/api', apiErrorHandler)
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }))
 
 // ===== Serve frontend in production =====
 const distPath = join(__dirname, '..', 'dist')
@@ -83,8 +102,23 @@ function getLocalIp() {
   return 'localhost';
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  startBackupScheduler(db)
+let stopping = false
+function stop() {
+  if (stopping) return
+  stopping = true
+  server.backupScheduler?.stop()
+  server.close(() => {
+    db.close()
+    process.exit(0)
+  })
+  setTimeout(() => process.exit(1), 5000).unref()
+}
+
+process.on('SIGINT', stop)
+process.on('SIGTERM', stop)
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  server.backupScheduler = startBackupScheduler(db)
   const ip = getLocalIp();
   const backup = getBackupSettings()
   console.log(`✔ Servidor rodando em http://localhost:${PORT}`)

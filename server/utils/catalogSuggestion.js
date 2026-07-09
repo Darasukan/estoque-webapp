@@ -34,7 +34,7 @@ export function normalizeCatalogSuggestion(value) {
   const attributes = (Array.isArray(value?.attributes) ? value.attributes : [])
     .map(attribute => ({
       name: String(attribute?.name || '').trim(),
-      value: String(attribute?.value || '').trim(),
+      value: attribute?.readable === false ? '' : String(attribute?.value || '').trim(),
       readable: Boolean(attribute?.readable)
     }))
     .filter(attribute => {
@@ -77,7 +77,7 @@ export async function analyzeCatalogImage({ image, catalog, apiKey, model, fetch
         role: 'user',
         parts: [
           {
-            text: `Catálogo atual: ${JSON.stringify(catalog)}\n\nIdentifique o material principal e proponha o caminho completo: grupo, subgrupo (category), subnível opcional (subcategory), nome do item, unidade e atributos. Prefira grupos e subgrupos existentes quando forem semanticamente adequados; crie nomes novos somente quando necessário. Use como nome a família genérica do produto. Marca, modelo, medida, cor, potência, tensão, CA e demais especificações devem ser atributos. Inclua somente características úteis para diferenciar variações. Para atributo relevante mas ilegível, use valor vazio e readable=false. Não invente texto ou especificações. Se não houver material catalogável ou a imagem for ambígua, use identified=false, campos de hierarquia e nome vazios, e explique em observations.`
+            text: `Catálogo atual: ${JSON.stringify(catalog)}\n\nIdentifique o material principal e proponha o caminho completo: grupo, subgrupo (category), subnível opcional (subcategory), nome do item, unidade e atributos. A prioridade é descobrir a família/nome genérico do item; os atributos são opcionais e servem apenas como ajuda. Prefira grupos, subgrupos e nomes de item existentes quando forem semanticamente adequados; crie nomes novos somente quando necessário. Use como nome a família genérica do produto. Marca, modelo, medida, cor, potência, tensão, CA e demais especificações devem ser atributos, nunca parte do nome do item. Não tente estimar medidas pela foto: diâmetro, peso, tamanho, rosca, tensão e valores exatos só devem ter value preenchido quando estiverem legíveis no rótulo, embalagem, gravação ou forem visualmente inequívocos. Para atributo relevante mas ilegível/incerto, mantenha o atributo, use value vazio e readable=false. Não invente texto ou especificações. Se não houver material catalogável ou a imagem for ambígua, use identified=false, campos de hierarquia e nome vazios, e explique em observations.`
           },
           { inlineData: { mimeType: match[1], data: match[2] } }
         ]

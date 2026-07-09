@@ -5,6 +5,7 @@ import { buildGlobalSearchResults, filterDestinations, findExactDestination, nor
 import { failedSourceNames } from '../src/utils/sync.js'
 import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
 import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch, motorOpenEventLabel } from '../src/composables/useMotors.js'
+import { stockAlertTransition } from '../src/composables/useItems.js'
 import { getDestinationFullName } from '../server/utils/destinations.js'
 import { formatPartialOrderDate, workOrderCreationDateError } from '../src/utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../src/utils/workOrderSearch.js'
@@ -29,6 +30,17 @@ test('variation form helpers preserve catalog behavior', () => {
   assert.equal(validateVariationForm(item, variationFormForItem(item)), 'Preencha ao menos um atributo.')
   assert.equal(validateVariationForm(item, { ...variationFormForItem(item), values: { Cor: 'Azul' }, stock: -1 }), 'Quantidade não pode ser negativa.')
   assert.equal(validateVariationForm(item, { ...variationFormForItem(item), values: { Cor: 'Azul' }, stock: 1 }), null)
+})
+
+test('stock alert transition only fires when saída enters a bad stock band', () => {
+  const item = { unit: 'UN' }
+  const variation = { minStock: 5, stock: 10 }
+
+  assert.equal(stockAlertTransition({ type: 'saida', stockBefore: 12, stockAfter: 8 }, variation, item), 'alert')
+  assert.equal(stockAlertTransition({ type: 'saida', stockBefore: 8, stockAfter: 4 }, variation, item), 'critical')
+  assert.equal(stockAlertTransition({ type: 'saida', stockBefore: 4, stockAfter: 0 }, variation, item), 'zero')
+  assert.equal(stockAlertTransition({ type: 'saida', stockBefore: 9, stockAfter: 8 }, variation, item), '')
+  assert.equal(stockAlertTransition({ type: 'entrada', stockBefore: 0, stockAfter: 8 }, variation, item), '')
 })
 
 test('global search remains accent-insensitive and returns catalog targets', () => {

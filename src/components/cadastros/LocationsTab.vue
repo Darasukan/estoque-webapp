@@ -84,11 +84,7 @@ async function onDeleteLocal(l) {
 <!-- ===== Locais ===== -->
   <div>
     <div class="max-w-2xl">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Locais</h2>
-          <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Endereços físicos de armazenamento (prateleiras, armários, etc.) com subdivisões.</p>
-        </div>
+      <div class="mb-4 flex items-center justify-start rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
         <button
           v-if="!addingLocal"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
