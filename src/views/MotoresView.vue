@@ -13,9 +13,11 @@ import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 import AttributeBadges from '../components/ui/AttributeBadges.vue'
+import { normalizeSearchText as normalizeText } from '../utils/globalSearch.js'
 
-const isLoggedIn = inject('isLoggedIn')
-const canManageMotorOrders = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
+const canOperate = inject('canOperate')
+const isAdmin = inject('isAdmin')
+const canManageMotorOrders = computed(() => Boolean(canOperate?.value ?? canOperate))
 
 const {
   motors,
@@ -89,13 +91,6 @@ const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true
 
 function compareText(a, b) {
   return collator.compare(String(a || ''), String(b || ''))
-}
-
-function normalizeText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
 }
 
 function compareMotorSort(a, b) {
@@ -689,7 +684,7 @@ async function saveMotor() {
 }
 
 async function deleteSelectedMotor() {
-  if (!selectedMotor.value) return
+  if (!selectedMotor.value || !isAdmin.value) return
   try {
     await removeMotor(selectedMotor.value.id)
     success('Motor excluido.')
@@ -730,7 +725,7 @@ async function addSelectedMotorMaterial() {
 }
 
 async function deleteMotorMaterial(material) {
-  if (!selectedMotor.value) return
+  if (!selectedMotor.value || !isAdmin.value) return
   try {
     await removeMotorMaterial(selectedMotor.value.id, material.id)
     success('Material removido do motor.')
@@ -901,7 +896,7 @@ function workOrderItemVariationLabel(item) {
         <span class="ds-chip">{{ selectedMotor.destinationName || 'Sem local' }}</span>
       </div>
 
-      <div v-if="isLoggedIn" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 lg:grid-cols-[1fr_1fr_auto]">
+      <div v-if="canManageMotorOrders" class="grid gap-3 border-b border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 lg:grid-cols-[1fr_1fr_auto]">
         <div>
           <label class="ds-label">Material</label>
           <button
@@ -942,7 +937,7 @@ function workOrderItemVariationLabel(item) {
               <th class="px-4 py-3 text-center font-semibold">Estoque</th>
               <th class="px-4 py-3 text-center font-semibold">Mínimo</th>
               <th class="px-4 py-3 text-left font-semibold">Observação</th>
-              <th v-if="isLoggedIn" class="px-4 py-3 text-right font-semibold">Ação</th>
+              <th v-if="isAdmin" class="px-4 py-3 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -960,7 +955,7 @@ function workOrderItemVariationLabel(item) {
               </td>
               <td class="px-4 py-3 text-center tabular-nums text-gray-700 dark:text-gray-300">{{ variation.minStock ?? 0 }}</td>
               <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{{ material.note || '-' }}</td>
-              <td v-if="isLoggedIn" class="px-4 py-3 text-right">
+              <td v-if="isAdmin" class="px-4 py-3 text-right">
                 <AppButton variant="danger" size="xs" @click="deleteMotorMaterial(material)">Remover</AppButton>
               </td>
             </tr>
@@ -1243,7 +1238,7 @@ function workOrderItemVariationLabel(item) {
             <p class="text-sm text-gray-500 dark:text-gray-400">Encontre o local e abra a ficha do motor.</p>
           </div>
           <div class="flex items-center gap-2">
-            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="startNewMotor">Cadastrar motor</AppButton>
+            <AppButton v-if="canManageMotorOrders" variant="primary" size="sm" @click="startNewMotor">Cadastrar motor</AppButton>
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-[150px_minmax(240px,1fr)] gap-2">
@@ -1341,7 +1336,7 @@ function workOrderItemVariationLabel(item) {
           <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredMotors.length }} de {{ motors.length }} motor{{ motors.length !== 1 ? 'es' : '' }}</p>
         </div>
         <AppButton
-          v-if="isLoggedIn"
+          v-if="canManageMotorOrders"
           variant="primary"
           size="sm"
           @click="startNewMotor"
@@ -1424,7 +1419,7 @@ function workOrderItemVariationLabel(item) {
     </aside>
 
     <section class="space-y-4">
-      <div v-if="isLoggedIn && showForm" class="ds-panel p-4 space-y-4">
+      <div v-if="canManageMotorOrders && showForm" class="ds-panel p-4 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ editingMotorId ? 'Editar motor' : 'Novo motor' }}</h3>
           <AppButton variant="ghost" size="xs" :disabled="motorSaving" @click="cancelMotorForm">Cancelar</AppButton>
@@ -1512,17 +1507,17 @@ function workOrderItemVariationLabel(item) {
             </div>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-2">
-            <AppButton v-if="isLoggedIn" variant="primary" size="sm" @click="createWorkOrderForMotor">Abrir OS</AppButton>
-            <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="registerWorkOrderForMotor">Registrar OS</AppButton>
-            <AppButton v-if="isLoggedIn" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
+            <AppButton v-if="canManageMotorOrders" variant="primary" size="sm" @click="createWorkOrderForMotor">Abrir OS</AppButton>
+            <AppButton v-if="canManageMotorOrders" variant="secondary" size="sm" @click="registerWorkOrderForMotor">Registrar OS</AppButton>
+            <AppButton v-if="canManageMotorOrders" variant="secondary" size="sm" @click="startEditMotor(selectedMotor)">Editar</AppButton>
             <AppButton
-              v-if="isLoggedIn && confirmDeleteMotorId !== selectedMotor.id"
+              v-if="isAdmin && confirmDeleteMotorId !== selectedMotor.id"
               variant="danger"
               size="sm"
               @click="confirmDeleteMotorId = selectedMotor.id"
             >Excluir</AppButton>
             <ConfirmInline
-              v-else-if="isLoggedIn"
+              v-else-if="isAdmin"
               message="Excluir este motor?"
               @confirm="deleteSelectedMotor"
               @cancel="confirmDeleteMotorId = null"

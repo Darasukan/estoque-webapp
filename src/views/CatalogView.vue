@@ -18,7 +18,7 @@ import AppDialog from '../components/ui/AppDialog.vue'
 import AiCatalogDialog from '../components/catalog/AiCatalogDialog.vue'
 
 const isAdmin = inject('isAdmin')
-const isLoggedIn = inject('isLoggedIn')
+const canOperate = inject('canOperate')
 
 const props = defineProps({
   search: { type: String, default: '' }
@@ -603,7 +603,7 @@ function closeVariationSheet() {
 }
 
 function quickSheetMovement(type) {
-  if (!viewingItem.value || !sheetVariation.value || !(isLoggedIn?.value ?? isLoggedIn)) return
+  if (!viewingItem.value || !sheetVariation.value || !(canOperate?.value ?? canOperate)) return
   emit('quick-movement', {
     type,
     itemId: viewingItem.value.id,
@@ -735,7 +735,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 
 <template>
   <div>
-    <div v-if="isLoggedIn && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2">
+    <div v-if="isAdmin && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2">
       <button
         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
         @click="startAiCatalogSearch"
@@ -854,7 +854,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           </button>
         </div>
         <button
-          v-if="isLoggedIn"
+          v-if="isAdmin"
           class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500 sm:w-auto sm:flex-shrink-0"
           @click="startAddVariation"
         >
@@ -1270,7 +1270,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
     :variation="sheetVariation"
     :movements="movements"
     :work-orders="workOrders"
-    :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
+    :can-manage="Boolean(canOperate?.value ?? canOperate)"
     :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
     :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
     :initial-tab="sheetInitialTab"

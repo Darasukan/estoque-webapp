@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { usePeople } from '../../composables/usePeople.js'
+import { normalizeSearchText as normalizeText } from '../../utils/globalSearch.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -17,10 +18,6 @@ const open = ref(false)
 const inputEl = ref(null)
 const rootEl = ref(null)
 const pickerId = `person-${Math.random().toString(36).slice(2)}`
-
-function normalizeText(value) {
-  return String(value || '').trim().toLowerCase()
-}
 
 const filteredPeople = computed(() => {
   const q = normalizeText(search.value)

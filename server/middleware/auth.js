@@ -10,7 +10,7 @@ export function requireAuth(req, res, next) {
   const session = db.prepare(`
     SELECT s.user_id, u.name, u.username, u.role, u.active, u.must_change_password
     FROM sessions s JOIN users u ON s.user_id = u.id
-    WHERE s.token = ?
+    WHERE s.token = ? AND s.expires_at > datetime('now')
   `).get(token)
 
   if (!session) return res.status(401).json({ error: 'Sessão inválida' })
@@ -44,3 +44,6 @@ export function requireRole(...roles) {
     next()
   }
 }
+
+export const requireOperator = requireRole('admin', 'operador')
+export const requireAdmin = requireRole('admin')

@@ -12,10 +12,14 @@ import { useDestinationSummary } from '../composables/useDestinationSummary.js'
 import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
+import AppButton from '../components/ui/AppButton.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
+import AppModal from '../components/ui/AppModal.vue'
+import SectionTabs from '../components/ui/SectionTabs.vue'
+import { normalizeSearchText as normalizeText, searchTokens, matchesSearchTokens } from '../utils/globalSearch.js'
 
 const isAdmin = inject('isAdmin')
-const isLoggedIn = inject('isLoggedIn')
+const canOperate = inject('canOperate')
 const props = defineProps({
   initialSubTab: {
     type: String,
@@ -66,11 +70,11 @@ const visibleSubTabs = computed(() => {
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
     { id: 'resumo',    label: 'Relatório por destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
   ]
-  return isLoggedIn.value ? all : all.filter(t => t.id === 'historico' || t.id === 'resumo')
+  return canOperate.value ? all : all.filter(t => t.id === 'historico' || t.id === 'resumo')
 })
 
 // Force historico when visitor
-watch(isLoggedIn, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubTab.value = 'historico' }, { immediate: true })
+watch(canOperate, (v) => { if (!v && activeSubTab.value !== 'resumo') activeSubTab.value = 'historico' }, { immediate: true })
 
 function switchSubTab(tab) {
   if (!validSubTabs.includes(tab) || activeSubTab.value === tab) return
@@ -266,7 +270,7 @@ function applyTargetPrefill(prefill, tab) {
 }
 
 function applyMovementPrefill(prefill) {
-  if (!prefill || !isLoggedIn.value) return
+  if (!prefill || !canOperate.value) return
   const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
   const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}:${prefill.targetType || ''}:${prefill.targetKey || ''}`
   if (appliedPrefillKey.value === prefillKey) return
@@ -377,19 +381,7 @@ function subcategoryStockTotal(sub) {
 }
 
 // ===== Item search (step 1) =====
-function normalizeText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-}
-
 const searchNorm = computed(() => normalizeText(itemSearch.value))
-
-function searchTokens(value) {
-  return normalizeText(value).split(/\s+/).filter(Boolean)
-}
 
 function itemSearchText(item) {
   return normalizeText([
@@ -411,10 +403,6 @@ function variationSearchText(item, variation) {
     ...Object.values(variation.extras || {}),
     ...Object.entries(variation.extras || {}).flatMap(([key, value]) => [key, value]),
   ].filter(Boolean).join(' '))
-}
-
-function matchesSearchTokens(text, tokens) {
-  return tokens.every(token => text.includes(token))
 }
 
 const variationResults = computed(() => {
@@ -1265,6 +1253,11 @@ const {
   toggleHistFilter,
   clearHistFilters,
   filteredMovements,
+  paginatedMovements,
+  historyCurrentPage,
+  historyPageSize,
+  historyPageSizeOptions,
+  historyTotalPages,
   histTotals,
 } = useMovementHistory(movements)
 
@@ -1288,12 +1281,33 @@ const {
   filteredDestinationSummaries,
   summaryTotals,
 } = useDestinationSummary({ destinations, movements, workOrders, getDestFullName })
-// Delete with inline confirm
 const deletePendingId = ref(null)
+const deleteConfirmPending = ref(false)
+const deletePendingMovement = computed(() => movements.value.find(m => m.id === deletePendingId.value) || null)
+const deleteStockPreview = computed(() => {
+  const movement = deletePendingMovement.value
+  if (!movement) return null
+  const variation = variations.value.find(v => v.id === movement.variationId)
+  if (!variation) return { current: null, after: null, unit: movement.itemUnit || '' }
+  const current = Number(variation.stock)
+  return {
+    current,
+    after: movement.type === 'entrada' ? current - movement.qty : current + movement.qty,
+    unit: movement.itemUnit || '',
+  }
+})
+const deleteLinkedOrderCount = computed(() => {
+  const movementId = deletePendingId.value
+  if (!movementId) return 0
+  return workOrders.value.filter(order => order.items?.some(item => item.movementId === movementId || item.movement_id === movementId)).length
+})
 
 function requestDelete(id) { deletePendingId.value = id }
 function cancelDelete() { deletePendingId.value = null }
-async function confirmDelete(id) {
+async function confirmDelete() {
+  const id = deletePendingId.value
+  if (!id) return
+  deleteConfirmPending.value = true
   try {
     const result = await deleteMovement(id)
     if (result?.variationId) {
@@ -1310,6 +1324,8 @@ async function confirmDelete(id) {
     success('Movimentação excluída e estoque ajustado.')
   } catch (e) {
     error(e.message)
+  } finally {
+    deleteConfirmPending.value = false
   }
 }
 
@@ -1519,26 +1535,13 @@ defineExpose({
     </div>
 
     <!-- Sub-tabs -->
-    <div class="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
-      <button
-        v-for="tab in visibleSubTabs"
-        :key="tab.id"
-        class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative"
-        :class="activeSubTab === tab.id
-          ? 'text-primary-700 dark:text-primary-400'
-          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-        @click="switchSubTab(tab.id)"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" :d="tab.icon" />
-        </svg>
-        {{ tab.label }}
-        <span
-          v-if="activeSubTab === tab.id"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
-        ></span>
-      </button>
-    </div>
+    <SectionTabs
+      variant="line"
+      aria-label="Seções de movimentação"
+      :model-value="activeSubTab"
+      :tabs="visibleSubTabs"
+      @update:model-value="switchSubTab"
+    />
 
     <!-- ======================================================= -->
     <!-- ENTRADA / SAÍDA — step flow                             -->
@@ -2832,7 +2835,7 @@ defineExpose({
             v-if="movements.length === 0"
             title="Nenhuma movimentação registrada ainda."
             text="Entradas e saídas aparecem aqui depois do primeiro lançamento."
-            :action-label="isLoggedIn ? 'Registrar entrada' : ''"
+            :action-label="canOperate ? 'Registrar entrada' : ''"
             @action="activeSubTab = 'entrada'"
           />
 
@@ -2857,12 +2860,12 @@ defineExpose({
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Responsável / Local</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Doc</th>
                     <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Operador</th>
-                    <th v-if="isLoggedIn" class="px-3 py-2.5 w-16"></th>
+                    <th v-if="isAdmin" class="px-3 py-2.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                   <tr
-                    v-for="m in filteredMovements"
+                    v-for="m in paginatedMovements"
                     :key="m.id"
                     class="hover:bg-gray-50/60 dark:hover:bg-gray-800/30 transition-colors"
                   >
@@ -2945,13 +2948,8 @@ defineExpose({
                     </td>
 
                     <!-- Actions: edit + delete -->
-                    <td v-if="isLoggedIn" class="px-3 py-2.5 text-center">
-                      <div v-if="deletePendingId === m.id" class="flex items-center gap-1">
-                        <button class="text-[10px] font-bold text-red-600 dark:text-red-400 hover:underline" @click="confirmDelete(m.id)">Sim</button>
-                        <span class="text-gray-300 dark:text-gray-600">/</span>
-                        <button class="text-[10px] text-gray-500 dark:text-gray-400 hover:underline" @click="cancelDelete">Não</button>
-                      </div>
-                      <div v-else class="flex items-center justify-center gap-0.5">
+                    <td v-if="isAdmin" class="px-3 py-2.5 text-center">
+                      <div class="flex items-center justify-center gap-0.5">
                         <button
                           v-if="isAdmin"
                           class="p-1 text-gray-300 dark:text-gray-600 hover:text-amber-500 dark:hover:text-amber-400 transition-colors rounded"
@@ -2976,15 +2974,37 @@ defineExpose({
               </table>
             </div>
 
-            <!-- Footer totals -->
-            <div class="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 flex items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
-              <span>{{ filteredMovements.length }} movimentações</span>
-              <span v-if="histTotals.entradas > 0" class="text-green-600 dark:text-green-400 font-semibold">
-                ↑ {{ histTotals.entradas }} entrada{{ histTotals.entradas !== 1 ? 's' : '' }}
-              </span>
-              <span v-if="histTotals.saidas > 0" class="text-red-500 dark:text-red-400 font-semibold">
-                ↓ {{ histTotals.saidas }} saída{{ histTotals.saidas !== 1 ? 's' : '' }}
-              </span>
+            <div class="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-800/60 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <span>{{ filteredMovements.length }} movimentações</span>
+                <span v-if="histTotals.entradas > 0" class="font-semibold text-green-600 dark:text-green-400">
+                  ↑ {{ histTotals.entradas }} entrada{{ histTotals.entradas !== 1 ? 's' : '' }}
+                </span>
+                <span v-if="histTotals.saidas > 0" class="font-semibold text-red-500 dark:text-red-400">
+                  ↓ {{ histTotals.saidas }} saída{{ histTotals.saidas !== 1 ? 's' : '' }}
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="flex items-center gap-2">
+                  <span>Exibir</span>
+                  <select
+                    v-model.number="historyPageSize"
+                    class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    <option v-for="option in historyPageSizeOptions" :key="option" :value="option">{{ option }}</option>
+                  </select>
+                </label>
+                <span>
+                  {{ (historyCurrentPage - 1) * historyPageSize + 1 }}–{{ Math.min(historyCurrentPage * historyPageSize, filteredMovements.length) }} de {{ filteredMovements.length }}
+                </span>
+                <AppButton size="xs" variant="secondary" :disabled="historyCurrentPage <= 1" @click="historyCurrentPage--">
+                  Anterior
+                </AppButton>
+                <span class="font-medium text-gray-700 dark:text-gray-200">{{ historyCurrentPage }} / {{ historyTotalPages }}</span>
+                <AppButton size="xs" variant="secondary" :disabled="historyCurrentPage >= historyTotalPages" @click="historyCurrentPage++">
+                  Próxima
+                </AppButton>
+              </div>
             </div>
           </template>
 
@@ -3009,6 +3029,73 @@ defineExpose({
     </template>
 
   </div>
+
+  <AppModal
+    :visible="!!deletePendingMovement"
+    title="Excluir movimentação?"
+    :show-actions="false"
+    :persistent="deleteConfirmPending"
+    @close="cancelDelete"
+  >
+    <div v-if="deletePendingMovement" class="space-y-4">
+      <p class="text-sm text-gray-600 dark:text-gray-300">
+        Esta movimentação será apagada definitivamente. O estoque será recalculado antes da exclusão.
+      </p>
+
+      <dl class="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs dark:border-gray-700 dark:bg-gray-900/50">
+        <div class="col-span-2">
+          <dt class="text-gray-500 dark:text-gray-400">Material</dt>
+          <dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ deletePendingMovement.itemName }}</dd>
+        </div>
+        <div>
+          <dt class="text-gray-500 dark:text-gray-400">Movimentação</dt>
+          <dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">
+            {{ deletePendingMovement.type === 'entrada' ? 'Entrada' : 'Saída' }} de {{ deletePendingMovement.qty }} {{ deletePendingMovement.itemUnit }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-gray-500 dark:text-gray-400">Data</dt>
+          <dd class="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{{ formatDate(deletePendingMovement.date) }}</dd>
+        </div>
+      </dl>
+
+      <div v-if="deleteStockPreview?.current !== null" class="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+        <div>
+          <p class="text-xs text-amber-800 dark:text-amber-200">Estoque atual</p>
+          <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ deleteStockPreview.current }} {{ deleteStockPreview.unit }}</p>
+        </div>
+        <span class="text-lg text-amber-600 dark:text-amber-400">→</span>
+        <div class="text-right">
+          <p class="text-xs text-amber-800 dark:text-amber-200">Após excluir</p>
+          <p class="mt-0.5 text-lg font-semibold tabular-nums" :class="deleteStockPreview.after < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'">
+            {{ deleteStockPreview.after }} {{ deleteStockPreview.unit }}
+          </p>
+        </div>
+      </div>
+      <p v-else class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-300">
+        A variação não existe mais; somente o registro histórico será removido.
+      </p>
+
+      <p v-if="deleteStockPreview?.after < 0" class="text-xs font-medium text-red-600 dark:text-red-400">
+        Esta entrada não pode ser excluída porque o estoque ficaria negativo.
+      </p>
+      <p v-if="deleteLinkedOrderCount" class="text-xs font-medium text-amber-700 dark:text-amber-300">
+        A movimentação também será removida de {{ deleteLinkedOrderCount }} {{ deleteLinkedOrderCount === 1 ? 'ordem' : 'ordens' }} de serviço.
+      </p>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <AppButton variant="secondary" :disabled="deleteConfirmPending" @click="cancelDelete">Cancelar</AppButton>
+        <AppButton
+          variant="dangerSolid"
+          :loading="deleteConfirmPending"
+          :disabled="deleteStockPreview?.after < 0"
+          @click="confirmDelete"
+        >
+          Excluir definitivamente
+        </AppButton>
+      </div>
+    </div>
+  </AppModal>
 
   <!-- ===== Edit Movement Modal ===== -->
   <AppDialog

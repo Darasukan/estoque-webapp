@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/locations
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireAdmin, (req, res) => {
   const { name, description, active, parentId } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatório' })
 
@@ -31,7 +31,7 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // PUT /api/locations/:id
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const { name, description, active, parentId } = req.body
   db.prepare('UPDATE locations SET name=?, description=?, active=?, parent_id=? WHERE id=?').run(
     name, description || '', active !== false ? 1 : 0, parentId || null, req.params.id
@@ -40,7 +40,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/locations/:id
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM locations WHERE parent_id = ?').run(req.params.id)
   db.prepare('DELETE FROM locations WHERE id = ?').run(req.params.id)
   res.json({ ok: true })

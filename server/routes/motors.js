@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 
 const router = Router()
@@ -196,7 +196,7 @@ router.get('/', (req, res) => {
   res.json(rows.map(mapMotor))
 })
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireOperator, (req, res) => {
   const payload = buildMotorPayload(req.body)
   if (payload.error) return res.status(400).json({ error: payload.error })
 
@@ -216,7 +216,7 @@ router.post('/', requireAuth, (req, res) => {
   res.json(mapMotor(db.prepare('SELECT * FROM motors WHERE id = ?').get(id)))
 })
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireOperator, (req, res) => {
   const existing = db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Motor nao encontrado.' })
 
@@ -249,7 +249,7 @@ router.put('/:id', requireAuth, (req, res) => {
   res.json(mapMotor(db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)))
 })
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   const existing = db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Motor nao encontrado.' })
 
@@ -308,11 +308,11 @@ router.get('/:id/materials', (req, res) => {
   res.json(rows.map(mapMotorMaterial))
 })
 
-router.post('/:id/materials', requireAuth, (req, res) => {
+router.post('/:id/materials', requireAuth, requireOperator, (req, res) => {
   const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
   const variationId = clean(req.body.variationId)
-  const variation = db.prepare('SELECT id, item_id FROM variations WHERE id = ?').get(variationId)
+  const variation = db.prepare('SELECT id, item_id FROM variations WHERE id = ? AND active = 1').get(variationId)
   if (!variation) return res.status(400).json({ error: 'Variacao nao encontrada.' })
 
   const id = genId('mmat')
@@ -326,14 +326,14 @@ router.post('/:id/materials', requireAuth, (req, res) => {
   res.json(mapMotorMaterial(row))
 })
 
-router.delete('/:id/materials/:materialId', requireAuth, (req, res) => {
+router.delete('/:id/materials/:materialId', requireAuth, requireAdmin, (req, res) => {
   const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
   db.prepare('DELETE FROM motor_materials WHERE id = ? AND motor_id = ?').run(req.params.materialId, req.params.id)
   res.json({ ok: true })
 })
 
-router.post('/:id/events', requireAuth, (req, res) => {
+router.post('/:id/events', requireAuth, requireOperator, (req, res) => {
   const motor = db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
 
@@ -366,7 +366,7 @@ router.post('/:id/events', requireAuth, (req, res) => {
   res.json(mapEvent(db.prepare('SELECT * FROM motor_events WHERE id = ?').get(id)))
 })
 
-router.put('/:id/events/:eventId', requireAuth, (req, res) => {
+router.put('/:id/events/:eventId', requireAuth, requireOperator, (req, res) => {
   const motor = db.prepare('SELECT * FROM motors WHERE id = ?').get(req.params.id)
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
 
@@ -402,7 +402,7 @@ router.put('/:id/events/:eventId', requireAuth, (req, res) => {
   res.json(mapEvent(db.prepare('SELECT * FROM motor_events WHERE id = ?').get(req.params.eventId)))
 })
 
-router.delete('/:id/events/:eventId', requireAuth, (req, res) => {
+router.delete('/:id/events/:eventId', requireAuth, requireAdmin, (req, res) => {
   const motor = db.prepare('SELECT id FROM motors WHERE id = ?').get(req.params.id)
   if (!motor) return res.status(404).json({ error: 'Motor nao encontrado.' })
 

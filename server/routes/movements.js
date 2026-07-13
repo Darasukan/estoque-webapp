@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth, requireRole } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 import { calculateStockAfter, isAdminStockAdjustment, parsePositiveQty } from '../utils/stockMath.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 
@@ -101,7 +101,7 @@ function toMovement(row) {
     docRef: row.doc_ref,
     note: row.note,
     operatorId: row.operator_id || '',
-    operatorName: row.operator_name || ''
+    operatorName: row.operator_name || '',
   }
 }
 
@@ -112,7 +112,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/movements
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireOperator, (req, res) => {
   const m = req.body
   const operatorId = req.user?.id || ''
   const operatorName = req.user?.name || ''
@@ -128,7 +128,7 @@ router.post('/', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Quantidade deve ser positiva.' })
   }
 
-  const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ?').get(m.variationId)
+  const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ? AND active = 1').get(m.variationId)
   if (!variation) return res.status(404).json({ error: 'Variacao nao encontrada' })
   if (variation.item_id !== m.itemId) {
     return res.status(400).json({ error: 'Variacao nao pertence ao item informado.' })
@@ -197,7 +197,7 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // POST /api/movements/batch
-router.post('/batch', requireAuth, (req, res) => {
+router.post('/batch', requireAuth, requireOperator, (req, res) => {
   const { type, items = [], fields = {} } = req.body
   const operatorId = req.user?.id || ''
   const operatorName = req.user?.name || ''
@@ -222,7 +222,7 @@ router.post('/batch', requireAuth, (req, res) => {
       return res.status(400).json({ error: 'Itens do lote precisam de variationId, itemId e qty positiva.' })
     }
 
-    const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ?').get(item.variationId)
+    const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ? AND active = 1').get(item.variationId)
     if (!variation) return res.status(404).json({ error: `Variacao nao encontrada: ${item.variationId}` })
     if (variation.item_id !== item.itemId) {
       return res.status(400).json({ error: 'Variacao nao pertence ao item informado.' })
@@ -328,7 +328,7 @@ router.post('/batch', requireAuth, (req, res) => {
 })
 
 // PUT /api/movements/:id
-router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const m = db.prepare('SELECT * FROM movements WHERE id = ?').get(req.params.id)
   if (!m) return res.status(404).json({ error: 'Movimentacao nao encontrada' })
 
@@ -396,7 +396,7 @@ router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
 })
 
 // DELETE /api/movements/:id
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   const m = db.prepare('SELECT * FROM movements WHERE id = ?').get(req.params.id)
   if (!m) return res.status(404).json({ error: 'Movimentacao nao encontrada' })
 

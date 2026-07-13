@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 import { analyzeCatalogImage } from '../utils/catalogSuggestion.js'
 
 const router = Router()
@@ -18,7 +18,7 @@ function parseJson(value, fallback) {
   try { return JSON.parse(value) } catch { return fallback }
 }
 
-router.post('/suggest', requireAuth, async (req, res) => {
+router.post('/suggest', requireAuth, requireAdmin, async (req, res) => {
   const { image } = req.body
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!apiKey) return res.status(503).json({ error: 'Configure GEMINI_API_KEY ou GOOGLE_API_KEY no servidor.' })
@@ -29,11 +29,11 @@ router.post('/suggest', requireAuth, async (req, res) => {
 
   const rows = db.prepare(`
     SELECT id, name, group_name, category, subcategory, unit, attributes
-    FROM items ORDER BY group_name, category, subcategory, name LIMIT 300
+    FROM items WHERE active = 1 ORDER BY group_name, category, subcategory, name LIMIT 300
   `).all()
   const itemIds = new Set(rows.map(row => row.id))
   const variationsByItem = new Map()
-  for (const row of db.prepare('SELECT item_id, vals FROM variations LIMIT 1000').all()) {
+  for (const row of db.prepare('SELECT item_id, vals FROM variations WHERE active = 1 LIMIT 1000').all()) {
     if (!itemIds.has(row.item_id)) continue
     const values = parseJson(row.vals, {})
     if (!values || typeof values !== 'object' || Array.isArray(values)) continue
@@ -77,7 +77,7 @@ router.post('/suggest', requireAuth, async (req, res) => {
 
 // GET /api/items
 router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM items ORDER BY group_name, category, subcategory, name').all()
+  const rows = db.prepare('SELECT * FROM items WHERE active = 1 ORDER BY group_name, category, subcategory, name').all()
   res.json(rows.map(r => ({
     ...r,
     attributes: JSON.parse(r.attributes),
@@ -87,7 +87,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/items
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireAdmin, (req, res) => {
   const { name, group, category, subcategory, unit, minStock, attributes, location } = req.body
   if (!name || !group) return res.status(400).json({ error: 'Nome e grupo obrigatórios' })
 
@@ -102,8 +102,8 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // PUT /api/items/:id
-router.put('/:id', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT id FROM items WHERE id = ?').get(req.params.id)
+router.put('/:id', requireAuth, requireAdmin, (req, res) => {
+  const existing = db.prepare('SELECT id FROM items WHERE id = ? AND active = 1').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Item não encontrado' })
 
   const { name, group, category, subcategory, unit, minStock, attributes, location } = req.body
@@ -117,9 +117,12 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/items/:id
-router.delete('/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM variations WHERE item_id = ?').run(req.params.id)
-  db.prepare('DELETE FROM items WHERE id = ?').run(req.params.id)
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
+  const changed = db.transaction(() => {
+    db.prepare('UPDATE variations SET active = 0 WHERE item_id = ?').run(req.params.id)
+    return db.prepare('UPDATE items SET active = 0 WHERE id = ? AND active = 1').run(req.params.id).changes
+  })()
+  if (!changed) return res.status(404).json({ error: 'Item não encontrado' })
   res.json({ ok: true })
 })
 
@@ -127,7 +130,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 
 // GET /api/items/variations (all variations)
 router.get('/variations', (req, res) => {
-  const rows = db.prepare('SELECT * FROM variations ORDER BY item_id').all()
+  const rows = db.prepare('SELECT * FROM variations WHERE active = 1 ORDER BY item_id').all()
   res.json(rows.map(r => ({
     id: r.id,
     itemId: r.item_id,
@@ -143,11 +146,11 @@ router.get('/variations', (req, res) => {
 })
 
 // POST /api/items/variations
-router.post('/variations', requireAuth, (req, res) => {
+router.post('/variations', requireAuth, requireAdmin, (req, res) => {
   const { itemId, values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
   if (!itemId) return res.status(400).json({ error: 'itemId obrigatório' })
 
-  const item = db.prepare('SELECT id, min_stock FROM items WHERE id = ?').get(itemId)
+  const item = db.prepare('SELECT id, min_stock FROM items WHERE id = ? AND active = 1').get(itemId)
   if (!item) return res.status(404).json({ error: 'Item não encontrado' })
 
   const id = 'var_' + crypto.randomBytes(6).toString('hex')
@@ -168,8 +171,8 @@ router.post('/variations', requireAuth, (req, res) => {
 })
 
 // PUT /api/items/variations/:id
-router.put('/variations/:id', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT id, initial_stock FROM variations WHERE id = ?').get(req.params.id)
+router.put('/variations/:id', requireAuth, requireAdmin, (req, res) => {
+  const existing = db.prepare('SELECT id, initial_stock FROM variations WHERE id = ? AND active = 1').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Variação não encontrada' })
 
   const { values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
@@ -193,8 +196,9 @@ router.put('/variations/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/items/variations/:id
-router.delete('/variations/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM variations WHERE id = ?').run(req.params.id)
+router.delete('/variations/:id', requireAuth, requireAdmin, (req, res) => {
+  const result = db.prepare('UPDATE variations SET active = 0 WHERE id = ? AND active = 1').run(req.params.id)
+  if (!result.changes) return res.status(404).json({ error: 'Variação não encontrada' })
   res.json({ ok: true })
 })
 

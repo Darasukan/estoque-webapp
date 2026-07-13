@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3'
-import { mkdirSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { createBackup } from './backup.js'
 import { argValue, loadEnvFile, resolveEnvPath } from './env.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -14,7 +15,14 @@ export const DB_PATH = process.env.DB_PATH
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
 
+const CURRENT_SCHEMA_VERSION = 1
+const databaseExisted = existsSync(DB_PATH)
 const db = new Database(DB_PATH)
+const previousSchemaVersion = db.pragma('user_version', { simple: true })
+
+if (databaseExisted && previousSchemaVersion < CURRENT_SCHEMA_VERSION) {
+  await createBackup(db)
+}
 
 // Enable WAL mode for better concurrency
 db.pragma('journal_mode = WAL')
@@ -35,7 +43,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL DEFAULT (datetime('now', '+30 days'))
   );
 
   CREATE TABLE IF NOT EXISTS items (
@@ -47,7 +56,8 @@ db.exec(`
     unit TEXT NOT NULL DEFAULT 'UN',
     min_stock REAL NOT NULL DEFAULT 0,
     attributes TEXT NOT NULL DEFAULT '[]',
-    location TEXT DEFAULT ''
+    location TEXT DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS variations (
@@ -60,7 +70,8 @@ db.exec(`
     extras TEXT NOT NULL DEFAULT '{}',
     location TEXT DEFAULT '',
     locations TEXT NOT NULL DEFAULT '[]',
-    destinations TEXT NOT NULL DEFAULT '[]'
+    destinations TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS movements (
@@ -269,6 +280,7 @@ db.exec(`
   );
 `)
 
+const migrateSchema = db.transaction(() => {
 // Ensure display_order row exists
 db.prepare(`INSERT OR IGNORE INTO display_order (id, data) VALUES (1, '{}')`).run()
 
@@ -284,7 +296,6 @@ if (!movCols.includes('unit_cost')) {
 if (!movCols.includes('requested_by_person_id')) {
   db.prepare("ALTER TABLE movements ADD COLUMN requested_by_person_id TEXT DEFAULT ''").run()
 }
-
 const variationCols = db.prepare("PRAGMA table_info(variations)").all().map(c => c.name)
 if (!variationCols.includes('locations')) {
   db.prepare("ALTER TABLE variations ADD COLUMN locations TEXT NOT NULL DEFAULT '[]'").run()
@@ -293,6 +304,14 @@ if (!variationCols.includes('locations')) {
   db.transaction(() => {
     for (const variation of legacyLocations) migrateLocation.run(JSON.stringify([variation.location]), variation.id)
   })()
+}
+if (!variationCols.includes('active')) {
+  db.prepare("ALTER TABLE variations ADD COLUMN active INTEGER NOT NULL DEFAULT 1").run()
+}
+
+const itemCols = db.prepare("PRAGMA table_info(items)").all().map(c => c.name)
+if (!itemCols.includes('active')) {
+  db.prepare("ALTER TABLE items ADD COLUMN active INTEGER NOT NULL DEFAULT 1").run()
 }
 
 const destinationCols = db.prepare("PRAGMA table_info(destinations)").all().map(c => c.name)
@@ -407,6 +426,16 @@ db.prepare(`
     SELECT 1 FROM work_order_events ev WHERE ev.work_order_id = wo.id
   )
 `).run()
+
+const sessionCols = db.prepare("PRAGMA table_info(sessions)").all().map(c => c.name)
+if (!sessionCols.includes('expires_at')) {
+  db.prepare("ALTER TABLE sessions ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''").run()
+}
+db.prepare("UPDATE sessions SET expires_at = datetime(created_at, '+30 days') WHERE COALESCE(expires_at, '') = ''").run()
+db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`)
+})
+
+if (previousSchemaVersion < CURRENT_SCHEMA_VERSION) migrateSchema()
 
 // Seed default admin if no users exist
 import bcryptjs from 'bcryptjs'

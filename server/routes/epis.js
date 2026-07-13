@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 const targetTypes = new Set(['grupo', 'categoria', 'subcategoria', 'item', 'variacao'])
@@ -43,7 +43,7 @@ router.get('/role-rules', (req, res) => {
   res.json(rows.map(toRule))
 })
 
-router.post('/role-rules', requireAuth, (req, res) => {
+router.post('/role-rules', requireAuth, requireAdmin, (req, res) => {
   const roleName = String(req.body.roleName || '').trim()
   if (!roleName) return res.status(400).json({ error: 'Cargo obrigatorio.' })
   const target = cleanTarget(req.body)
@@ -66,7 +66,7 @@ router.post('/role-rules', requireAuth, (req, res) => {
   res.json({ id, roleName, ...target, days, active: req.body.active !== false })
 })
 
-router.put('/role-rules/:id', requireAuth, (req, res) => {
+router.put('/role-rules/:id', requireAuth, requireAdmin, (req, res) => {
   const current = db.prepare('SELECT * FROM epi_role_rules WHERE id = ?').get(req.params.id)
   if (!current) return res.status(404).json({ error: 'Regra de EPI nao encontrada.' })
   const roleName = String(req.body.roleName ?? current.role_name).trim()
@@ -93,7 +93,7 @@ router.put('/role-rules/:id', requireAuth, (req, res) => {
   res.json({ id: req.params.id, roleName, ...target, days, active: req.body.active !== false })
 })
 
-router.delete('/role-rules/:id', requireAuth, (req, res) => {
+router.delete('/role-rules/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM epi_role_rules WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })
@@ -103,7 +103,7 @@ router.get('/periodicities', (req, res) => {
   res.json(rows.map(toPeriodicity))
 })
 
-router.post('/periodicities', requireAuth, (req, res) => {
+router.post('/periodicities', requireAuth, requireAdmin, (req, res) => {
   const target = cleanTarget(req.body)
   if (target.error) return res.status(400).json({ error: target.error })
   const days = Number(req.body.days)
@@ -121,7 +121,7 @@ router.post('/periodicities', requireAuth, (req, res) => {
   res.json({ id, ...target, days, active: req.body.active !== false })
 })
 
-router.put('/periodicities/:id', requireAuth, (req, res) => {
+router.put('/periodicities/:id', requireAuth, requireAdmin, (req, res) => {
   const current = db.prepare('SELECT * FROM epi_periodicities WHERE id = ?').get(req.params.id)
   if (!current) return res.status(404).json({ error: 'Periodicidade nao encontrada.' })
   const target = cleanTarget({
@@ -143,7 +143,7 @@ router.put('/periodicities/:id', requireAuth, (req, res) => {
   res.json({ id: req.params.id, ...target, days, active: req.body.active !== false })
 })
 
-router.delete('/periodicities/:id', requireAuth, (req, res) => {
+router.delete('/periodicities/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM epi_periodicities WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

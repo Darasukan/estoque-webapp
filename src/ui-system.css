@@ -176,8 +176,8 @@
   .ds-table tbody tr:last-child td { border-bottom: 0; }
 
   .ds-table td button[title] {
-    min-width: 2rem;
-    min-height: 2rem;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
     border-radius: var(--ds-radius-control);
   }
 

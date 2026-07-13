@@ -1,11 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { nextTick, ref } from 'vue'
 
-import { buildGlobalSearchResults, filterDestinations, findExactDestination, normalizeSearchText } from '../src/utils/globalSearch.js'
+import { buildGlobalSearchResults, filterDestinations, findExactDestination, matchesSearchTokens, normalizeSearchText, searchTokens } from '../src/utils/globalSearch.js'
 import { failedSourceNames } from '../src/utils/sync.js'
 import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
 import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch, motorOpenEventLabel } from '../src/composables/useMotors.js'
 import { stockAlertTransition } from '../src/composables/useItems.js'
+import { useMovementHistory } from '../src/composables/useMovementHistory.js'
 import { getDestinationFullName } from '../server/utils/destinations.js'
 import { formatPartialOrderDate, workOrderCreationDateError } from '../src/utils/workOrderForm.js'
 import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '../src/utils/workOrderSearch.js'
@@ -15,6 +17,48 @@ import {
   variationFormForEdit,
   variationFormForItem,
 } from '../src/utils/variationForm.js'
+
+test('movement history paginates and restores saved filters', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const storage = new Map()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+    },
+  })
+
+  try {
+    const movements = ref(Array.from({ length: 25 }, (_, index) => ({
+      id: `mov-${index}`,
+      type: index % 2 ? 'saida' : 'entrada',
+      itemName: `Item ${index + 1}`,
+      qty: 1,
+      date: `2026-01-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
+    })))
+    const history = useMovementHistory(movements)
+
+    assert.equal(history.paginatedMovements.value.length, 20)
+    assert.equal(history.historyTotalPages.value, 2)
+    history.historyCurrentPage.value = 2
+    assert.equal(history.paginatedMovements.value.length, 5)
+
+    history.histDateFrom.value = '2026-01-10'
+    history.toggleHistFilter('tipo', 'Entrada')
+    history.historyPageSize.value = 50
+    await nextTick()
+
+    assert.equal(history.historyCurrentPage.value, 1)
+    const restored = useMovementHistory(movements)
+    assert.equal(restored.histDateFrom.value, '2026-01-10')
+    assert.equal(restored.filteredMovements.value.every(movement => movement.type === 'entrada'), true)
+    assert.equal(restored.historyPageSize.value, 50)
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor)
+    else delete globalThis.localStorage
+  }
+})
 
 test('variation form helpers preserve catalog behavior', () => {
   const item = { attributes: ['Cor'], minStock: 2, location: 'A1' }
@@ -52,6 +96,14 @@ test('global search remains accent-insensitive and returns catalog targets', () 
   })
   assert.deepEqual(results.map(result => result.id), ['item:1', 'var:2'])
   assert.deepEqual(results[0].target, { tab: 'catalogo', itemId: 1, search: 'Ácido' })
+})
+
+test('shared search normalization handles accents, hierarchy separators and tokens', () => {
+  assert.equal(normalizeSearchText('  Fiação » RÁPIDA  '), 'fiacao > rapida')
+  const tokens = searchTokens('Bomba 10-mm')
+  assert.deepEqual(tokens, ['bomba', '10', 'mm'])
+  assert.equal(matchesSearchTokens('Bomba centrífuga 10 mm', tokens), true)
+  assert.equal(matchesSearchTokens('Bomba centrífuga 12 mm', tokens), false)
 })
 
 test('global search shows commands and balances result types', () => {

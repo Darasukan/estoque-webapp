@@ -10,8 +10,8 @@ import AppButton from '../components/ui/AppButton.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
 
 const emit = defineEmits(['go'])
-const isLoggedIn = inject('isLoggedIn')
 const isAdmin = inject('isAdmin')
+const canOperate = inject('canOperate')
 
 const { items, variations } = useItems()
 const { movements } = useMovements()
@@ -29,7 +29,7 @@ const dashboardCopy = computed(() => {
     title: 'Prioridades do estoque',
     subtitle: 'Resolva rupturas e pendências antes de acompanhar os indicadores.',
   }
-  if (isLoggedIn?.value) return {
+  if (canOperate?.value) return {
     kicker: 'Operação diária',
     title: 'Registrar movimentação',
     subtitle: 'Registre entradas e saídas; consultas e relatórios ficam em segundo plano.',
@@ -235,7 +235,7 @@ const shortcutActions = [
     id: 'entrada',
     label: 'Entrada',
     description: 'Registrar material chegando no estoque.',
-    target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true },
+    target: { tab: 'movimentacoes', subTab: 'entrada', requiresOperator: true },
     icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6',
     tone: 'success',
     primary: true,
@@ -252,7 +252,7 @@ const shortcutActions = [
     id: 'saida',
     label: 'Saída',
     description: 'Registrar retirada para pessoa ou destino.',
-    target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true },
+    target: { tab: 'movimentacoes', subTab: 'saida', requiresOperator: true },
     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6',
     tone: 'danger',
     primary: true,
@@ -269,14 +269,14 @@ const shortcutActions = [
     id: 'nova-os',
     label: 'Nova ordem de serviço',
     description: 'Abrir uma atividade de manutenção.',
-    target: { tab: 'ordens', subTab: 'nova', requiresAuth: true },
+    target: { tab: 'ordens', subTab: 'nova', requiresOperator: true },
     icon: 'M12 4.5v15m7.5-7.5h-15',
     tone: 'brand',
     primary: true,
   },
 ]
 
-const dashboardActions = computed(() => isLoggedIn?.value
+const dashboardActions = computed(() => canOperate?.value
   ? shortcutActions
   : shortcutActions.filter(action => ['catalogo', 'inventario'].includes(action.id))
 )
@@ -333,11 +333,11 @@ const priorityActions = computed(() => {
       id: 'sem-fechamento',
       label: 'Nenhum fechamento registrado',
       description: 'Abrir rotina de fechamento mensal.',
-      target: { tab: 'inventario', section: 'fechamentos', requiresAuth: true },
+      target: { tab: 'inventario', section: 'fechamentos', requiresAdmin: true },
       tone: 'text-amber-600 dark:text-amber-400',
     })
   }
-  return list.slice(0, 6)
+  return list.filter(action => !action.target.requiresAdmin || isAdmin.value).slice(0, 6)
 })
 
 function formatMonth(closing) {
@@ -384,8 +384,8 @@ watch(topConsumedAllItems, () => {
       <div class="ds-list-panel">
         <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div>
-            <h2 class="ds-section-heading">{{ isAdmin ? 'Ações principais' : (isLoggedIn ? 'O que você precisa registrar?' : 'Consultas disponíveis') }}</h2>
-            <p class="mt-1 text-xs ds-muted">{{ isAdmin ? 'Acesse a rotina necessária.' : (isLoggedIn ? 'Entrada e saída usam o mesmo fluxo rápido em toda a aplicação.' : 'A leitura do estoque não exige login.') }}</p>
+            <h2 class="ds-section-heading">{{ isAdmin ? 'Ações principais' : (canOperate ? 'O que você precisa registrar?' : 'Consultas disponíveis') }}</h2>
+            <p class="mt-1 text-xs ds-muted">{{ isAdmin ? 'Acesse a rotina necessária.' : (canOperate ? 'Entrada e saída usam o mesmo fluxo rápido em toda a aplicação.' : 'A leitura do estoque permanece disponível para consulta.') }}</p>
           </div>
           <span class="ds-chip">Operação</span>
         </div>
@@ -396,7 +396,7 @@ watch(topConsumedAllItems, () => {
             type="button"
             class="ds-action-card rounded-lg border p-3 pl-4 text-left transition-colors cursor-pointer"
             :class="[`ds-action-card-${action.tone}`, { 'ds-action-card-primary': !isAdmin && ['entrada', 'saida'].includes(action.id) }]"
-            :title="action.target.requiresAuth && !isLoggedIn ? 'Entre para usar este atalho' : action.description"
+            :title="action.target.requiresOperator && !canOperate ? 'Seu perfil não pode registrar movimentações' : action.description"
             @click="go(action.target)"
           >
             <div class="flex items-start gap-3">

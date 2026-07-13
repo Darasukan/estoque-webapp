@@ -46,6 +46,9 @@ app.get('/api/health', (req, res) => {
     res.json({
       ok: true,
       database: 'ok',
+      backup: server.backupScheduler?.status() || {
+        status: 'starting', lastSuccessAt: '', lastFailureAt: '', nextRunAt: '', intervalHours: 0,
+      },
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
     })

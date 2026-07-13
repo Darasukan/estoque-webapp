@@ -26,3 +26,9 @@ test('visible overlays use the native dialog contract', () => {
 
   assert.deepEqual(rawOverlays, [])
 })
+
+test('only table actions force the design-system 40px hit target', () => {
+  const styles = fs.readFileSync(path.join(root, 'ui-system.css'), 'utf8')
+  assert.match(styles, /\.ds-table td button\[title\][\s\S]*?min-width:\s*2\.5rem;[\s\S]*?min-height:\s*2\.5rem;/)
+  assert.doesNotMatch(styles, /button:is\(\.p-1, \.p-0\\\.5\)/)
+})

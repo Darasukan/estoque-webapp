@@ -10,6 +10,7 @@ import FechamentosView from './FechamentosView.vue'
 import VariationSheet from '../components/ui/VariationSheet.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
 import EpiControlTab from '../components/inventario/EpiControlTab.vue'
+import { normalizeSearchText, searchTokens } from '../utils/globalSearch.js'
 
 const props = defineProps({
   initialSection: {
@@ -27,6 +28,7 @@ const props = defineProps({
 })
 const isAdmin = inject('isAdmin')
 const isLoggedIn = inject('isLoggedIn')
+const canOperate = inject('canOperate')
 const canAccessClosings = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const canAccessEpiControl = computed(() => Boolean(isLoggedIn?.value ?? isLoggedIn))
 const emit = defineEmits(['quick-movement', 'open-work-order', 'update:section', 'update:status', 'update:search'])
@@ -70,7 +72,7 @@ const columnOptions = computed(() => [
   { key: 'min', label: 'Mín.' },
   { key: 'status', label: 'Status' },
   { key: 'history', label: 'Histórico por item' },
-  ...((isLoggedIn?.value ?? isLoggedIn) ? [{ key: 'adjust', label: 'Ações rápidas' }] : []),
+  ...((canOperate?.value ?? canOperate) ? [{ key: 'adjust', label: 'Ações rápidas' }] : []),
 ])
 
 watch(() => props.initialSection, section => {
@@ -123,14 +125,6 @@ const destinationsHeaderSearch = ref('')
 const locationHeaderSearchInput = ref(null)
 const destinationsHeaderSearchInput = ref(null)
 
-function normalizeSearchText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-}
-
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
 
 function compareText(a, b) {
@@ -141,10 +135,6 @@ function rowVariationText(row) {
   const values = Object.entries(row.variation.values || {}).map(([key, value]) => `${key}: ${value}`)
   const extras = Object.entries(row.variation.extras || {}).map(([key, value]) => `${key}: ${value}`)
   return [...values, ...extras].filter(Boolean).join(' ')
-}
-
-function searchTokens(value) {
-  return normalizeSearchText(value).split(/\s+/).filter(Boolean)
 }
 
 function inventorySearchText(row) {
@@ -562,7 +552,7 @@ function startAdjust(varId, currentStock) {
 }
 
 function quickMovement(row, type) {
-  if (!(isLoggedIn?.value ?? isLoggedIn)) return
+  if (!(canOperate?.value ?? canOperate)) return
   movementMenuId.value = null
   emit('quick-movement', {
     type,
@@ -1345,7 +1335,7 @@ function exportCSV() {
                   </button>
                 </th>
                 <th v-if="isColumnVisible('history')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28">Histórico</th>
-                <th v-if="isLoggedIn && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-44">Ações</th>
+                <th v-if="canOperate && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-44">Ações</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1462,7 +1452,7 @@ function exportCSV() {
                 </td>
 
                 <!-- Ações rápidas -->
-                <td v-if="isLoggedIn && isColumnVisible('adjust')" class="px-4 py-3 text-center">
+                <td v-if="canOperate && isColumnVisible('adjust')" class="px-4 py-3 text-center">
                   <div v-if="adjustingId === row.variation.id" class="flex items-center justify-center gap-1">
                     <input
                       ref="adjustInput"
@@ -1621,6 +1611,7 @@ function exportCSV() {
 
     <EpiControlTab
       v-else-if="inventorySection === 'epis'"
+      :can-operate="Boolean(canOperate?.value ?? canOperate)"
       @quick-movement="payload => emit('quick-movement', payload)"
     />
 
@@ -1632,7 +1623,7 @@ function exportCSV() {
       :variation="sheetRow.variation"
       :movements="movements"
       :work-orders="workOrders"
-      :can-manage="Boolean(isLoggedIn?.value ?? isLoggedIn)"
+      :can-manage="Boolean(canOperate?.value ?? canOperate)"
       :can-adjust="Boolean(isAdmin?.value ?? isAdmin)"
       :can-edit-details="Boolean(isAdmin?.value ?? isAdmin)"
       @close="closeVariationSheet"

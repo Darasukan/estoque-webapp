@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/roles
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireAdmin, (req, res) => {
   const { name, description, active } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatório' })
 
@@ -28,7 +28,7 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // PUT /api/roles/:id
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const current = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id)
   if (!current) return res.status(404).json({ error: 'Cargo nao encontrado' })
   const { name, description, active } = req.body
@@ -52,7 +52,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/roles/:id
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM roles WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

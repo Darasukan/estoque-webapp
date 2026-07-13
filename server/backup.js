@@ -54,30 +54,64 @@ export async function createBackup(db, options = {}) {
 
 export function startBackupScheduler(db) {
   const settings = getBackupSettings()
+  const state = {
+    status: settings.enabled ? 'pending' : 'disabled',
+    lastSuccessAt: '',
+    lastFailureAt: '',
+    nextRunAt: '',
+    intervalHours: settings.intervalHours,
+  }
   if (!settings.enabled) {
     console.log('Backups automaticos desativados por BACKUP_ENABLED=false')
-    return null
+    return {
+      runNow: async () => null,
+      status: () => ({ ...state }),
+      stop() {},
+    }
   }
 
   const intervalHours = settings.intervalHours
   const intervalMs = intervalHours * 60 * 60 * 1000
+  let timer = null
 
-  const run = () => {
-    createBackup(db)
-      .then(path => console.log(`Backup SQLite criado: ${path}`))
-      .catch(err => console.error('Falha ao criar backup SQLite:', err.message))
+  const run = async () => {
+    state.status = 'running'
+    state.nextRunAt = ''
+    try {
+      const path = await createBackup(db)
+      state.status = 'ok'
+      state.lastSuccessAt = new Date().toISOString()
+      console.log(`Backup SQLite criado: ${path}`)
+      return path
+    } catch (err) {
+      state.status = 'error'
+      state.lastFailureAt = new Date().toISOString()
+      console.error('Falha ao criar backup SQLite:', err.message)
+      return null
+    }
   }
 
-  const startupTimer = setTimeout(run, 5000)
-  const interval = setInterval(run, intervalMs)
-  startupTimer.unref?.()
-  interval.unref?.()
+  const schedule = delay => {
+    state.nextRunAt = new Date(Date.now() + delay).toISOString()
+    timer = setTimeout(async () => {
+      await run()
+      schedule(intervalMs)
+    }, delay)
+    timer.unref?.()
+  }
+
+  schedule(5000)
 
   return {
-    runNow: run,
+    runNow: async () => {
+      clearTimeout(timer)
+      const result = await run()
+      schedule(intervalMs)
+      return result
+    },
+    status: () => ({ ...state }),
     stop() {
-      clearTimeout(startupTimer)
-      clearInterval(interval)
+      clearTimeout(timer)
     }
   }
 }

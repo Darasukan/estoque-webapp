@@ -1,4 +1,30 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { normalizeSearchText } from '../utils/globalSearch.js'
+
+const HISTORY_STATE_KEY = 'estoque_movement_history_v1'
+const PAGE_SIZE_OPTIONS = [20, 50, 100]
+
+function loadHistoryState() {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(HISTORY_STATE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function savedFilters(value) {
+  return Object.fromEntries(
+    Object.entries(value || {}).filter(([, selected]) => Array.isArray(selected))
+  )
+}
+
+function saveHistoryState(state) {
+  try {
+    globalThis.localStorage?.setItem(HISTORY_STATE_KEY, JSON.stringify(state))
+  } catch {
+    // The history still works when browser storage is unavailable.
+  }
+}
 
 const FIELD_BY_FILTER = {
   grupo: 'itemGroup',
@@ -10,18 +36,14 @@ const FIELD_BY_FILTER = {
   operador: 'operatorName',
 }
 
-function normalizeSearchText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-}
-
 export function useMovementHistory(movements) {
-  const histSearch = ref('')
-  const histDateFrom = ref('')
-  const histDateTo = ref('')
-  const histFilters = ref({})
+  const saved = loadHistoryState()
+  const histSearch = ref(typeof saved.search === 'string' ? saved.search : '')
+  const histDateFrom = ref(typeof saved.dateFrom === 'string' ? saved.dateFrom : '')
+  const histDateTo = ref(typeof saved.dateTo === 'string' ? saved.dateTo : '')
+  const histFilters = ref(savedFilters(saved.filters))
+  const historyCurrentPage = ref(1)
+  const historyPageSize = ref(PAGE_SIZE_OPTIONS.includes(saved.pageSize) ? saved.pageSize : 20)
 
   const facetDefs = [
     { key: 'tipo', label: 'Tipo', group: 'main', priority: 10, defaultExpanded: true },
@@ -178,6 +200,27 @@ export function useMovementHistory(movements) {
     )
   })
 
+  const historyTotalPages = computed(() => Math.max(1, Math.ceil(filteredMovements.value.length / historyPageSize.value)))
+  const paginatedMovements = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyPageSize.value
+    return filteredMovements.value.slice(start, start + historyPageSize.value)
+  })
+
+  watch([histSearch, histDateFrom, histDateTo, histFilters, historyPageSize], () => {
+    historyCurrentPage.value = 1
+    saveHistoryState({
+      search: histSearch.value,
+      dateFrom: histDateFrom.value,
+      dateTo: histDateTo.value,
+      filters: histFilters.value,
+      pageSize: historyPageSize.value,
+    })
+  }, { deep: true })
+
+  watch(historyTotalPages, total => {
+    if (historyCurrentPage.value > total) historyCurrentPage.value = total
+  })
+
   const histTotals = computed(() => {
     let entradas = 0
     let saidas = 0
@@ -197,6 +240,11 @@ export function useMovementHistory(movements) {
     toggleHistFilter,
     clearHistFilters,
     filteredMovements,
+    paginatedMovements,
+    historyCurrentPage,
+    historyPageSize,
+    historyPageSizeOptions: PAGE_SIZE_OPTIONS,
+    historyTotalPages,
     histTotals,
   }
 }

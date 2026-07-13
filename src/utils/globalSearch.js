@@ -2,7 +2,18 @@ export function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u203a\u00bb]/g, '>')
     .toLowerCase()
+    .trim()
+}
+
+export function searchTokens(value) {
+  return normalizeSearchText(value).split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+export function matchesSearchTokens(value, tokens) {
+  const normalized = normalizeSearchText(value)
+  return tokens.every(token => normalized.includes(token))
 }
 
 export function filterDestinations(destinations, query) {
@@ -85,7 +96,7 @@ export function buildGlobalSearchResults({
       type: 'Pessoa',
       title: person.name,
       subtitle: person.role || 'Cadastro de pessoa',
-      target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true },
+      target: { tab: 'cadastros', subTab: 'pessoas', requiresAdmin: true },
     })
   }
   groups.push(peopleResults)
@@ -99,7 +110,7 @@ export function buildGlobalSearchResults({
       type: 'Destino',
       title: fullName || destination.name,
       subtitle: 'Cadastro de destinos',
-      target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true },
+      target: { tab: 'cadastros', subTab: 'destinos', requiresAdmin: true },
     })
   }
   groups.push(destinationResults)

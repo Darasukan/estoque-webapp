@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDestinations } from '../../composables/useDestinations.js'
 import { useLocations } from '../../composables/useLocations.js'
+import { normalizeSearchText as normalizeText } from '../../utils/globalSearch.js'
 
 const props = defineProps({
   modelValue: { type: [String, Array], default: '' },
@@ -28,13 +29,6 @@ const expandedGroups = ref(new Set())
 const inputEl = ref(null)
 const rootEl = ref(null)
 const pickerId = `${props.source}-${Math.random().toString(36).slice(2)}`
-
-function normalizeText(value) {
-  return String(value || '')
-    .replace(/[›»]/g, '>')
-    .trim()
-    .toLowerCase()
-}
 
 function fullName(idOrName) {
   return props.source === 'locations'

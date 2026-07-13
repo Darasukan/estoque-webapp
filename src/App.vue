@@ -43,7 +43,7 @@ const { loadData: loadSuppliers } = useSuppliers()
 const { loadData: loadRoles } = useRoles()
 const { loadData: loadEpis } = useEpis()
 const { loadData: loadUsers } = useUsers()
-const { isAdmin, isLoggedIn, user, logout, checkSession, changeOwnPassword } = useAuth()
+const { isAdmin, isLoggedIn, canOperate, user, logout, checkSession, changeOwnPassword } = useAuth()
 const { workOrders, loadData: loadWorkOrders } = useWorkOrders()
 const { motors, loadData: loadMotors } = useMotors()
 const { loadData: loadClosings } = useClosings()
@@ -51,8 +51,11 @@ const { success, error } = useToast()
 const localBrandFavicon = '/local-brand/favicon.png'
 const localBrandName = ref('Estoque')
 const environmentBadge = ref(null)
+const backupHealth = ref(null)
+let healthTimer = null
 provide('isAdmin', isAdmin)
 provide('isLoggedIn', isLoggedIn)
+provide('canOperate', canOperate)
 provide('environmentBadge', environmentBadge)
 const UI_STATE_KEY = 'estoque_ui_state_v1'
 
@@ -151,7 +154,7 @@ const navigationGroups = [
       { id: 'motores', label: 'Motores' },
     ],
   },
-  { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAuth: true },
+  { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAdmin: true },
 ]
 const activeNavigationGroup = computed(() =>
   navigationGroups.find(group => group.tabs.some(tab => tab.id === activeTab.value))?.id || 'inicio'
@@ -167,7 +170,7 @@ const navigationShortcuts = [
   { chord: 'G V', key: 'v', label: 'Entradas e saídas', target: { tab: 'movimentacoes' } },
   { chord: 'G O', key: 'o', label: 'Ordens de Serviço', target: { tab: 'ordens' } },
   { chord: 'G M', key: 'm', label: 'Motores', target: { tab: 'motores' } },
-  { chord: 'G A', key: 'a', label: 'Administração', target: { tab: 'cadastros', requiresAuth: true } },
+  { chord: 'G A', key: 'a', label: 'Administração', target: { tab: 'cadastros', requiresAdmin: true } },
 ]
 
 const actionShortcuts = [
@@ -176,40 +179,56 @@ const actionShortcuts = [
   { chord: 'Ctrl N', label: 'Registrar ou cadastrar' },
 ]
 
+function canAccessTarget(target = {}) {
+  if (target.requiresAdmin) return isAdmin.value
+  if (target.requiresOperator) return canOperate.value
+  if (target.requiresAuth) return isLoggedIn.value
+  return true
+}
+
+const visibleNavigationGroups = computed(() => navigationGroups.filter(canAccessTarget))
+
 const visibleNavigationShortcuts = computed(() =>
-  navigationShortcuts.filter(shortcut => !shortcut.target?.requiresAuth || isLoggedIn.value)
+  navigationShortcuts.filter(shortcut => canAccessTarget(shortcut.target))
 )
 
 const createActions = computed(() => [
-  { id: 'entrada', label: 'Registrar entrada', hint: 'Material chegando ao estoque', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
-  { id: 'saida', label: 'Registrar saída', hint: 'Retirar material do estoque', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
-  { id: 'os', label: 'Nova ordem de serviço', hint: 'Abrir uma atividade de manutenção', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
-  { id: 'pessoa', label: 'Cadastrar pessoa', hint: 'Funcionário ou solicitante', target: { tab: 'cadastros', subTab: 'pessoas', requiresAuth: true } },
-  { id: 'destino', label: 'Cadastrar destino', hint: 'Máquina, local ou destino', target: { tab: 'cadastros', subTab: 'destinos', requiresAuth: true } },
-  { id: 'item', label: 'Cadastrar material', hint: 'Abrir organização dos materiais', target: { tab: 'cadastros', subTab: 'hierarquia', requiresAuth: true } },
-])
+  { id: 'entrada', label: 'Registrar entrada', hint: 'Material chegando ao estoque', target: { tab: 'movimentacoes', subTab: 'entrada', requiresOperator: true } },
+  { id: 'saida', label: 'Registrar saída', hint: 'Retirar material do estoque', target: { tab: 'movimentacoes', subTab: 'saida', requiresOperator: true } },
+  { id: 'os', label: 'Nova ordem de serviço', hint: 'Abrir uma atividade de manutenção', target: { tab: 'ordens', subTab: 'nova', requiresOperator: true } },
+  { id: 'pessoa', label: 'Cadastrar pessoa', hint: 'Funcionário ou solicitante', target: { tab: 'cadastros', subTab: 'pessoas', requiresAdmin: true } },
+  { id: 'destino', label: 'Cadastrar destino', hint: 'Máquina, local ou destino', target: { tab: 'cadastros', subTab: 'destinos', requiresAdmin: true } },
+  { id: 'item', label: 'Cadastrar material', hint: 'Abrir organização dos materiais', target: { tab: 'cadastros', subTab: 'hierarquia', requiresAdmin: true } },
+].filter(action => canAccessTarget(action.target)))
+
+const visibleActionShortcuts = computed(() =>
+  actionShortcuts.filter(shortcut => shortcut.chord !== 'Ctrl N' || createActions.value.length)
+)
 
 const globalSearchCommands = computed(() => [
-  { id: 'command:entrada', type: 'Ação', title: 'Registrar entrada', subtitle: 'Material chegando ao estoque', keywords: 'receber adicionar', target: { tab: 'movimentacoes', subTab: 'entrada', requiresAuth: true } },
-  { id: 'command:saida', type: 'Ação', title: 'Registrar saída', subtitle: 'Retirar material para pessoa ou destino', keywords: 'retirar entregar', target: { tab: 'movimentacoes', subTab: 'saida', requiresAuth: true } },
-  { id: 'command:os', type: 'Ação', title: 'Nova ordem de serviço', subtitle: 'Abrir atividade de manutenção', keywords: 'manutenção nova os', target: { tab: 'ordens', subTab: 'nova', requiresAuth: true } },
+  { id: 'command:entrada', type: 'Ação', title: 'Registrar entrada', subtitle: 'Material chegando ao estoque', keywords: 'receber adicionar', target: { tab: 'movimentacoes', subTab: 'entrada', requiresOperator: true } },
+  { id: 'command:saida', type: 'Ação', title: 'Registrar saída', subtitle: 'Retirar material para pessoa ou destino', keywords: 'retirar entregar', target: { tab: 'movimentacoes', subTab: 'saida', requiresOperator: true } },
+  { id: 'command:os', type: 'Ação', title: 'Nova ordem de serviço', subtitle: 'Abrir atividade de manutenção', keywords: 'manutenção nova os', target: { tab: 'ordens', subTab: 'nova', requiresOperator: true } },
   { id: 'command:estoque', type: 'Ação', title: 'Consultar estoque', subtitle: 'Quantidades, locais e alertas', keywords: 'inventário material', target: { tab: 'inventario', section: 'estoque' } },
   { id: 'command:historico', type: 'Ação', title: 'Ver histórico de movimentações', subtitle: 'Entradas e saídas registradas', keywords: 'auditoria rastrear', target: { tab: 'movimentacoes', subTab: 'historico' } },
-  { id: 'command:fechamento', type: 'Ação', title: 'Fazer fechamento mensal', subtitle: 'Salvar a posição oficial do estoque', keywords: 'mês relatório', target: { tab: 'inventario', section: 'fechamentos', requiresAuth: true } },
-].filter(command => !command.target.requiresAuth || isLoggedIn.value))
+  { id: 'command:fechamento', type: 'Ação', title: 'Fazer fechamento mensal', subtitle: 'Salvar a posição oficial do estoque', keywords: 'mês relatório', target: { tab: 'inventario', section: 'fechamentos', requiresAdmin: true } },
+].filter(command => canAccessTarget(command.target)))
 
-const globalSearchResults = computed(() => buildGlobalSearchResults({
-  query: globalSearchQuery.value,
-  commands: globalSearchCommands.value,
-  recentIds: globalSearchRecentIds.value,
-  workOrders: workOrders.value,
-  motors: motors.value,
-  people: activePeople.value,
-  destinations: destinations.value,
-  items: items.value,
-  variations: variations.value,
-  getDestinationName: getDestFullName,
-}))
+const globalSearchResults = computed(() => {
+  const results = buildGlobalSearchResults({
+    query: globalSearchQuery.value,
+    commands: globalSearchCommands.value,
+    recentIds: globalSearchRecentIds.value,
+    workOrders: workOrders.value,
+    motors: motors.value,
+    people: activePeople.value,
+    destinations: destinations.value,
+    items: items.value,
+    variations: variations.value,
+    getDestinationName: getDestFullName,
+  })
+  return results.filter(result => canAccessTarget(result.target))
+})
 
 watch(globalSearchQuery, () => { globalSearchActiveIndex.value = 0 })
 // Load all data from API
@@ -255,11 +274,21 @@ async function loadEnvironmentBadge() {
   } catch {}
 }
 
+async function loadHealthStatus() {
+  try {
+    const response = await fetch('/api/health', { cache: 'no-store' })
+    const data = await response.json()
+    backupHealth.value = data.backup || null
+  } catch {}
+}
+
 onMounted(async () => {
   loadLocalBrand()
   loadEnvironmentBadge()
+  loadHealthStatus()
+  healthTimer = window.setInterval(loadHealthStatus, 15_000)
   await checkSession()
-  if (activeTab.value === 'cadastros' && !isLoggedIn.value) activeTab.value = 'catalogo'
+  if (activeTab.value === 'cadastros' && !isAdmin.value) activeTab.value = 'catalogo'
   await loadAllData()
   if (savedUiState.catalogGroup) activeGroup.value = savedUiState.catalogGroup
   window.addEventListener('app:data-invalidated', loadAllData)
@@ -268,6 +297,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (healthTimer) window.clearInterval(healthTimer)
   window.removeEventListener('app:data-invalidated', loadAllData)
   window.removeEventListener('keydown', handleGlobalShortcutKeydown)
   window.removeEventListener('mousedown', handleGlobalPointerDown, true)
@@ -277,7 +307,7 @@ onUnmounted(() => {
 // Reload data after login
 watch(user, (newUser, oldUser) => {
   if (newUser && !oldUser) loadAllData()
-  if (!newUser && activeTab.value === 'cadastros') activeTab.value = 'catalogo'
+  if (!isAdmin.value && activeTab.value === 'cadastros') activeTab.value = 'catalogo'
 })
 
 watch(activeTab, value => {
@@ -332,7 +362,7 @@ function logoutFromMenu() {
 }
 
 function openMovementTab(tab, prefill = null) {
-  if (!isLoggedIn.value) return
+  if (!canOperate.value) return
   shortcutHelpOpen.value = false
   requestedMovementPrefill.value = prefill
   requestedMovSubTab.value = ''
@@ -371,10 +401,7 @@ function handleGlobalSearchKeydown(event) {
 }
 
 function openGlobalCreate() {
-  if (!isLoggedIn.value) {
-    showLoginModal.value = true
-    return
-  }
+  if (!createActions.value.length) return
   globalCreateOpen.value = !globalCreateOpen.value
   shortcutHelpOpen.value = false
   clearShortcutPrefix()
@@ -493,8 +520,9 @@ function openContextQuickMovement(payload) {
 }
 
 function selectMainTab(tabId) {
-  if (tabId === 'cadastros' && !isLoggedIn.value) {
-    showLoginModal.value = true
+  if (tabId === 'cadastros' && !isAdmin.value) {
+    if (!isLoggedIn.value) showLoginModal.value = true
+    else error('A administração é restrita a administradores.')
     return
   }
   if (tabId === 'dashboard') {
@@ -504,8 +532,9 @@ function selectMainTab(tabId) {
 }
 
 function selectNavigationGroup(group) {
-  if (group.requiresAuth && !isLoggedIn.value) {
-    showLoginModal.value = true
+  if (!canAccessTarget(group)) {
+    if (!isLoggedIn.value) showLoginModal.value = true
+    else error('A administração é restrita a administradores.')
     return
   }
   const currentTabBelongsToGroup = group.tabs.some(tab => tab.id === activeTab.value)
@@ -515,11 +544,16 @@ function selectNavigationGroup(group) {
 function navigateTab(target) {
   const tab = typeof target === 'string' ? target : target?.tab
   if (!tab) return
-  if (target?.requiresAuth && !isLoggedIn.value) {
+  if (!canAccessTarget(typeof target === 'string' ? {} : target)) {
+    if (!isLoggedIn.value) showLoginModal.value = true
+    else error('Seu perfil não tem permissão para esta ação.')
+    return
+  }
+  if ((tab === 'fechamentos' || target?.section === 'fechamentos') && !isLoggedIn.value) {
     showLoginModal.value = true
     return
   }
-  if ((tab === 'fechamentos' || target?.section === 'fechamentos' || target?.section === 'epis') && !isLoggedIn.value) {
+  if (target?.section === 'epis' && !isLoggedIn.value) {
     showLoginModal.value = true
     return
   }
@@ -560,8 +594,9 @@ function navigateTab(target) {
     return
   }
   if (tab === 'cadastros' && target?.subTab) {
-    if (!isLoggedIn.value) {
-      showLoginModal.value = true
+    if (!isAdmin.value) {
+      if (!isLoggedIn.value) showLoginModal.value = true
+      else error('A administração é restrita a administradores.')
       return
     }
     requestedCadastrosTab.value = target.subTab
@@ -691,11 +726,11 @@ function handleGlobalShortcutKeydown(event) {
 
           <div class="ds-nav-tabs" aria-label="Navegação principal">
             <button
-              v-for="group in navigationGroups"
+              v-for="group in visibleNavigationGroups"
               :key="group.id"
               class="ds-tab"
               :class="activeNavigationGroup === group.id ? 'ds-tab-active' : ''"
-              :title="group.requiresAuth && !isLoggedIn ? 'Entre para acessar a administração' : group.label"
+              :title="group.requiresAdmin && !isAdmin ? 'Acesso restrito a administradores' : group.label"
               @click="selectNavigationGroup(group)"
             >
               {{ group.label }}
@@ -715,7 +750,7 @@ function handleGlobalShortcutKeydown(event) {
             </svg>
             <span class="hidden sm:inline">Buscar</span>
           </AppButton>
-          <div ref="globalCreateRootRef" class="relative">
+          <div v-if="createActions.length" ref="globalCreateRootRef" class="relative">
             <AppButton
               variant="primary"
               size="sm"
@@ -829,6 +864,16 @@ function handleGlobalShortcutKeydown(event) {
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
         <div
+          v-if="isAdmin && backupHealth?.status === 'error'"
+          class="mb-4 rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm"
+          role="alert"
+        >
+          <p class="font-semibold text-red-800 dark:text-red-200">O backup automático falhou</p>
+          <p class="mt-0.5 text-xs text-red-700 dark:text-red-300">
+            Última falha: {{ backupHealth.lastFailureAt ? new Date(backupHealth.lastFailureAt).toLocaleString('pt-BR') : 'agora' }}. Verifique a pasta de backup e o log do servidor.
+          </p>
+        </div>
+        <div
           v-if="syncFailures.length"
           class="mb-4 flex flex-col gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
           role="alert"
@@ -862,6 +907,7 @@ function handleGlobalShortcutKeydown(event) {
         <CadastrosView
           v-if="activeTab === 'cadastros'"
           :initial-tab="requestedCadastrosTab"
+          :backup-health="backupHealth"
           @update:tab="v => requestedCadastrosTab = v"
           @quick-movement="openContextQuickMovement"
         />
@@ -1030,7 +1076,7 @@ function handleGlobalShortcutKeydown(event) {
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Ações</h3>
             <div class="space-y-1">
               <div
-                v-for="shortcut in actionShortcuts"
+                v-for="shortcut in visibleActionShortcuts"
                 :key="shortcut.chord"
                 class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
               >

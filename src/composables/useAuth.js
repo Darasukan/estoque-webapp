@@ -6,6 +6,7 @@ const user = ref(JSON.parse(localStorage.getItem('auth_user') || sessionStorage.
 export function useAuth() {
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isLoggedIn = computed(() => !!user.value)
+  const canOperate = computed(() => ['admin', 'operador'].includes(user.value?.role))
 
   async function login(name, pin) {
     try {
@@ -33,7 +34,7 @@ export function useAuth() {
 
   async function changeOwnPassword(pin) {
     if (!user.value?.id) return { ok: false, error: 'Usuario nao autenticado.' }
-    if (!pin || String(pin).trim().length < 4) return { ok: false, error: 'Senha deve ter ao menos 4 caracteres.' }
+    if (!pin || String(pin).trim().length < 8) return { ok: false, error: 'Senha deve ter ao menos 8 caracteres.' }
     try {
       await api.updateUser(user.value.id, { pin: String(pin).trim() })
       user.value = { ...user.value, mustChangePassword: false }
@@ -44,5 +45,5 @@ export function useAuth() {
     }
   }
 
-  return { user, isAdmin, isLoggedIn, login, logout, checkSession, changeOwnPassword }
+  return { user, isAdmin, isLoggedIn, canOperate, login, logout, checkSession, changeOwnPassword }
 }

@@ -8,6 +8,7 @@ import AttributeBadges from '../ui/AttributeBadges.vue'
 import AppDialog from '../ui/AppDialog.vue'
 
 const emit = defineEmits(['quick-movement'])
+defineProps({ canOperate: { type: Boolean, default: false } })
 
 const { items, variations } = useItems()
 const { people } = usePeople()
@@ -489,6 +490,7 @@ function quickMovement(record) {
                     Histórico
                   </button>
                   <button
+                    v-if="canOperate"
                     type="button"
                     class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 cursor-pointer"
                     @click="quickMovement(record)"

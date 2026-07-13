@@ -5,6 +5,7 @@ import net from 'node:net'
 import os from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import Database from 'better-sqlite3'
 
 async function freePort() {
   const server = net.createServer()
@@ -40,8 +41,18 @@ async function jsonRequest(url, path, { token, body, headers, method = body ? 'P
   return { response, data: await response.json() }
 }
 
+function sessionToken(response) {
+  const cookie = response.headers.get('set-cookie') || ''
+  assert.match(cookie, /auth_token=/)
+  assert.match(cookie, /HttpOnly/i)
+  const match = cookie.match(/auth_token=([^;]+)/)
+  assert.ok(match)
+  return decodeURIComponent(match[1])
+}
+
 test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout: 20_000 }, async t => {
   const tempDir = await mkdtemp(join(os.tmpdir(), 'estoque-api-'))
+  const dbPath = join(tempDir, 'test.db')
   const port = await freePort()
   const url = `http://127.0.0.1:${port}`
   let output = ''
@@ -50,7 +61,7 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     env: {
       ...process.env,
       PORT: String(port),
-      DB_PATH: join(tempDir, 'test.db'),
+      DB_PATH: dbPath,
       BACKUP_ENABLED: 'false',
       CORS_ORIGINS: '',
     },
@@ -72,6 +83,8 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
 
   const health = await fetch(`${url}/api/health`, { headers: { origin: 'http://localhost:5173' } })
   assert.equal(health.status, 200)
+  const healthData = await health.json()
+  assert.equal(healthData.backup.status, 'disabled')
   assert.equal(health.headers.get('access-control-allow-origin'), 'http://localhost:5173')
   assert.equal(health.headers.get('x-content-type-options'), 'nosniff')
   assert.equal(health.headers.has('x-powered-by'), false)
@@ -96,7 +109,8 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     body: { login: 'admin', pin: 'admin123' },
   })
   assert.equal(login.response.status, 200)
-  const token = login.data.token
+  assert.equal('token' in login.data, false)
+  const token = sessionToken(login.response)
 
   const password = await jsonRequest(url, '/api/auth/users/user_admin', {
     method: 'PUT',
@@ -104,6 +118,49 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     body: { pin: 'senha-local-123' },
   })
   assert.equal(password.response.status, 200)
+
+  const operator = await jsonRequest(url, '/api/auth/users', {
+    token,
+    body: { name: 'Operador API', username: 'operador-api', role: 'operador', pin: 'operador-inicial-123' },
+  })
+  assert.equal(operator.response.status, 200)
+  const operatorLogin = await jsonRequest(url, '/api/auth/login', {
+    body: { login: 'operador-api', pin: 'operador-inicial-123' },
+  })
+  const operatorToken = sessionToken(operatorLogin.response)
+  const operatorPassword = await jsonRequest(url, `/api/auth/users/${operator.data.id}`, {
+    method: 'PUT',
+    token: operatorToken,
+    body: { pin: 'operador-seguro-456' },
+  })
+  assert.equal(operatorPassword.response.status, 200)
+
+  const visitor = await jsonRequest(url, '/api/auth/users', {
+    token,
+    body: { name: 'Visitante API', username: 'visitante-api', role: 'visitante', pin: 'visitante-inicial-123' },
+  })
+  assert.equal(visitor.response.status, 200)
+  const visitorLogin = await jsonRequest(url, '/api/auth/login', {
+    body: { login: 'visitante-api', pin: 'visitante-inicial-123' },
+  })
+  const visitorToken = sessionToken(visitorLogin.response)
+  const visitorPassword = await jsonRequest(url, `/api/auth/users/${visitor.data.id}`, {
+    method: 'PUT',
+    token: visitorToken,
+    body: { pin: 'visitante-seguro-456' },
+  })
+  assert.equal(visitorPassword.response.status, 200)
+
+  const operatorCannotCreateItem = await jsonRequest(url, '/api/items', {
+    token: operatorToken,
+    body: { name: 'Item proibido', group: 'Teste' },
+  })
+  assert.equal(operatorCannotCreateItem.response.status, 403)
+  const visitorCannotCreateItem = await jsonRequest(url, '/api/items', {
+    token: visitorToken,
+    body: { name: 'Item proibido', group: 'Teste' },
+  })
+  assert.equal(visitorCannotCreateItem.response.status, 403)
 
   const role = await jsonRequest(url, '/api/roles', {
     token,
@@ -147,9 +204,16 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     body: { login: 'admin-estoque', pin: 'admin-estoque-123' },
   })
   assert.equal(secondaryLogin.response.status, 200)
+  const secondaryToken = sessionToken(secondaryLogin.response)
+  const secondaryPassword = await jsonRequest(url, `/api/auth/users/${secondaryAdmin.data.id}`, {
+    method: 'PUT',
+    token: secondaryToken,
+    body: { pin: 'admin-estoque-seguro-456' },
+  })
+  assert.equal(secondaryPassword.response.status, 200)
   const blockedInitialStock = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {
     method: 'PUT',
-    token: secondaryLogin.data.token,
+    token: secondaryToken,
     body: { ...variation.data, initialStock: 9 },
   })
   assert.equal(blockedInitialStock.response.status, 403)
@@ -161,8 +225,20 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.equal(changedInitialStock.response.status, 200)
   assert.equal(changedInitialStock.data.initialStock, 7)
 
+  const visitorCannotMoveStock = await jsonRequest(url, '/api/movements', {
+    token: visitorToken,
+    body: {
+      type: 'entrada',
+      itemId: item.data.id,
+      variationId: variation.data.id,
+      itemName: item.data.name,
+      qty: 1,
+    },
+  })
+  assert.equal(visitorCannotMoveStock.response.status, 403)
+
   const movement = await jsonRequest(url, '/api/movements', {
-    token,
+    token: operatorToken,
     body: {
       type: 'entrada',
       itemId: item.data.id,
@@ -174,19 +250,33 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.equal(movement.response.status, 200)
   assert.equal(movement.data.stockAfter, 5)
 
+  const operatorCannotDeleteMovement = await jsonRequest(url, `/api/movements/${movement.data.id}`, {
+    method: 'DELETE',
+    token: operatorToken,
+  })
+  assert.equal(operatorCannotDeleteMovement.response.status, 403)
+
   const variations = await jsonRequest(url, '/api/items/variations')
   assert.equal(variations.data.find(row => row.id === variation.data.id).stock, 5)
+
+  const deletedMovement = await jsonRequest(url, `/api/movements/${movement.data.id}`, {
+    method: 'DELETE',
+    token,
+  })
+  assert.equal(deletedMovement.response.status, 200)
+  const movementsAfterDelete = await jsonRequest(url, '/api/movements')
+  assert.equal(movementsAfterDelete.data.some(row => row.id === movement.data.id), false)
+  const inspectionAfterDelete = new Database(dbPath, { readonly: true })
+  assert.equal(inspectionAfterDelete.prepare('SELECT id FROM movements WHERE id = ?').get(movement.data.id), undefined)
+  inspectionAfterDelete.close()
 
   const deletedVariation = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {
     method: 'DELETE',
     token,
   })
   assert.equal(deletedVariation.response.status, 200)
-  const deletedMovement = await jsonRequest(url, `/api/movements/${movement.data.id}`, {
-    method: 'DELETE',
-    token,
-  })
-  assert.equal(deletedMovement.response.status, 200)
+  const variationsAfterDelete = await jsonRequest(url, '/api/items/variations')
+  assert.equal(variationsAfterDelete.data.some(row => row.id === variation.data.id), false)
 
   const childDestination = await jsonRequest(url, '/api/destinations', {
     token,
@@ -194,7 +284,7 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   })
   assert.equal(childDestination.response.status, 200)
   const workOrder = await jsonRequest(url, '/api/work-orders', {
-    token,
+    token: operatorToken,
     body: {
       destinationId: childDestination.data.id,
       requestedBy: 'Pessoa Teste',
@@ -219,6 +309,12 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   const refreshedOrder = await jsonRequest(url, `/api/work-orders/${workOrder.data.id}`)
   assert.equal(refreshedOrder.data.destinationName, 'Jigger 3')
   assert.equal(refreshedOrder.data.equipment, 'Jigger 3')
+
+  const inspectionDb = new Database(dbPath)
+  inspectionDb.prepare("UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE token = ?").run(visitorToken)
+  inspectionDb.close()
+  const expiredSession = await jsonRequest(url, '/api/auth/me', { token: visitorToken })
+  assert.equal(expiredSession.response.status, 401)
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const failed = await jsonRequest(url, '/api/auth/login', {

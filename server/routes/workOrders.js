@@ -1,7 +1,7 @@
 ﻿import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 import { nextMotorMaintenanceStatus } from '../utils/motorStatus.js'
 import { workOrderCreationDateError } from '../../src/utils/workOrderForm.js'
@@ -455,7 +455,7 @@ router.get('/:id/events', (req, res) => {
 })
 
 // POST /api/work-orders — create
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireOperator, (req, res) => {
   const {
     title,
     number: rawNumber,
@@ -632,7 +632,7 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // PUT /api/work-orders/:id — update
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireOperator, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 
@@ -842,7 +842,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/work-orders/:id — delete (cascade removes items)
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 
@@ -882,17 +882,17 @@ router.delete('/:id', requireAuth, (req, res) => {
 })
 
 // POST /api/work-orders/:id/items — add material to work order
-router.post('/:id/items', requireAuth, (req, res) => {
+router.post('/:id/items', requireAuth, requireOperator, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 
   const { variationId, qty } = req.body
   if (!variationId || !qty || qty <= 0) return res.status(400).json({ error: 'variationId e qty (>0) são obrigatórios' })
 
-  const variation = db.prepare('SELECT * FROM variations WHERE id = ?').get(variationId)
+  const variation = db.prepare('SELECT * FROM variations WHERE id = ? AND active = 1').get(variationId)
   if (!variation) return res.status(404).json({ error: 'Variação não encontrada' })
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(variation.item_id)
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND active = 1').get(variation.item_id)
   if (!item) return res.status(404).json({ error: 'Item não encontrado' })
 
   // Check stock
@@ -973,14 +973,15 @@ router.post('/:id/items', requireAuth, (req, res) => {
 })
 
 // DELETE /api/work-orders/:id/items/:itemId — remove material, revert stock
-router.delete('/:id/items/:itemId', requireAuth, (req, res) => {
+router.delete('/:id/items/:itemId', requireAuth, requireAdmin, (req, res) => {
   const woi = db.prepare('SELECT * FROM work_order_items WHERE id = ? AND work_order_id = ?').get(req.params.itemId, req.params.id)
   if (!woi) return res.status(404).json({ error: 'Item da OS não encontrado' })
 
   const tx = db.transaction(() => {
     // Only revert stock and remove movement if it was an implicit movement (added directly via OS)
     // For linked movements (from saída flow), stock was already handled by the movement itself
-    const isImplicit = woi.movement_id && db.prepare("SELECT doc_ref FROM movements WHERE id = ?").get(woi.movement_id)?.doc_ref?.startsWith('OS #')
+    const movement = woi.movement_id ? db.prepare('SELECT doc_ref FROM movements WHERE id = ?').get(woi.movement_id) : null
+    const isImplicit = movement?.doc_ref?.startsWith('OS #')
 
     if (isImplicit) {
       // Revert stock
@@ -988,7 +989,6 @@ router.delete('/:id/items/:itemId', requireAuth, (req, res) => {
       if (variation) {
         db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(variation.stock + woi.qty, woi.variation_id)
       }
-      // Remove the implicit movement
       db.prepare('DELETE FROM movements WHERE id = ?').run(woi.movement_id)
     }
 
@@ -1016,7 +1016,7 @@ router.delete('/:id/items/:itemId', requireAuth, (req, res) => {
 })
 
 // POST /api/work-orders/:id/items/link — link an existing movement to a work order (no stock deduction)
-router.post('/:id/items/link', requireAuth, (req, res) => {
+router.post('/:id/items/link', requireAuth, requireOperator, (req, res) => {
   const o = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(req.params.id)
   if (!o) return res.status(404).json({ error: 'Ordem de serviço não encontrada' })
 

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -25,7 +25,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/suppliers
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireAdmin, (req, res) => {
   const name = clean(req.body.name)
   const description = clean(req.body.description)
   const active = req.body.active !== false
@@ -43,7 +43,7 @@ router.post('/', requireAuth, (req, res) => {
 })
 
 // PUT /api/suppliers/:id
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const current = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id)
   if (!current) return res.status(404).json({ error: 'Fornecedor nao encontrado' })
 
@@ -63,7 +63,7 @@ router.put('/:id', requireAuth, (req, res) => {
 })
 
 // DELETE /api/suppliers/:id
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM suppliers WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

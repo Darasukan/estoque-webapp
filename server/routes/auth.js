@@ -41,22 +41,24 @@ router.post('/login', (req, res) => {
   const { pin } = req.body
   if (!login || !pin) return res.status(400).json({ error: 'Login e PIN obrigatorios' })
 
+  db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run()
+
   const user = db.prepare(`
     SELECT * FROM users
     WHERE active = 1
       AND (username = ? OR (COALESCE(username, '') = '' AND name = ?))
   `).get(login, login)
-  if (!user) return res.status(401).json({ error: 'Usuario nao encontrado' })
+  if (!user) return res.status(401).json({ error: 'Login ou senha incorretos' })
 
   if (!bcryptjs.compareSync(pin, user.pin_hash)) {
-    return res.status(401).json({ error: 'PIN incorreto' })
+    return res.status(401).json({ error: 'Login ou senha incorretos' })
   }
 
   const token = crypto.randomBytes(32).toString('hex')
-  db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, user.id)
+  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))").run(token, user.id)
 
   res.cookie(AUTH_COOKIE, token, cookieOptions(req))
-  res.json({ token, user: safeUser(user) })
+  res.json({ user: safeUser(user) })
 })
 
 // POST /api/auth/logout
@@ -76,7 +78,7 @@ router.get('/me', (req, res) => {
     SELECT u.id, u.name, u.username, u.role, u.active, u.must_change_password
     FROM sessions s
     JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND u.active = 1
+    WHERE s.token = ? AND s.expires_at > datetime('now') AND u.active = 1
   `).get(token)
 
   if (!session) return res.status(401).json({ error: 'Sessao invalida' })
