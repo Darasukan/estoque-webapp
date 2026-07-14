@@ -14,6 +14,13 @@ function clearAuthData() {
   sessionStorage.removeItem('auth_user')
 }
 
+function apiError(response, data = {}) {
+  const error = new Error(data.error || `Erro ${response.status}`)
+  error.status = response.status
+  error.code = data.code || ''
+  return error
+}
+
 async function request(path, options = {}) {
   const url = BASE + path
   const headers = {
@@ -21,7 +28,7 @@ async function request(path, options = {}) {
   }
 
   // Only set Content-Type for requests with a body (POST, PUT, etc.)
-  if (options.body) {
+  if (options.body && !Object.keys(headers).some(key => key.toLowerCase() === 'content-type')) {
     headers['Content-Type'] = 'application/json'
   }
 
@@ -33,11 +40,19 @@ async function request(path, options = {}) {
 
   const data = await res.json().catch(() => ({}))
 
-  if (!res.ok) {
-    throw new Error(data.error || `Erro ${res.status}`)
-  }
+  if (!res.ok) throw apiError(res, data)
 
   return data
+}
+
+async function requestBlob(path) {
+  const res = await fetch(BASE + path, { credentials: 'include' })
+  if (res.status === 401) clearAuthData()
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw apiError(res, data)
+  }
+  return res.blob()
 }
 
 // ===== Auth =====
@@ -128,6 +143,49 @@ export async function createMovement(data) {
 
 export async function createMovementBatch(data) {
   return request('/movements/batch', { method: 'POST', body: JSON.stringify(data) })
+}
+
+// ===== Photo movement batches =====
+export async function getPhotoBatches() {
+  return request('/photo-batches')
+}
+
+export async function putPhotoBatch(batch) {
+  return request(`/photo-batches/${encodeURIComponent(batch.id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(batch),
+  })
+}
+
+export async function deleteRemotePhotoBatch(batchId) {
+  return request(`/photo-batches/${encodeURIComponent(batchId)}`, { method: 'DELETE' })
+}
+
+export async function getPhotoBatchPhotos(batchId) {
+  return request(`/photo-batches/${encodeURIComponent(batchId)}/photos`)
+}
+
+export async function putPhotoBatchPhoto(photo) {
+  return request(`/photo-batches/${encodeURIComponent(photo.batchId)}/photos/${encodeURIComponent(photo.id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(photo),
+  })
+}
+
+export async function putPhotoBatchImage(batchId, photoId, blob) {
+  return request(`/photo-batches/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}/image`, {
+    method: 'PUT',
+    headers: { 'Content-Type': blob.type || 'image/jpeg' },
+    body: blob,
+  })
+}
+
+export async function getPhotoBatchImage(batchId, photoId) {
+  return requestBlob(`/photo-batches/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}/image`)
+}
+
+export async function deleteRemoteBatchPhoto(batchId, photoId) {
+  return request(`/photo-batches/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' })
 }
 
 export async function updateMovement(id, data) {

@@ -4,6 +4,7 @@ import AppDialog from '../ui/AppDialog.vue'
 import { useItems } from '../../composables/useItems.js'
 import { useToast } from '../../composables/useToast.js'
 import { suggestCatalogFromImage } from '../../services/api.js'
+import { compressImageFile, fileAsDataUrl } from '../../utils/imageFile.js'
 import { units } from '../../utils/units.js'
 
 const props = defineProps({
@@ -213,67 +214,6 @@ function clearAiCatalogImage() {
 function closeDialog() {
   clearAiCatalogImage()
   emit('close')
-}
-
-const AI_CATALOG_MAX_IMAGE_BYTES = 6 * 1024 * 1024
-
-function imageFromBlob(blob) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob)
-    const image = new Image()
-    image.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve(image)
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Não foi possível ler a imagem.'))
-    }
-    image.src = url
-  })
-}
-
-function canvasToJpeg(canvas, quality) {
-  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
-}
-
-async function compressImageFile(file) {
-  if (file.size <= AI_CATALOG_MAX_IMAGE_BYTES) return file
-
-  const image = await imageFromBlob(file)
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Não foi possível reduzir a imagem.')
-
-  let maxEdge = Math.min(1800, Math.max(image.width, image.height))
-  let quality = 0.82
-
-  while (maxEdge >= 900) {
-    const scale = Math.min(1, maxEdge / Math.max(image.width, image.height))
-    canvas.width = Math.max(1, Math.round(image.width * scale))
-    canvas.height = Math.max(1, Math.round(image.height * scale))
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-
-    while (quality >= 0.45) {
-      const blob = await canvasToJpeg(canvas, quality)
-      if (blob && blob.size <= AI_CATALOG_MAX_IMAGE_BYTES) return blob
-      quality -= 0.12
-    }
-
-    quality = 0.76
-    maxEdge = Math.round(maxEdge * 0.82)
-  }
-
-  throw new Error('Não foi possível reduzir a imagem para menos de 6 MB.')
-}
-
-function fileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'))
-    reader.readAsDataURL(file)
-  })
 }
 
 async function onAiCatalogImageSelected(event) {

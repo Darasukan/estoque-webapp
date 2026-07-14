@@ -33,6 +33,7 @@ server/*.db
 server/*.db-shm
 server/*.db-wal
 server/backups/
+server/photo-uploads*/
 public/local-brand/
 public/themes/*.css
 !public/themes/industrial.css

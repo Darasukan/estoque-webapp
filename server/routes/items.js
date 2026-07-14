@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAdmin, requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 import { analyzeCatalogImage } from '../utils/catalogSuggestion.js'
 
 const router = Router()
@@ -18,7 +18,7 @@ function parseJson(value, fallback) {
   try { return JSON.parse(value) } catch { return fallback }
 }
 
-router.post('/suggest', requireAuth, requireAdmin, async (req, res) => {
+router.post('/suggest', requireAuth, requireOperator, async (req, res) => {
   const { image } = req.body
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   if (!apiKey) return res.status(503).json({ error: 'Configure GEMINI_API_KEY ou GOOGLE_API_KEY no servidor.' })

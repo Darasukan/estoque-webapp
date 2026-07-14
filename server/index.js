@@ -22,6 +22,7 @@ import seedRoutes from './routes/seed.js'
 import workOrderRoutes from './routes/workOrders.js'
 import motorRoutes from './routes/motors.js'
 import closingRoutes from './routes/closings.js'
+import photoBatchRoutes from './routes/photoBatches.js'
 import { listThemes } from './utils/themes.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -81,6 +82,7 @@ app.use('/api/seed', seedRoutes)
 app.use('/api/work-orders', workOrderRoutes)
 app.use('/api/motors', motorRoutes)
 app.use('/api/closings', closingRoutes)
+app.use('/api/photo-batches', photoBatchRoutes)
 app.use('/api', apiErrorHandler)
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }))
 

@@ -74,8 +74,11 @@ test('migração versionada cria backup antes de alterar um banco existente', { 
   backupDb.close()
 
   const migratedDb = new Database(dbPath, { readonly: true })
-  assert.equal(migratedDb.pragma('user_version', { simple: true }), 1)
+  assert.equal(migratedDb.pragma('user_version', { simple: true }), 3)
   assert.ok(migratedDb.prepare('PRAGMA table_info(sessions)').all().some(column => column.name === 'expires_at'))
   assert.ok(migratedDb.prepare('PRAGMA table_info(items)').all().some(column => column.name === 'active'))
+  assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movement_batch_requests'").get())
+  assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'photo_batches'").get())
+  assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'photo_batch_photos'").get())
   migratedDb.close()
 })

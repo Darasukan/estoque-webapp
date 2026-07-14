@@ -15,7 +15,7 @@ export const DB_PATH = process.env.DB_PATH
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
 
-const CURRENT_SCHEMA_VERSION = 1
+const CURRENT_SCHEMA_VERSION = 3
 const databaseExisted = existsSync(DB_PATH)
 const db = new Database(DB_PATH)
 const previousSchemaVersion = db.pragma('user_version', { simple: true })
@@ -100,6 +100,40 @@ db.exec(`
     operator_id TEXT DEFAULT '',
     operator_name TEXT DEFAULT ''
   );
+
+  CREATE TABLE IF NOT EXISTS movement_batch_requests (
+    request_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS photo_batches (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('pending','completed')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT DEFAULT '',
+    expires_at TEXT DEFAULT '',
+    data_json TEXT NOT NULL DEFAULT '{}'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_photo_batches_owner_updated
+    ON photo_batches(owner_user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS photo_batch_photos (
+    id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL REFERENCES photo_batches(id) ON DELETE CASCADE,
+    image_path TEXT DEFAULT '',
+    mime_type TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    data_json TEXT NOT NULL DEFAULT '{}'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_photo_batch_photos_batch_created
+    ON photo_batch_photos(batch_id, created_at);
 
   CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY,

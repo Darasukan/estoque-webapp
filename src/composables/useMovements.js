@@ -46,8 +46,13 @@ export function useMovements() {
     return created
   }
 
-  async function addMovementBatch(type, lines, fields = {}) {
-    const result = await api.createMovementBatch({ type, items: lines, fields })
+  async function addMovementBatch(type, lines, fields = {}, requestId = '') {
+    const result = await api.createMovementBatch({
+      type,
+      items: lines,
+      fields,
+      ...(requestId ? { requestId } : {}),
+    })
     const created = result.movements || []
     movements.value.unshift(...created)
     return created

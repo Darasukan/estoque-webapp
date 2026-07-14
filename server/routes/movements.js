@@ -198,9 +198,24 @@ router.post('/', requireAuth, requireOperator, (req, res) => {
 
 // POST /api/movements/batch
 router.post('/batch', requireAuth, requireOperator, (req, res) => {
-  const { type, items = [], fields = {} } = req.body
+  const { type, items = [], fields = {}, requestId = '' } = req.body
   const operatorId = req.user?.id || ''
   const operatorName = req.user?.name || ''
+  const cleanRequestId = clean(requestId)
+
+  if (cleanRequestId && !/^[a-zA-Z0-9_-]{8,120}$/.test(cleanRequestId)) {
+    return res.status(400).json({ error: 'requestId invalido.' })
+  }
+
+  if (cleanRequestId) {
+    const previous = db.prepare('SELECT user_id, response_json FROM movement_batch_requests WHERE request_id = ?').get(cleanRequestId)
+    if (previous) {
+      if (previous.user_id !== operatorId) {
+        return res.status(409).json({ error: 'Este requestId pertence a outro operador.' })
+      }
+      return res.json(JSON.parse(previous.response_json))
+    }
+  }
 
   if (![undefined, null, '', 'mixed', 'entrada', 'saida'].includes(type)) {
     return res.status(400).json({ error: 'Tipo de movimentacao invalido.' })
@@ -320,6 +335,11 @@ router.post('/batch', requireAuth, requireOperator, (req, res) => {
         operatorId,
         operatorName,
       })
+    }
+
+    if (cleanRequestId) {
+      db.prepare('INSERT INTO movement_batch_requests (request_id, user_id, response_json) VALUES (?, ?, ?)')
+        .run(cleanRequestId, operatorId, JSON.stringify({ movements: created }))
     }
   })
 

@@ -10,6 +10,7 @@ import { useToast } from '../composables/useToast.js'
 import { useMovementHistory } from '../composables/useMovementHistory.js'
 import { useDestinationSummary } from '../composables/useDestinationSummary.js'
 import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
+import PhotoMovementTab from '../components/movements/PhotoMovementTab.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import AppButton from '../components/ui/AppButton.vue'
@@ -58,7 +59,7 @@ function focusRef(target) {
 
 // ===== Sub-tabs =====
 const movementSubTabs = ['entrada', 'saida', 'rapida']
-const validSubTabs = [...movementSubTabs, 'historico', 'resumo']
+const validSubTabs = [...movementSubTabs, 'fotos', 'historico', 'resumo']
 const initialSubTab = props.initialSubTab === 'entradaRapida' || props.initialSubTab === 'saidaRapida' ? 'rapida' : props.initialSubTab
 const activeSubTab = ref(validSubTabs.includes(initialSubTab) ? initialSubTab : 'entrada')
 
@@ -67,6 +68,7 @@ const visibleSubTabs = computed(() => {
     { id: 'entrada',   label: 'Entrada',   icon: 'M12 4.5v15m0-15 6 6m-6-6-6 6' },
     { id: 'saida',     label: 'Saída',     icon: 'M12 19.5v-15m0 15-6-6m6 6 6-6' },
     { id: 'rapida',    label: 'Vários itens', icon: 'M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3' },
+    { id: 'fotos',     label: 'Por foto', icon: 'M6.827 6.175 7.7 4.65A1.5 1.5 0 0 1 9.002 3.9h5.996a1.5 1.5 0 0 1 1.302.75l.873 1.525A1.5 1.5 0 0 0 18.475 6.9H19.5A1.5 1.5 0 0 1 21 8.4V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V8.4a1.5 1.5 0 0 1 1.5-1.5h1.025a1.5 1.5 0 0 0 1.302-.725Z M15.75 12.75a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z' },
     { id: 'historico', label: 'Histórico', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
     { id: 'resumo',    label: 'Relatório por destino', icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3M8.25 9.75l2.25 2.25 4.5-4.5' },
   ]
@@ -1546,7 +1548,9 @@ defineExpose({
     <!-- ======================================================= -->
     <!-- ENTRADA / SAÍDA — step flow                             -->
     <!-- ======================================================= -->
-    <template v-if="activeSubTab === 'entrada' || activeSubTab === 'saida'">
+    <PhotoMovementTab v-if="activeSubTab === 'fotos'" />
+
+    <template v-else-if="activeSubTab === 'entrada' || activeSubTab === 'saida'">
 
       <!-- Step indicator -->
       <div class="flex flex-wrap items-center gap-3">
