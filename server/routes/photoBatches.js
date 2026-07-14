@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
-import { unlink, writeFile } from 'node:fs/promises'
+import { readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Router, raw } from 'express'
@@ -145,6 +145,61 @@ async function cleanupExpired() {
   await Promise.all(expired.map(row => removeImage(row.image_path)))
 }
 
+async function persistVariationPhotos(batchId, completedAt) {
+  const photos = db.prepare(`
+    SELECT id, image_path, mime_type, data_json
+    FROM photo_batch_photos
+    WHERE batch_id = ? AND image_path <> ''
+    ORDER BY created_at
+  `).all(batchId)
+  const save = db.prepare(`
+    INSERT INTO variation_photos (
+      variation_id, mime_type, image_data, updated_at, source_batch_id, source_photo_id
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(variation_id) DO UPDATE SET
+      mime_type = excluded.mime_type,
+      image_data = excluded.image_data,
+      updated_at = excluded.updated_at,
+      source_batch_id = excluded.source_batch_id,
+      source_photo_id = excluded.source_photo_id
+    WHERE excluded.updated_at >= variation_photos.updated_at
+  `)
+
+  for (const photo of photos) {
+    const data = parseJson(photo.data_json)
+    const variationId = text(data.variationId, 160)
+    if (!validId(variationId)) continue
+    const image = await readFile(join(PHOTO_UPLOAD_DIR, photo.image_path)).catch(() => null)
+    if (!image?.length) continue
+    const mimeType = ['image/jpeg', 'image/png', 'image/webp'].includes(photo.mime_type) ? photo.mime_type : 'image/jpeg'
+    save.run(variationId, mimeType, image, completedAt, batchId, photo.id)
+  }
+}
+
+router.get('/variation/:variationId/image', requireAuth, async (req, res) => {
+  if (!validId(req.params.variationId)) return res.status(400).json({ error: 'Variação inválida.' })
+  const findPermanent = db.prepare('SELECT mime_type, image_data FROM variation_photos WHERE variation_id = ?')
+  let photo = findPermanent.get(req.params.variationId)
+  if (!photo) {
+    const legacy = db.prepare(`
+      SELECT p.batch_id, b.completed_at
+      FROM photo_batch_photos p
+      JOIN photo_batches b ON b.id = p.batch_id
+      WHERE b.status = 'completed'
+        AND p.image_path <> ''
+        AND json_extract(p.data_json, '$.variationId') = ?
+      ORDER BY b.completed_at DESC, p.created_at DESC
+      LIMIT 1
+    `).get(req.params.variationId)
+    if (legacy) {
+      await persistVariationPhotos(legacy.batch_id, legacy.completed_at)
+      photo = findPermanent.get(req.params.variationId)
+    }
+  }
+  if (!photo?.image_data) return res.status(404).json({ error: 'Foto não encontrada.' })
+  res.type(photo.mime_type || 'image/jpeg').set('Cache-Control', 'private, no-store').send(photo.image_data)
+})
+
 router.use(requireAuth, requireOperator)
 
 router.get('/', async (req, res) => {
@@ -157,7 +212,7 @@ router.get('/', async (req, res) => {
   res.json(rows.map(batchRecord))
 })
 
-router.put('/:batchId', (req, res) => {
+router.put('/:batchId', async (req, res) => {
   const id = req.params.batchId
   if (!validId(id) || req.body?.id !== id) return res.status(400).json({ error: 'Lote inválido.' })
   const existing = batchById(id)
@@ -180,6 +235,7 @@ router.put('/:batchId', (req, res) => {
     id, payload.ownerUserId, payload.status, payload.createdAt, payload.updatedAt,
     payload.completedAt, payload.expiresAt, JSON.stringify(payload)
   )
+  if (payload.status === 'completed') await persistVariationPhotos(id, payload.completedAt)
   res.json(batchRecord(batchById(id)))
 })
 
@@ -191,7 +247,7 @@ router.get('/:batchId/photos', (req, res) => {
   res.json(rows.map(photoRecord))
 })
 
-router.put('/:batchId/photos/:photoId', (req, res) => {
+router.put('/:batchId/photos/:photoId', async (req, res) => {
   const { batchId, photoId } = req.params
   if (!validId(photoId) || req.body?.id !== photoId || req.body?.batchId !== batchId) {
     return res.status(400).json({ error: 'Foto inválida.' })
@@ -212,6 +268,7 @@ router.put('/:batchId/photos/:photoId', (req, res) => {
       updated_at = excluded.updated_at,
       data_json = excluded.data_json
   `).run(photoId, batchId, payload.createdAt, payload.updatedAt, JSON.stringify(payload))
+  if (batch.status === 'completed') await persistVariationPhotos(batch.id, batch.completed_at)
   res.json(photoRecord(photoById(photoId)))
 })
 
@@ -230,6 +287,7 @@ router.put(
     await writeFile(join(PHOTO_UPLOAD_DIR, fileName), req.body)
     if (photo.image_path && photo.image_path !== fileName) await removeImage(photo.image_path)
     db.prepare('UPDATE photo_batch_photos SET image_path = ?, mime_type = ? WHERE id = ?').run(fileName, mimeType, photo.id)
+    if (batch.status === 'completed') await persistVariationPhotos(batch.id, batch.completed_at)
     res.json(photoRecord(photoById(photo.id)))
   }
 )

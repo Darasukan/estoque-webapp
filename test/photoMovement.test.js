@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reactive } from 'vue'
+import { getPhotoBatches } from '../src/services/api.js'
 import {
   buildPhotoMovementLine,
+  canDeletePhotoBatch,
+  canEditPhotoBatch,
   effectivePhotoFields,
   findExactPhotoMatch,
   photoBatchBlockReason,
@@ -145,6 +148,42 @@ test('distinguishes network, session and outdated server sync failures', () => {
   assert.match(photoSyncWarning(new TypeError('Failed to fetch')), /sem conexão/i)
   assert.match(photoSyncWarning({ status: 401 }), /sessão/i)
   assert.match(photoSyncWarning({ status: 404 }), /atualize o servidor/i)
+})
+
+test('requires an explicit edit action for another account pending batch', () => {
+  const pending = { id: 'batch_1', ownerUserId: 'operator_1', status: 'pending' }
+  const completed = { ...pending, status: 'completed' }
+
+  assert.equal(canEditPhotoBatch(pending, 'operator_1', false), true)
+  assert.equal(canEditPhotoBatch(pending, 'admin_1', true), false)
+  assert.equal(canEditPhotoBatch(pending, 'admin_1', true, 'batch_1'), true)
+  assert.equal(canEditPhotoBatch(completed, 'admin_1', true, 'batch_1'), false)
+})
+
+test('lets owners and administrators delete batches without erasing movement history', () => {
+  const pending = { ownerUserId: 'operator_1', status: 'pending' }
+  const completed = { ...pending, status: 'completed' }
+
+  assert.equal(canDeletePhotoBatch(pending, 'operator_1', false), true)
+  assert.equal(canDeletePhotoBatch(completed, 'operator_1', false), true)
+  assert.equal(canDeletePhotoBatch(completed, 'admin_1', true), true)
+  assert.equal(canDeletePhotoBatch(pending, 'operator_2', false), false)
+})
+
+test('requests all account photo batches only for administrators', async () => {
+  const originalFetch = globalThis.fetch
+  const urls = []
+  globalThis.fetch = async url => {
+    urls.push(url)
+    return { ok: true, status: 200, json: async () => [] }
+  }
+  try {
+    await getPhotoBatches()
+    await getPhotoBatches(true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  assert.deepEqual(urls, ['/api/photo-batches', '/api/photo-batches?all=1'])
 })
 
 test('removes nested Vue proxies before saving a photo in IndexedDB', () => {

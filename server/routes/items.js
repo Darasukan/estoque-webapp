@@ -119,6 +119,7 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
 // DELETE /api/items/:id
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   const changed = db.transaction(() => {
+    db.prepare('DELETE FROM variation_photos WHERE variation_id IN (SELECT id FROM variations WHERE item_id = ?)').run(req.params.id)
     db.prepare('UPDATE variations SET active = 0 WHERE item_id = ?').run(req.params.id)
     return db.prepare('UPDATE items SET active = 0 WHERE id = ? AND active = 1').run(req.params.id).changes
   })()
@@ -197,7 +198,11 @@ router.put('/variations/:id', requireAuth, requireAdmin, (req, res) => {
 
 // DELETE /api/items/variations/:id
 router.delete('/variations/:id', requireAuth, requireAdmin, (req, res) => {
-  const result = db.prepare('UPDATE variations SET active = 0 WHERE id = ? AND active = 1').run(req.params.id)
+  const result = db.transaction(() => {
+    const changed = db.prepare('UPDATE variations SET active = 0 WHERE id = ? AND active = 1').run(req.params.id)
+    if (changed.changes) db.prepare('DELETE FROM variation_photos WHERE variation_id = ?').run(req.params.id)
+    return changed
+  })()
   if (!result.changes) return res.status(404).json({ error: 'Variação não encontrada' })
   res.json({ ok: true })
 })

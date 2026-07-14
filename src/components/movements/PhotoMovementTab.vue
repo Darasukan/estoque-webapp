@@ -22,6 +22,8 @@ import {
 import { compressImageFile, fileAsDataUrl } from '../../utils/imageFile.js'
 import {
   buildPhotoMovementLine,
+  canDeletePhotoBatch,
+  canEditPhotoBatch,
   effectivePhotoFields,
   findExactPhotoMatch,
   photoBatchBlockReason,
@@ -39,7 +41,7 @@ import SupplierPicker from '../ui/SupplierPicker.vue'
 const PHOTO_MAX_BYTES = Math.round(1.5 * 1024 * 1024)
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 
-const { user } = useAuth()
+const { user, isAdmin } = useAuth()
 const { items, variations, getVariationsForItem } = useItems()
 const { addMovementBatch } = useMovements()
 const { success, error } = useToast()
@@ -56,6 +58,7 @@ const processing = ref(false)
 const saving = ref(false)
 const deleteBatchId = ref('')
 const deletePhotoId = ref('')
+const editingBatchId = ref('')
 const expandedPhoto = ref(null)
 const objectUrls = new Map()
 const removedBatchIds = new Set()
@@ -63,6 +66,13 @@ const removedPhotoIds = new Set()
 let photosLoadRun = 0
 
 const currentBatch = computed(() => batches.value.find(batch => batch.id === selectedBatchId.value) || null)
+const canEditCurrentBatch = computed(() => canEditPhotoBatch(currentBatch.value, user.value?.id, isAdmin.value, editingBatchId.value))
+const canDeleteCurrentBatch = computed(() => canDeletePhotoBatch(currentBatch.value, user.value?.id, isAdmin.value))
+const needsAdminEditToggle = computed(() => Boolean(
+  isAdmin.value &&
+  currentBatch.value?.status === 'pending' &&
+  currentBatch.value.ownerUserId !== user.value?.id
+))
 const selectedPhoto = computed(() => photos.value.find(photo => photo.id === selectedPhotoId.value) || null)
 const pendingBatches = computed(() => batches.value.filter(batch => batch.status === 'pending'))
 const completedBatches = computed(() => batches.value.filter(batch => batch.status === 'completed'))
@@ -122,7 +132,7 @@ function clearObjectUrls() {
 }
 
 async function refreshBatches(preferredId = selectedBatchId.value) {
-  batches.value = await listPhotoBatches(user.value.id)
+  batches.value = await listPhotoBatches(user.value.id, isAdmin.value)
   const next = batches.value.find(batch => batch.id === preferredId)
     || pendingBatches.value[0]
     || completedBatches.value[0]
@@ -159,13 +169,16 @@ async function initialize() {
 }
 
 watch(selectedBatchId, async () => {
+  editingBatchId.value = ''
+  deleteBatchId.value = ''
+  deletePhotoId.value = ''
   await refreshPhotos()
   processQueue()
 })
 
 watch(selectedPhoto, photo => {
   manualSearch.value = photo?.manualSearch || photoSuggestionSearch(photo?.suggestion)
-  showManualSearch.value = Boolean(photo && (photo.status === 'error' || (photo.status === 'review' && !photo.itemId)))
+  showManualSearch.value = Boolean(canEditCurrentBatch.value && photo && (photo.status === 'error' || (photo.status === 'review' && !photo.itemId)))
 })
 
 onMounted(initialize)
@@ -276,7 +289,7 @@ async function onFilesSelected(event) {
 }
 
 async function processQueue() {
-  if (processing.value || currentBatch.value?.status !== 'pending') return
+  if (processing.value || !canEditCurrentBatch.value) return
   processing.value = true
   try {
     while (true) {
@@ -311,6 +324,14 @@ async function processQueue() {
   } finally {
     processing.value = false
   }
+}
+
+function toggleBatchEditing() {
+  if (!currentBatch.value) return
+  editingBatchId.value = editingBatchId.value === currentBatch.value.id ? '' : currentBatch.value.id
+  deletePhotoId.value = ''
+  showManualSearch.value = false
+  if (canEditCurrentBatch.value) processQueue()
 }
 
 async function retryAnalysis(photo) {
@@ -394,6 +415,7 @@ async function removeBatch(batchId) {
   try {
     await deletePhotoBatch(batchId)
     deleteBatchId.value = ''
+    editingBatchId.value = ''
     await refreshBatches()
     await refreshPhotos()
   } catch (cause) {
@@ -403,7 +425,7 @@ async function removeBatch(batchId) {
 }
 
 async function confirmBatch() {
-  if (!currentBatch.value || blockReason.value) return
+  if (!canEditCurrentBatch.value || blockReason.value) return
   saving.value = true
   try {
     const lines = photos.value.map(photo => {
@@ -443,7 +465,7 @@ async function confirmBatch() {
       <div>
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Movimentação assistida</p>
         <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">Lotes por foto</h2>
-        <p class="mt-1 max-w-2xl text-xs text-gray-500 dark:text-gray-400">Os lotes são sincronizados com sua conta. A IA sugere; você sempre revisa e confirma.</p>
+        <p class="mt-1 max-w-2xl text-xs text-gray-500 dark:text-gray-400">{{ isAdmin ? 'Como administrador, você vê os lotes de todas as contas.' : 'Os lotes são sincronizados com sua conta.' }} A IA sugere; você sempre revisa e confirma.</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <AppButton variant="success" size="sm" @click="createBatch('entrada')">Novo lote de entrada</AppButton>
@@ -453,7 +475,7 @@ async function confirmBatch() {
 
     <p v-if="storageError" role="alert" class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">{{ storageError }}</p>
     <p v-if="syncMessage" role="status" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">{{ syncMessage }}</p>
-    <p v-if="loading" class="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">Carregando lotes deste navegador…</p>
+    <p v-if="loading" class="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">Carregando lotes…</p>
 
     <template v-else>
       <div v-if="batches.length" class="grid gap-3 lg:grid-cols-2">
@@ -462,7 +484,7 @@ async function confirmBatch() {
           <div v-if="pendingBatches.length" class="mt-2 space-y-1.5">
             <button v-for="batch in pendingBatches" :key="batch.id" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors" :class="selectedBatchId === batch.id ? 'border-primary-400 bg-primary-50 text-primary-800 dark:border-primary-700 dark:bg-primary-950/30 dark:text-primary-200' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'" @click="selectedBatchId = batch.id">
               <span class="min-w-0"><span class="block truncate text-sm font-semibold">{{ batchTitle(batch) }}</span><span class="block text-[11px] opacity-70">{{ batch.operatorName }}</span></span>
-              <span class="text-xs font-medium">Continuar</span>
+              <span class="text-xs font-medium">{{ batch.ownerUserId === user.id ? 'Continuar' : 'Ver lote' }}</span>
             </button>
           </div>
           <p v-else class="mt-2 px-1 py-3 text-sm text-gray-500 dark:text-gray-400">Nenhum lote pendente.</p>
@@ -471,7 +493,7 @@ async function confirmBatch() {
           <h3 class="px-1 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Concluídos nos últimos 30 dias</h3>
           <div v-if="completedBatches.length" class="mt-2 space-y-1.5">
             <button v-for="batch in completedBatches" :key="batch.id" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors" :class="selectedBatchId === batch.id ? 'border-green-400 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/25 dark:text-green-300' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'" @click="selectedBatchId = batch.id">
-              <span><span class="block text-sm font-semibold">{{ batchTitle(batch) }}</span><span class="block text-[11px] opacity-70">Concluído em {{ formatDate(batch.completedAt) }}</span></span>
+              <span><span class="block text-sm font-semibold">{{ batchTitle(batch) }}</span><span class="block text-[11px] opacity-70">{{ batch.operatorName }} · Concluído em {{ formatDate(batch.completedAt) }}</span></span>
               <span class="text-xs font-medium">Ver lote</span>
             </button>
           </div>
@@ -486,20 +508,21 @@ async function confirmBatch() {
               <span class="rounded border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider" :class="currentBatch.type === 'entrada' ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300' : 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300'">{{ currentBatch.type }}</span>
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ batchTitle(currentBatch) }}</h3>
             </div>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ photos.length }} foto(s)<span v-if="queueCount"> · {{ queueCount }} na fila</span></p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ photos.length }} foto(s)<span v-if="queueCount"> · {{ queueCount }} na fila</span><span v-if="isAdmin && currentBatch.operatorName"> · {{ currentBatch.operatorName }}</span></p>
           </div>
-          <div v-if="currentBatch.status === 'pending'" class="flex flex-wrap items-center justify-end gap-2">
-            <ConfirmInline v-if="deleteBatchId === currentBatch.id" message="Excluir lote e fotos deste navegador?" confirm-label="Excluir" cancel-label="Cancelar" @confirm="removeBatch(currentBatch.id)" @cancel="deleteBatchId = ''" />
-            <AppButton v-else variant="ghost" size="sm" @click="deleteBatchId = currentBatch.id">Excluir lote</AppButton>
-            <label class="ds-button ds-button-secondary ds-button-sm inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400">
+          <div v-if="needsAdminEditToggle || canEditCurrentBatch || canDeleteCurrentBatch" class="flex flex-wrap items-center justify-end gap-2">
+            <AppButton v-if="needsAdminEditToggle" variant="secondary" size="sm" :disabled="canEditCurrentBatch && processing" @click="toggleBatchEditing">{{ canEditCurrentBatch ? 'Sair da edição' : 'Editar lote' }}</AppButton>
+            <label v-if="canEditCurrentBatch" class="ds-button ds-button-secondary ds-button-sm inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400">
               <input class="sr-only" type="file" multiple accept="image/*" @change="onFilesSelected" />
               Escolher várias fotos
             </label>
-            <label class="ds-button ds-button-primary ds-button-md inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400" style="color: var(--ds-primary-text)">
+            <label v-if="canEditCurrentBatch" class="ds-button ds-button-primary ds-button-md inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400" style="color: var(--ds-primary-text)">
               <input class="sr-only" type="file" accept="image/*" capture="environment" @change="onFilesSelected" />
               <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.8 6.2 7.7 4.7A1.5 1.5 0 0 1 9 3.9h6a1.5 1.5 0 0 1 1.3.8l.9 1.5a1.5 1.5 0 0 0 1.3.7h1A1.5 1.5 0 0 1 21 8.4V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V8.4a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 0 1.3-.7Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15.8 12.8a3.8 3.8 0 1 1-7.6 0 3.8 3.8 0 0 1 7.6 0Z"/></svg>
               Tirar próxima foto
             </label>
+            <ConfirmInline v-if="deleteBatchId === currentBatch.id" :message="currentBatch.status === 'completed' ? 'Excluir este lote e suas fotos? As movimentações permanecerão no histórico.' : 'Excluir este lote e suas fotos?'" confirm-label="Excluir" cancel-label="Cancelar" @confirm="removeBatch(currentBatch.id)" @cancel="deleteBatchId = ''" />
+            <AppButton v-else-if="canDeleteCurrentBatch" variant="danger" size="sm" @click="deleteBatchId = currentBatch.id">Excluir lote</AppButton>
           </div>
         </header>
 
@@ -531,18 +554,18 @@ async function confirmBatch() {
             </div>
 
             <p v-if="selectedPhoto.error" role="alert" class="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">{{ selectedPhoto.error }}</p>
-            <div v-if="selectedPhoto.status === 'error' && currentBatch.status === 'pending'" class="mt-2"><AppButton variant="secondary" size="sm" @click="retryAnalysis(selectedPhoto)">Tentar análise novamente</AppButton></div>
+            <div v-if="selectedPhoto.status === 'error' && canEditCurrentBatch" class="mt-2"><AppButton variant="secondary" size="sm" @click="retryAnalysis(selectedPhoto)">Tentar análise novamente</AppButton></div>
 
             <section class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h5 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Material e variação</h5>
-                <AppButton v-if="currentBatch.status === 'pending'" variant="ghost" size="xs" @click="showManualSearch = !showManualSearch">{{ showManualSearch ? 'Fechar busca' : 'Buscar manualmente' }}</AppButton>
+                <AppButton v-if="canEditCurrentBatch" variant="ghost" size="xs" @click="showManualSearch = !showManualSearch">{{ showManualSearch ? 'Fechar busca' : 'Buscar manualmente' }}</AppButton>
               </div>
 
               <div v-if="currentItem && !showManualSearch" class="mt-3">
                 <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ currentItem.name }}</p>
                 <p v-if="currentVariation" class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{ variationDescription(currentVariation) }}</p>
-                <div v-else-if="currentItemVariations.length" class="mt-3">
+                <div v-else-if="currentItemVariations.length && canEditCurrentBatch" class="mt-3">
                   <p class="mb-2 text-xs font-medium text-amber-700 dark:text-amber-300">A IA encontrou o item, mas você precisa escolher a variação.</p>
                   <div class="grid gap-2 sm:grid-cols-2">
                     <button v-for="variation in currentItemVariations" :key="variation.id" type="button" class="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm hover:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @click="chooseVariation(variation)">
@@ -566,12 +589,12 @@ async function confirmBatch() {
             </section>
 
             <section class="mt-4 grid gap-3 sm:grid-cols-2">
-              <label class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Quantidade</span><input v-model="selectedPhoto.qty" type="number" min="1" step="1" :disabled="currentBatch.status !== 'pending'" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" @change="savePhoto(selectedPhoto)" /></label>
-              <label v-if="currentBatch.type === 'entrada'" class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Custo unitário</span><input v-model="selectedPhoto.unitCost" type="number" min="0" step="0.01" :disabled="currentBatch.status !== 'pending'" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" placeholder="Opcional" @change="savePhoto(selectedPhoto)" /></label>
+              <label class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Quantidade</span><input v-model="selectedPhoto.qty" type="number" min="1" step="1" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" @change="savePhoto(selectedPhoto)" /></label>
+              <label v-if="currentBatch.type === 'entrada'" class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Custo unitário</span><input v-model="selectedPhoto.unitCost" type="number" min="0" step="0.01" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" placeholder="Opcional" @change="savePhoto(selectedPhoto)" /></label>
               <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 sm:col-span-2 dark:border-gray-700 dark:bg-gray-800/50"><span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Impacto no saldo</span><p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ impactText(selectedPhoto) }}</p></div>
             </section>
 
-            <section v-if="currentBatch.status === 'pending'" class="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <section v-if="canEditCurrentBatch" class="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
               <div class="flex flex-wrap items-center justify-between gap-2"><div><h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Dados desta foto</h5><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Use os padrões do lote ou sobrescreva somente este produto.</p></div><AppButton variant="secondary" size="xs" @click="toggleOverrides(selectedPhoto)">{{ selectedPhoto.useOverrides ? 'Usar padrões do lote' : 'Sobrescrever' }}</AppButton></div>
               <div v-if="selectedPhoto.useOverrides" class="mt-3 grid gap-3 sm:grid-cols-2">
                 <template v-if="currentBatch.type === 'entrada'">
@@ -587,7 +610,7 @@ async function confirmBatch() {
               </div>
             </section>
 
-            <div v-if="currentBatch.status === 'pending'" class="mt-4 flex justify-end">
+            <div v-if="canEditCurrentBatch" class="mt-4 flex justify-end">
               <ConfirmInline v-if="deletePhotoId === selectedPhoto.id" message="Remover esta foto do lote?" confirm-label="Remover" cancel-label="Cancelar" @confirm="removePhoto(selectedPhoto.id)" @cancel="deletePhotoId = ''" />
               <AppButton v-else variant="ghost" size="sm" @click="deletePhotoId = selectedPhoto.id">Remover foto</AppButton>
             </div>
@@ -596,7 +619,7 @@ async function confirmBatch() {
 
         <div v-else class="px-4 py-12 text-center"><p class="text-sm font-semibold text-gray-700 dark:text-gray-200">O lote ainda não tem fotos.</p><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Tire uma foto por produto ou escolha vários arquivos de uma vez.</p></div>
 
-        <section v-if="currentBatch.status === 'pending'" class="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+        <section v-if="canEditCurrentBatch" class="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
           <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Padrões do lote</h4>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Aplicados a todas as fotos que não tenham sobrescrita.</p>
           <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -629,7 +652,7 @@ async function confirmBatch() {
       </div>
     </AppDialog>
 
-    <footer v-if="currentBatch?.status === 'pending'" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 p-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 lg:sticky lg:inset-x-auto lg:rounded-xl lg:border">
+    <footer v-if="canEditCurrentBatch" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 p-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 lg:sticky lg:inset-x-auto lg:rounded-xl lg:border">
       <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
         <p class="min-w-0 text-xs" :class="blockReason ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'">{{ blockReason || `${photos.length} foto(s) pronta(s) para confirmar.` }}</p>
         <AppButton variant="primary" size="lg" :loading="saving" :disabled="Boolean(blockReason) || queueCount > 0" @click="confirmBatch">Confirmar lote</AppButton>

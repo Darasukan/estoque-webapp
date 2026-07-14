@@ -6,6 +6,7 @@ import { useDestinations } from '../../composables/useDestinations.js'
 import { useToast } from '../../composables/useToast.js'
 import { extrasListToObject, validateVariationForm, variationFormForEdit } from '../../utils/variationForm.js'
 import { summarizeVariationMovements } from '../../utils/variationMovementStats.js'
+import AppDialog from './AppDialog.vue'
 import DestinationTreePicker from './DestinationTreePicker.vue'
 
 const props = defineProps({
@@ -33,6 +34,8 @@ const editForm = ref(variationFormForEdit(props.item, props.variation))
 const editSaving = ref(false)
 const initialStockOpen = ref(false)
 const initialStockValue = ref(0)
+const photoFailed = ref(false)
+const photoExpanded = ref(false)
 
 onMounted(async () => {
   await nextTick()
@@ -53,6 +56,7 @@ const statusConfig = {
 const hierarchy = computed(() =>
   [props.item.group, props.item.category, props.item.subcategory].filter(Boolean).join(' › ')
 )
+const variationPhotoSrc = computed(() => `/api/photo-batches/variation/${encodeURIComponent(props.variation.id)}/image`)
 
 const variationTags = computed(() => {
   const attrs = (props.item.attributes || [])
@@ -112,6 +116,8 @@ function resetEditForm() {
 }
 
 watch(() => props.variation.id, () => {
+  photoFailed.value = false
+  photoExpanded.value = false
   activeTab.value = props.initialTab === 'info' || (props.initialTab === 'edit' && !props.canEditDetails)
     ? 'data'
     : props.initialTab
@@ -221,21 +227,44 @@ async function saveEdit() {
   >
     <div class="flex min-h-full items-center justify-center p-4" @click.self="emit('close')">
     <section class="flex w-full max-w-5xl max-h-[88vh] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-      <header class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-700">
-        <div class="min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ficha da variação</p>
-          <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">{{ item.name }}</h2>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">{{ hierarchy }}</p>
-          <div class="mt-3 flex flex-wrap gap-1.5">
-            <span
-              v-for="tag in variationTags"
-              :key="`${tag.key}:${tag.value}`"
-              class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
+      <header class="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+        <div class="flex min-w-0 flex-1 items-start gap-3">
+          <div class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 ring-1 ring-inset ring-black/10 dark:bg-gray-800 dark:ring-white/10 sm:h-24 sm:w-24">
+            <button
+              v-if="!photoFailed"
+              type="button"
+              class="h-full w-full cursor-zoom-in rounded-lg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+              :aria-label="`Ampliar foto de ${item.name}`"
+              title="Ampliar foto"
+              @click="photoExpanded = true"
             >
-              <span class="font-medium opacity-60">{{ tag.key }}:</span>
-              <span>{{ tag.value }}</span>
-            </span>
-            <span v-if="!variationTags.length" class="text-xs text-gray-400 dark:text-gray-500">Sem atributos específicos.</span>
+              <img
+                :src="variationPhotoSrc"
+                :alt="`Foto mais recente de ${item.name}`"
+                class="h-full w-full object-contain"
+                @error="photoFailed = true"
+              />
+            </button>
+            <div v-else class="flex flex-col items-center gap-1 text-gray-400 dark:text-gray-500">
+              <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v11.25a1.5 1.5 0 0 0 1.5 1.5Z" /></svg>
+              <span class="text-[10px] font-medium">Sem foto</span>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ficha da variação</p>
+            <h2 class="mt-1 truncate text-xl font-semibold text-gray-900 dark:text-gray-100">{{ item.name }}</h2>
+            <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ hierarchy }}</p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              <span
+                v-for="tag in variationTags"
+                :key="`${tag.key}:${tag.value}`"
+                class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
+              >
+                <span class="font-medium opacity-60">{{ tag.key }}:</span>
+                <span>{{ tag.value }}</span>
+              </span>
+              <span v-if="!variationTags.length" class="text-xs text-gray-400 dark:text-gray-500">Sem atributos específicos.</span>
+            </div>
           </div>
         </div>
         <button
@@ -646,4 +675,19 @@ async function saveEdit() {
     </section>
     </div>
   </dialog>
+
+  <AppDialog :visible="photoExpanded" :aria-label="`Foto ampliada de ${item.name}`" @close="photoExpanded = false">
+    <section class="flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <header class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="min-w-0">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Foto do modelo</p>
+          <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ item.name }}</h3>
+        </div>
+        <button type="button" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="photoExpanded = false">Fechar</button>
+      </header>
+      <div class="flex min-h-0 flex-1 items-center justify-center bg-gray-50 p-2 dark:bg-gray-950">
+        <img :src="variationPhotoSrc" :alt="`Foto ampliada de ${item.name}`" class="max-h-[calc(100dvh-7rem)] max-w-full object-contain" @error="photoFailed = true; photoExpanded = false" />
+      </div>
+    </section>
+  </AppDialog>
 </template>

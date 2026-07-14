@@ -214,6 +214,8 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
       updatedAt: photoCreatedAt,
       status: 'queued',
       qty: 1,
+      variationId: 'var_photo_api',
+      movementId: 'mov_photo_api',
       suggestion: null,
       overrides: {},
     },
@@ -230,6 +232,33 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.equal(photoUpload.status, 200)
   assert.equal((await photoUpload.json()).hasImage, true)
 
+  const latestPhotoId = 'photo_api_latest'
+  const latestPhotoCreatedAt = new Date(Date.parse(photoCreatedAt) + 500).toISOString()
+  await jsonRequest(url, `/api/photo-batches/${photoBatchId}/photos/${latestPhotoId}`, {
+    method: 'PUT',
+    token: operatorToken,
+    body: {
+      id: latestPhotoId,
+      batchId: photoBatchId,
+      fileName: 'produto-recente.jpg',
+      createdAt: latestPhotoCreatedAt,
+      updatedAt: latestPhotoCreatedAt,
+      status: 'matched',
+      qty: 1,
+      variationId: 'var_photo_api',
+      movementId: 'mov_photo_api_latest',
+      suggestion: null,
+      overrides: {},
+    },
+  })
+  const latestImageBytes = Buffer.from([0xff, 0xd8, 0x01, 0xff, 0xd9])
+  const latestPhotoUpload = await fetch(`${url}/api/photo-batches/${photoBatchId}/photos/${latestPhotoId}/image`, {
+    method: 'PUT',
+    headers: { 'x-auth-token': operatorToken, 'content-type': 'image/jpeg' },
+    body: latestImageBytes,
+  })
+  assert.equal(latestPhotoUpload.status, 200)
+
   const accountBatches = await jsonRequest(url, '/api/photo-batches', { token: operatorToken })
   assert.equal(accountBatches.response.status, 200)
   assert.ok(accountBatches.data.some(batch => batch.id === photoBatchId))
@@ -245,6 +274,21 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
 
   const adminPhotoBatches = await jsonRequest(url, '/api/photo-batches?all=1', { token })
   assert.ok(adminPhotoBatches.data.some(batch => batch.id === photoBatchId))
+
+  const adminEditedPhotoBatch = await jsonRequest(url, `/api/photo-batches/${photoBatchId}`, {
+    method: 'PUT',
+    token,
+    body: {
+      ...photoBatch.data,
+      updatedAt: new Date(Date.parse(photoCreatedAt) + 1000).toISOString(),
+      status: 'completed',
+      completedAt: new Date(Date.parse(photoCreatedAt) + 1000).toISOString(),
+      defaults: { supplier: 'Fornecedor alterado pelo administrador', note: '' },
+    },
+  })
+  assert.equal(adminEditedPhotoBatch.response.status, 200)
+  assert.equal(adminEditedPhotoBatch.data.ownerUserId, operator.data.id)
+  assert.equal(adminEditedPhotoBatch.data.defaults.supplier, 'Fornecedor alterado pelo administrador')
 
   const expiredBatchId = 'photo_batch_expired_api'
   await jsonRequest(url, `/api/photo-batches/${expiredBatchId}`, {
@@ -277,6 +321,11 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     token: otherOperatorToken,
     body: { pin: 'operador-foto-seguro-456' },
   })
+  const latestCatalogPhoto = await fetch(`${url}/api/photo-batches/variation/var_photo_api/image`, {
+    headers: { 'x-auth-token': visitorToken },
+  })
+  assert.equal(latestCatalogPhoto.status, 200)
+  assert.deepEqual(Buffer.from(await latestCatalogPhoto.arrayBuffer()), latestImageBytes)
   const otherAccountBatches = await jsonRequest(url, '/api/photo-batches', { token: otherOperatorToken })
   assert.equal(otherAccountBatches.data.some(batch => batch.id === photoBatchId), false)
   const otherAccountCannotOpenBatch = await jsonRequest(url, `/api/photo-batches/${photoBatchId}/photos`, { token: otherOperatorToken })
@@ -284,13 +333,18 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
 
   const removedPhotoBatch = await jsonRequest(url, `/api/photo-batches/${photoBatchId}`, {
     method: 'DELETE',
-    token: operatorToken,
+    token,
   })
   assert.equal(removedPhotoBatch.response.status, 200)
   const removedPhotoImage = await fetch(`${url}/api/photo-batches/${photoBatchId}/photos/${photoId}/image`, {
     headers: { 'x-auth-token': operatorToken },
   })
   assert.equal(removedPhotoImage.status, 404)
+  const permanentCatalogPhoto = await fetch(`${url}/api/photo-batches/variation/var_photo_api/image`, {
+    headers: { 'x-auth-token': visitorToken },
+  })
+  assert.equal(permanentCatalogPhoto.status, 200)
+  assert.deepEqual(Buffer.from(await permanentCatalogPhoto.arrayBuffer()), latestImageBytes)
 
   const role = await jsonRequest(url, '/api/roles', {
     token,
@@ -421,7 +475,8 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   const inspectionAfterDelete = new Database(dbPath, { readonly: true })
   assert.equal(inspectionAfterDelete.prepare('SELECT id FROM movements WHERE id = ?').get(movement.data.id), undefined)
   assert.equal(inspectionAfterDelete.prepare('SELECT COUNT(*) AS count FROM movement_batch_requests WHERE request_id = ?').get(batchBody.requestId).count, 1)
-  assert.equal(inspectionAfterDelete.pragma('user_version', { simple: true }), 3)
+  assert.equal(inspectionAfterDelete.prepare('SELECT source_photo_id FROM variation_photos WHERE variation_id = ?').pluck().get('var_photo_api'), latestPhotoId)
+  assert.equal(inspectionAfterDelete.pragma('user_version', { simple: true }), 4)
   inspectionAfterDelete.close()
 
   const deletedVariation = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {

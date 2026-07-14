@@ -146,8 +146,8 @@ export async function createMovementBatch(data) {
 }
 
 // ===== Photo movement batches =====
-export async function getPhotoBatches() {
-  return request('/photo-batches')
+export async function getPhotoBatches(includeAll = false) {
+  return request(`/photo-batches${includeAll ? '?all=1' : ''}`)
 }
 
 export async function putPhotoBatch(batch) {

@@ -15,7 +15,7 @@ export const DB_PATH = process.env.DB_PATH
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
 
-const CURRENT_SCHEMA_VERSION = 3
+const CURRENT_SCHEMA_VERSION = 4
 const databaseExisted = existsSync(DB_PATH)
 const db = new Database(DB_PATH)
 const previousSchemaVersion = db.pragma('user_version', { simple: true })
@@ -134,6 +134,15 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_photo_batch_photos_batch_created
     ON photo_batch_photos(batch_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS variation_photos (
+    variation_id TEXT PRIMARY KEY,
+    mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    image_data BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    source_batch_id TEXT DEFAULT '',
+    source_photo_id TEXT DEFAULT ''
+  );
 
   CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY,

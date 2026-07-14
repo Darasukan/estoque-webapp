@@ -104,11 +104,12 @@ async function localGet(storeName, id) {
   }
 }
 
-async function localPhotoBatches(ownerUserId) {
+async function localPhotoBatches(ownerUserId, includeAll = false) {
   const db = await openDatabase()
   try {
     const transaction = db.transaction(BATCHES)
-    const rows = await requestResult(transaction.objectStore(BATCHES).index('ownerUserId').getAll(ownerUserId))
+    const store = transaction.objectStore(BATCHES)
+    const rows = await requestResult(includeAll ? store.getAll() : store.index('ownerUserId').getAll(ownerUserId))
     await transactionDone(transaction)
     return rows
   } finally {
@@ -215,15 +216,15 @@ export function isPhotoStorageQuotaError(error) {
   return error?.name === 'QuotaExceededError' || /quota|espaço|space/i.test(error?.message || '')
 }
 
-export async function listPhotoBatches(ownerUserId) {
-  let local = await localPhotoBatches(ownerUserId)
+export async function listPhotoBatches(ownerUserId, includeAll = false) {
+  let local = await localPhotoBatches(ownerUserId, includeAll)
   for (const batch of local.filter(batch => batch.syncPending !== false)) await syncBatch(batch)
 
   try {
-    const remote = await getPhotoBatches()
+    const remote = await getPhotoBatches(includeAll)
     syncSucceeded()
     const remoteIds = new Set(remote.map(batch => batch.id))
-    local = await localPhotoBatches(ownerUserId)
+    local = await localPhotoBatches(ownerUserId, includeAll)
     for (const batch of local.filter(batch => batch.syncPending === false && !remoteIds.has(batch.id))) {
       await localDeleteBatch(batch.id)
     }
@@ -233,7 +234,7 @@ export async function listPhotoBatches(ownerUserId) {
     }
   } catch (error) { syncFailed(error) }
 
-  return (await localPhotoBatches(ownerUserId))
+  return (await localPhotoBatches(ownerUserId, includeAll))
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
 }
 

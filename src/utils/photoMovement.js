@@ -91,6 +91,16 @@ export function effectivePhotoFields(batch, photo) {
   }
 }
 
+export function canEditPhotoBatch(batch, ownerUserId, isAdmin, editingBatchId = '') {
+  if (!batch || batch.status !== 'pending') return false
+  return batch.ownerUserId === ownerUserId || (isAdmin && editingBatchId === batch.id)
+}
+
+export function canDeletePhotoBatch(batch, ownerUserId, isAdmin) {
+  if (!batch) return false
+  return Boolean(isAdmin || batch.ownerUserId === ownerUserId)
+}
+
 export function buildPhotoMovementLine(batch, photo, item, variation) {
   const fields = effectivePhotoFields(batch, photo)
   return {
