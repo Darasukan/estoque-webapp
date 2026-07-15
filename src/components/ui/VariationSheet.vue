@@ -4,9 +4,12 @@ import { useAuth } from '../../composables/useAuth.js'
 import { stockAlertStatus, useItems } from '../../composables/useItems.js'
 import { useDestinations } from '../../composables/useDestinations.js'
 import { useToast } from '../../composables/useToast.js'
+import { deleteVariationPhotoImage, putVariationPhotoImage } from '../../services/api.js'
+import { compressImageFile } from '../../utils/imageFile.js'
 import { extrasListToObject, validateVariationForm, variationFormForEdit } from '../../utils/variationForm.js'
 import { summarizeVariationMovements } from '../../utils/variationMovementStats.js'
 import AppDialog from './AppDialog.vue'
+import ConfirmInline from './ConfirmInline.vue'
 import DestinationTreePicker from './DestinationTreePicker.vue'
 
 const props = defineProps({
@@ -36,6 +39,12 @@ const initialStockOpen = ref(false)
 const initialStockValue = ref(0)
 const photoFailed = ref(false)
 const photoExpanded = ref(false)
+const photoInput = ref(null)
+const photoEditInput = ref(null)
+const photoUploading = ref(false)
+const photoRemoving = ref(false)
+const photoRemoveConfirm = ref(false)
+const photoRevision = ref(0)
 
 onMounted(async () => {
   await nextTick()
@@ -56,7 +65,7 @@ const statusConfig = {
 const hierarchy = computed(() =>
   [props.item.group, props.item.category, props.item.subcategory].filter(Boolean).join(' › ')
 )
-const variationPhotoSrc = computed(() => `/api/photo-batches/variation/${encodeURIComponent(props.variation.id)}/image`)
+const variationPhotoSrc = computed(() => `/api/photo-batches/variation/${encodeURIComponent(props.variation.id)}/image?v=${photoRevision.value}`)
 
 const variationTags = computed(() => {
   const attrs = (props.item.attributes || [])
@@ -118,6 +127,8 @@ function resetEditForm() {
 watch(() => props.variation.id, () => {
   photoFailed.value = false
   photoExpanded.value = false
+  photoRemoveConfirm.value = false
+  photoRevision.value += 1
   activeTab.value = props.initialTab === 'info' || (props.initialTab === 'edit' && !props.canEditDetails)
     ? 'data'
     : props.initialTab
@@ -126,6 +137,10 @@ watch(() => props.variation.id, () => {
 
 watch(() => props.initialTab, tab => {
   activeTab.value = tab === 'info' || (tab === 'edit' && !props.canEditDetails) ? 'data' : tab
+})
+
+watch(photoExpanded, expanded => {
+  if (!expanded) photoRemoveConfirm.value = false
 })
 
 function formatDate(value) {
@@ -162,6 +177,48 @@ function submitAdjust() {
   emit('adjust-stock', delta)
   adjustValue.value = ''
   adjustOpen.value = false
+}
+
+async function addVariationPhoto(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || photoUploading.value || !props.canManage) return
+  if (!file.type.startsWith('image/')) { error('Selecione uma imagem.'); return }
+
+  photoUploading.value = true
+  try {
+    const blob = await compressImageFile(file, {
+      maxBytes: Math.round(1.5 * 1024 * 1024),
+      maxEdge: 1600,
+      minEdge: 640,
+      alwaysJpeg: true,
+    })
+    await putVariationPhotoImage(props.variation.id, blob)
+    photoRevision.value += 1
+    photoFailed.value = false
+    success('Foto salva na variação.')
+  } catch (cause) {
+    error(cause.message || 'Não foi possível adicionar a foto.')
+  } finally {
+    photoUploading.value = false
+  }
+}
+
+async function removeVariationPhoto() {
+  if (photoRemoving.value || !props.canManage) return
+  photoRemoving.value = true
+  try {
+    await deleteVariationPhotoImage(props.variation.id)
+    photoRevision.value += 1
+    photoFailed.value = true
+    photoExpanded.value = false
+    photoRemoveConfirm.value = false
+    success('Foto removida da variação.')
+  } catch (cause) {
+    error(cause.message || 'Não foi possível remover a foto.')
+  } finally {
+    photoRemoving.value = false
+  }
 }
 
 function startEdit() {
@@ -245,11 +302,23 @@ async function saveEdit() {
                 @error="photoFailed = true"
               />
             </button>
+            <button
+              v-else-if="canManage"
+              type="button"
+              class="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-gray-500 outline-none transition-colors hover:bg-gray-200 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-primary-300"
+              :disabled="photoUploading"
+              aria-label="Adicionar foto à variação"
+              @click="photoInput?.click()"
+            >
+              <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v11.25a1.5 1.5 0 0 0 1.5 1.5Z" /></svg>
+              <span class="text-[10px] font-semibold">{{ photoUploading ? 'Enviando...' : 'Adicionar foto' }}</span>
+            </button>
             <div v-else class="flex flex-col items-center gap-1 text-gray-400 dark:text-gray-500">
               <svg class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v11.25a1.5 1.5 0 0 0 1.5 1.5Z" /></svg>
               <span class="text-[10px] font-medium">Sem foto</span>
             </div>
           </div>
+          <input ref="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/*" class="hidden" @change="addVariationPhoto" />
           <div class="min-w-0">
             <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ficha da variação</p>
             <h2 class="mt-1 truncate text-xl font-semibold text-gray-900 dark:text-gray-100">{{ item.name }}</h2>
@@ -678,16 +747,30 @@ async function saveEdit() {
 
   <AppDialog :visible="photoExpanded" :aria-label="`Foto ampliada de ${item.name}`" @close="photoExpanded = false">
     <section class="flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-      <header class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+      <header class="flex flex-col gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
           <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Foto do modelo</p>
           <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ item.name }}</h3>
         </div>
-        <button type="button" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="photoExpanded = false">Fechar</button>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <template v-if="canManage">
+            <button type="button" class="min-h-10 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" :disabled="photoUploading || photoRemoving" @click="photoEditInput?.click()">
+              {{ photoUploading ? 'Enviando...' : 'Trocar foto' }}
+            </button>
+            <button type="button" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-wait disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/30" :disabled="photoUploading || photoRemoving" @click="photoRemoveConfirm = true">
+              Remover foto
+            </button>
+          </template>
+          <button type="button" class="min-h-10 rounded-lg px-3 text-sm font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="photoExpanded = false">Fechar</button>
+        </div>
       </header>
+      <div v-if="photoRemoveConfirm" class="border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+        <ConfirmInline message="Remover esta foto da variação?" confirm-label="Remover" cancel-label="Cancelar" @confirm="removeVariationPhoto" @cancel="photoRemoveConfirm = false" />
+      </div>
       <div class="flex min-h-0 flex-1 items-center justify-center bg-gray-50 p-2 dark:bg-gray-950">
         <img :src="variationPhotoSrc" :alt="`Foto ampliada de ${item.name}`" class="max-h-[calc(100dvh-7rem)] max-w-full object-contain" @error="photoFailed = true; photoExpanded = false" />
       </div>
+      <input ref="photoEditInput" type="file" accept="image/jpeg,image/png,image/webp,image/*" class="hidden" @change="addVariationPhoto" />
     </section>
   </AppDialog>
 </template>

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAuth } from '../../composables/useAuth.js'
 import { useItems } from '../../composables/useItems.js'
 import { useMovements } from '../../composables/useMovements.js'
+import { useSuppliers } from '../../composables/useSuppliers.js'
 import { useToast } from '../../composables/useToast.js'
 import { suggestCatalogFromImage } from '../../services/api.js'
 import {
@@ -20,13 +21,18 @@ import {
   savePhotoBatch,
 } from '../../services/photoMovementDrafts.js'
 import { compressImageFile, fileAsDataUrl } from '../../utils/imageFile.js'
+import { units } from '../../utils/units.js'
 import {
   buildPhotoMovementLine,
   canDeletePhotoBatch,
   canEditPhotoBatch,
   effectivePhotoFields,
   findExactPhotoMatch,
+  displayPhotoUnitCost,
+  maskPhotoUnitCost,
   photoBatchBlockReason,
+  photoCatalogBlockReason,
+  photoCatalogDraft,
   photoSuggestionSearch,
   searchPhotoVariations,
   variationDescription,
@@ -35,6 +41,7 @@ import AppButton from '../ui/AppButton.vue'
 import AppDialog from '../ui/AppDialog.vue'
 import ConfirmInline from '../ui/ConfirmInline.vue'
 import DestinationTreePicker from '../ui/DestinationTreePicker.vue'
+import EntryDocumentField from '../ui/EntryDocumentField.vue'
 import PersonPicker from '../ui/PersonPicker.vue'
 import SupplierPicker from '../ui/SupplierPicker.vue'
 
@@ -42,8 +49,18 @@ const PHOTO_MAX_BYTES = Math.round(1.5 * 1024 * 1024)
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 
 const { user, isAdmin } = useAuth()
-const { items, variations, getVariationsForItem } = useItems()
+const {
+  items,
+  variations,
+  uniqueGroups,
+  getCategoriesForGroup,
+  getSubcategoriesForCategory,
+  getVariationsForItem,
+  findDuplicateItem,
+  loadData: loadItemData,
+} = useItems()
 const { addMovementBatch } = useMovements()
+const { ensureSupplier } = useSuppliers()
 const { success, error } = useToast()
 
 const loading = ref(true)
@@ -80,9 +97,16 @@ const currentItem = computed(() => items.value.find(item => item.id === selected
 const currentVariation = computed(() => variations.value.find(variation => variation.id === selectedPhoto.value?.variationId) || null)
 const currentItemVariations = computed(() => currentItem.value ? getVariationsForItem(currentItem.value.id) : [])
 const manualResults = computed(() => searchPhotoVariations(manualSearch.value, items.value, variations.value))
-const blockReason = computed(() => currentBatch.value?.status === 'pending'
-  ? photoBatchBlockReason(currentBatch.value, photos.value, items.value, variations.value)
-  : '')
+const catalogCategories = computed(() => getCategoriesForGroup(selectedPhoto.value?.catalog?.group || ''))
+const catalogSubcategories = computed(() => getSubcategoriesForCategory(
+  selectedPhoto.value?.catalog?.group || '',
+  selectedPhoto.value?.catalog?.category || '',
+))
+const blockReason = computed(() => {
+  if (currentBatch.value?.status !== 'pending') return ''
+  if (!isAdmin.value && photos.value.some(photo => photo.createCatalog)) return 'Um administrador precisa revisar e confirmar os novos cadastros deste lote.'
+  return photoBatchBlockReason(currentBatch.value, photos.value, items.value, variations.value)
+})
 const queueCount = computed(() => photos.value.filter(photo => ['queued', 'analyzing'].includes(photo.status)).length)
 const syncPendingCount = computed(() =>
   batches.value.filter(batch => batch.syncPending).length + photos.value.filter(photo => photo.syncPending).length
@@ -100,6 +124,7 @@ const statusMeta = {
 }
 
 function statusFor(photo) {
+  if (photo?.createCatalog && photo.status === 'matched') return { ...statusMeta.matched, label: 'Cadastro revisado' }
   return statusMeta[photo?.status] || statusMeta.review
 }
 
@@ -197,7 +222,7 @@ async function createBatch(type) {
     completedAt: '',
     expiresAt: '',
     defaults: type === 'entrada'
-      ? { supplier: '', docRef: '', note: '' }
+      ? { supplier: '', docType: 'sem', docRef: '', note: '' }
       : { requestedBy: '', requestedByPersonId: '', destination: '', destinationId: '', destinationOther: false, note: '' },
   }
   try {
@@ -265,6 +290,8 @@ async function onFilesSelected(event) {
         suggestion: null,
         itemId: '',
         variationId: '',
+        createCatalog: false,
+        catalog: {},
         qty: 1,
         unitCost: '',
         useOverrides: false,
@@ -305,6 +332,8 @@ async function processQueue() {
         photo.suggestion = suggestion
         photo.itemId = match.item?.id || ''
         photo.variationId = match.variation?.id || ''
+        photo.createCatalog = false
+        photo.catalog = {}
         photo.manualSearch = photoSuggestionSearch(suggestion)
         photo.status = match.item && match.variation ? 'matched' : 'review'
         photo.error = suggestion.identified ? '' : 'A IA não identificou o produto com segurança. Use a busca manual.'
@@ -337,6 +366,8 @@ function toggleBatchEditing() {
 async function retryAnalysis(photo) {
   photo.status = 'queued'
   photo.error = ''
+  photo.createCatalog = false
+  photo.catalog = {}
   await savePhoto(photo)
   processQueue()
 }
@@ -346,6 +377,8 @@ async function chooseManual(result) {
   if (!photo) return
   photo.itemId = result.item.id
   photo.variationId = result.variation.id
+  photo.createCatalog = false
+  photo.catalog = {}
   photo.status = 'matched'
   photo.error = ''
   photo.manualSearch = manualSearch.value
@@ -360,6 +393,66 @@ async function chooseVariation(variation) {
   photo.status = 'matched'
   photo.error = ''
   await savePhoto(photo)
+}
+
+async function startCatalog(photo) {
+  const draft = photo.catalog?.name ? photo.catalog : photoCatalogDraft(photo.suggestion)
+  const duplicate = findDuplicateItem(draft)
+  if (duplicate) {
+    photo.createCatalog = false
+    photo.catalog = draft
+    photo.itemId = duplicate.id
+    photo.variationId = ''
+    photo.status = 'review'
+    photo.error = `Este item já existe no catálogo: "${duplicate.name}". Escolha a variação.`
+    showManualSearch.value = false
+    await savePhoto(photo)
+    return
+  }
+  photo.createCatalog = true
+  photo.catalog = draft
+  photo.itemId = ''
+  photo.variationId = ''
+  photo.status = 'review'
+  photo.error = ''
+  showManualSearch.value = false
+  await savePhoto(photo)
+}
+
+async function cancelCatalog(photo) {
+  photo.createCatalog = false
+  showManualSearch.value = true
+  await savePhoto(photo)
+}
+
+async function addCatalogAttribute(photo) {
+  photo.catalog.attributes ||= []
+  photo.catalog.attributes.push({ name: '', value: '' })
+  photo.status = 'review'
+  await savePhoto(photo)
+}
+
+async function removeCatalogAttribute(photo, index) {
+  photo.catalog.attributes.splice(index, 1)
+  photo.status = 'review'
+  await savePhoto(photo)
+}
+
+async function saveCatalogDraft(photo) {
+  photo.status = 'review'
+  await savePhoto(photo)
+}
+
+async function confirmCatalogReview(photo) {
+  const reason = photoCatalogBlockReason(photo.catalog)
+  if (reason) return error(reason)
+  photo.status = 'matched'
+  await savePhoto(photo)
+}
+
+function updateUnitCost(photo, event) {
+  photo.unitCost = maskPhotoUnitCost(event.target.value)
+  event.target.value = photo.unitCost
 }
 
 async function toggleOverrides(photo) {
@@ -393,9 +486,11 @@ function chooseOtherDestination(target) {
 function impactText(photo) {
   const variation = variations.value.find(row => row.id === photo.variationId)
   const qty = Number(photo.qty)
-  if (!variation || !Number.isFinite(qty) || qty <= 0) return 'Saldo aguardando revisão'
-  const after = currentBatch.value.type === 'entrada' ? variation.stock + qty : variation.stock - qty
-  return `${variation.stock} → ${after}`
+  const before = photo.createCatalog ? Number(photo.catalog?.initialStock ?? 0) : Number(variation?.stock)
+  if (!Number.isFinite(before) || !Number.isFinite(qty) || qty <= 0) return 'Saldo aguardando revisão'
+  const entry = currentBatch.value.type === 'entrada'
+  const after = entry ? before + qty : before - qty
+  return `${before} ${entry ? '+' : '−'} ${qty} = ${after}`
 }
 
 async function removePhoto(photoId) {
@@ -433,15 +528,30 @@ async function confirmBatch() {
       const variation = variations.value.find(row => row.id === photo.variationId)
       return buildPhotoMovementLine(currentBatch.value, photo, item, variation)
     })
+    if (currentBatch.value.type === 'entrada') {
+      const names = [...new Set(lines.map(line => String(line.supplier || '').trim()).filter(Boolean))]
+      for (const name of names) await ensureSupplier(name)
+    }
     const created = await addMovementBatch(currentBatch.value.type, lines, currentBatch.value.defaults, currentBatch.value.id)
+    const createdCatalog = photos.value.some(photo => photo.createCatalog)
     for (let index = 0; index < photos.value.length; index += 1) {
       const movement = created[index]
       const photo = photos.value[index]
       if (movement) {
-        const variation = variations.value.find(row => row.id === movement.variationId)
-        if (variation) variation.stock = movement.stockAfter
+        photo.itemId = movement.itemId
+        photo.variationId = movement.variationId
+        photo.createCatalog = false
+        photo.status = 'matched'
+        photo.error = ''
         photo.movementId = movement.id
         await saveBatchPhoto(photo)
+      }
+    }
+    if (createdCatalog) await loadItemData()
+    else {
+      for (const movement of created) {
+        const variation = variations.value.find(row => row.id === movement.variationId)
+        if (variation) variation.stock = movement.stockAfter
       }
     }
     const completedAt = new Date()
@@ -452,6 +562,21 @@ async function confirmBatch() {
     success(`Lote de ${currentBatch.value.type === 'entrada' ? 'entrada' : 'saída'} concluído com ${created.length} movimentação(ões).`)
     await refreshBatches(currentBatch.value.id)
   } catch (cause) {
+    if (cause.code === 'ITEM_DUPLICATE') {
+      await loadItemData().catch(() => {})
+      for (const photo of photos.value.filter(row => row.createCatalog)) {
+        const duplicate = findDuplicateItem(photo.catalog)
+        if (!duplicate) continue
+        photo.createCatalog = false
+        photo.itemId = duplicate.id
+        photo.variationId = ''
+        photo.status = 'review'
+        photo.error = `Este item já existe no catálogo: "${duplicate.name}". Escolha a variação.`
+        await saveBatchPhoto(photo)
+      }
+      error(cause.message)
+      return
+    }
     error(`${cause.message || 'Não foi possível concluir o lote.'} Tente novamente; o estoque não será duplicado.`)
   } finally {
     saving.value = false
@@ -535,7 +660,7 @@ async function confirmBatch() {
                 </button>
                 <button type="button" class="min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary-400" @click="selectedPhotoId = photo.id">
                   <span class="inline-flex rounded border px-1.5 py-0.5 text-[10px] font-semibold" :class="statusFor(photo).class">{{ statusFor(photo).label }}</span>
-                  <span class="mt-1 block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ items.find(item => item.id === photo.itemId)?.name || photo.suggestion?.name || `Foto ${index + 1}` }}</span>
+                  <span class="mt-1 block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ items.find(item => item.id === photo.itemId)?.name || photo.catalog?.name || photo.suggestion?.name || `Foto ${index + 1}` }}</span>
                   <span class="mt-1 block text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ impactText(photo) }}</span>
                   <span v-if="photo.movementId" class="mt-1 block truncate text-[11px] text-gray-400">Mov. {{ photo.movementId }}</span>
                 </button>
@@ -547,7 +672,7 @@ async function confirmBatch() {
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Foto selecionada</p>
-                <h4 class="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{{ currentItem?.name || selectedPhoto.suggestion?.name || 'Identificação pendente' }}</h4>
+                <h4 class="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{{ currentItem?.name || selectedPhoto.catalog?.name || selectedPhoto.suggestion?.name || 'Identificação pendente' }}</h4>
                 <p v-if="currentItem" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ itemPath(currentItem) }}</p>
               </div>
               <span class="inline-flex rounded border px-2 py-1 text-xs font-semibold" :class="statusFor(selectedPhoto).class">{{ statusFor(selectedPhoto).label }}</span>
@@ -559,7 +684,10 @@ async function confirmBatch() {
             <section class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h5 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Material e variação</h5>
-                <AppButton v-if="canEditCurrentBatch" variant="ghost" size="xs" @click="showManualSearch = !showManualSearch">{{ showManualSearch ? 'Fechar busca' : 'Buscar manualmente' }}</AppButton>
+                <div v-if="canEditCurrentBatch" class="flex flex-wrap gap-2">
+                  <AppButton v-if="isAdmin && !currentItem && selectedPhoto.suggestion?.identified && !selectedPhoto.createCatalog" variant="secondary" size="xs" @click="startCatalog(selectedPhoto)">Cadastrar e movimentar</AppButton>
+                  <AppButton v-if="!selectedPhoto.createCatalog" variant="ghost" size="xs" @click="showManualSearch = !showManualSearch">{{ showManualSearch ? 'Fechar busca' : 'Buscar manualmente' }}</AppButton>
+                </div>
               </div>
 
               <div v-if="currentItem && !showManualSearch" class="mt-3">
@@ -576,7 +704,35 @@ async function confirmBatch() {
                 </div>
               </div>
 
-              <div v-if="showManualSearch" class="mt-3">
+              <div v-if="selectedPhoto.createCatalog" class="mt-3 space-y-3 rounded-lg border border-amber-300 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div><p class="text-sm font-semibold text-amber-900 dark:text-amber-200">Novo item sugerido</p><p class="mt-0.5 text-xs text-amber-800/80 dark:text-amber-300/80">Revise o cadastro; ele será criado junto com esta movimentação.</p></div>
+                  <div class="flex flex-wrap gap-2"><AppButton v-if="selectedPhoto.status !== 'matched'" variant="primary" size="xs" @click="confirmCatalogReview(selectedPhoto)">OK, cadastro revisado</AppButton><AppButton variant="ghost" size="xs" @click="cancelCatalog(selectedPhoto)">Voltar à busca</AppButton></div>
+                </div>
+                <p v-if="selectedPhoto.suggestion?.industrialSupply === false" role="status" class="rounded-lg border border-amber-300 bg-white/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-gray-900/60 dark:text-amber-300"><strong>Pode não fazer parte de suprimentos industriais.</strong> Este aviso não impede o cadastro.</p>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <label class="block"><span class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Grupo</span><input v-model="selectedPhoto.catalog.group" list="photo-catalog-groups" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" /><datalist id="photo-catalog-groups"><option v-for="group in uniqueGroups" :key="group" :value="group" /></datalist></label>
+                  <label class="block"><span class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Subgrupo</span><input v-model="selectedPhoto.catalog.category" list="photo-catalog-categories" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" /><datalist id="photo-catalog-categories"><option v-for="category in catalogCategories" :key="category" :value="category" /></datalist></label>
+                  <label class="block"><span class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Subnível</span><input v-model="selectedPhoto.catalog.subcategory" list="photo-catalog-subcategories" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" /><datalist id="photo-catalog-subcategories"><option v-for="subcategory in catalogSubcategories" :key="subcategory" :value="subcategory" /></datalist></label>
+                  <label class="block"><span class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Unidade</span><select v-model="selectedPhoto.catalog.unit" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)"><option v-for="unit in units" :key="unit.value" :value="unit.value">{{ unit.label }}</option></select></label>
+                  <label class="block sm:col-span-2"><span class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Nome do item</span><input v-model="selectedPhoto.catalog.name" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" /></label>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between gap-2"><p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Atributos da variação</p><AppButton variant="secondary" size="xs" @click="addCatalogAttribute(selectedPhoto)">Adicionar atributo</AppButton></div>
+                  <div v-if="selectedPhoto.catalog.attributes?.length" class="space-y-2">
+                    <div v-for="(attribute, index) in selectedPhoto.catalog.attributes" :key="index" class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                      <input v-model="attribute.name" :aria-label="`Nome do atributo ${index + 1}`" placeholder="Ex.: Marca" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" />
+                      <input v-model="attribute.value" :aria-label="`Valor do atributo ${index + 1}`" placeholder="Ex.: Tekbond" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-900" @change="saveCatalogDraft(selectedPhoto)" />
+                      <AppButton variant="ghost" size="xs" @click="removeCatalogAttribute(selectedPhoto, index)">Remover</AppButton>
+                    </div>
+                  </div>
+                  <p v-else class="text-xs text-gray-500 dark:text-gray-400">Sem atributos: será criada uma variação única.</p>
+                </div>
+              </div>
+
+              <p v-else-if="canEditCurrentBatch && !isAdmin && !currentItem && selectedPhoto.suggestion?.identified" class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">O item não foi encontrado. Um administrador pode cadastrar e movimentar por esta mesma ficha.</p>
+
+              <div v-if="showManualSearch && !selectedPhoto.createCatalog" class="mt-3">
                 <label class="block"><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Buscar no catálogo</span><input v-model="manualSearch" type="search" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" placeholder="Nome, grupo, medida, marca…" /></label>
                 <div v-if="manualResults.length" class="mt-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                   <button v-for="result in manualResults" :key="result.variation.id" type="button" class="flex min-h-11 w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="chooseManual(result)">
@@ -589,8 +745,9 @@ async function confirmBatch() {
             </section>
 
             <section class="mt-4 grid gap-3 sm:grid-cols-2">
+              <label v-if="selectedPhoto.createCatalog" class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Saldo já existente</span><input v-model="selectedPhoto.catalog.initialStock" type="number" min="0" step="1" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" @change="saveCatalogDraft(selectedPhoto)" /><span class="mt-1 block text-[11px] text-gray-500 dark:text-gray-400">Quantidade que já estava no estoque antes deste movimento.</span></label>
               <label class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Quantidade</span><input v-model="selectedPhoto.qty" type="number" min="1" step="1" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" @change="savePhoto(selectedPhoto)" /></label>
-              <label v-if="currentBatch.type === 'entrada'" class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Custo unitário</span><input v-model="selectedPhoto.unitCost" type="number" min="0" step="0.01" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" placeholder="Opcional" @change="savePhoto(selectedPhoto)" /></label>
+              <label v-if="currentBatch.type === 'entrada'" class="block"><span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Custo unitário</span><input :value="displayPhotoUnitCost(selectedPhoto.unitCost)" type="text" inputmode="decimal" :disabled="!canEditCurrentBatch" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm tabular-nums text-gray-900 outline-none focus:border-primary-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" placeholder="0,00" @input="updateUnitCost(selectedPhoto, $event)" @change="savePhoto(selectedPhoto)" /></label>
               <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 sm:col-span-2 dark:border-gray-700 dark:bg-gray-800/50"><span class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Impacto no saldo</span><p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ impactText(selectedPhoto) }}</p></div>
             </section>
 
@@ -598,8 +755,8 @@ async function confirmBatch() {
               <div class="flex flex-wrap items-center justify-between gap-2"><div><h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Dados desta foto</h5><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Use os padrões do lote ou sobrescreva somente este produto.</p></div><AppButton variant="secondary" size="xs" @click="toggleOverrides(selectedPhoto)">{{ selectedPhoto.useOverrides ? 'Usar padrões do lote' : 'Sobrescrever' }}</AppButton></div>
               <div v-if="selectedPhoto.useOverrides" class="mt-3 grid gap-3 sm:grid-cols-2">
                 <template v-if="currentBatch.type === 'entrada'">
-                  <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Fornecedor</span><SupplierPicker v-model="selectedPhoto.overrides.supplier" @select="savePhoto(selectedPhoto)" @clear="savePhoto(selectedPhoto)" /></div>
-                  <label class="block"><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Documento</span><input v-model="selectedPhoto.overrides.docRef" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-800" @change="savePhoto(selectedPhoto)" /></label>
+                  <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Fornecedor</span><SupplierPicker v-model="selectedPhoto.overrides.supplier" @select="savePhoto(selectedPhoto)" @change="savePhoto(selectedPhoto)" @clear="savePhoto(selectedPhoto)" /></div>
+                  <EntryDocumentField v-model="selectedPhoto.overrides.docRef" v-model:document-type="selectedPhoto.overrides.docType" @change="savePhoto(selectedPhoto)" />
                 </template>
                 <template v-else>
                   <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Quem retirou</span><PersonPicker :model-value="selectedPhoto.overrides.requestedBy" placeholder="Buscar pessoa..." @update:model-value="name => updatePerson(selectedPhoto.overrides, name)" @select="person => { selectPerson(selectedPhoto.overrides, person); savePhoto(selectedPhoto) }" @clear="savePhoto(selectedPhoto)" /></div>
@@ -624,8 +781,8 @@ async function confirmBatch() {
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Aplicados a todas as fotos que não tenham sobrescrita.</p>
           <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <template v-if="currentBatch.type === 'entrada'">
-              <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Fornecedor</span><SupplierPicker v-model="currentBatch.defaults.supplier" @select="saveCurrentBatch" @clear="saveCurrentBatch" /></div>
-              <label class="block"><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Documento</span><input v-model="currentBatch.defaults.docRef" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-900" placeholder="NF, pedido ou referência" @change="saveCurrentBatch" /></label>
+              <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Fornecedor</span><SupplierPicker v-model="currentBatch.defaults.supplier" @select="saveCurrentBatch" @change="saveCurrentBatch" @clear="saveCurrentBatch" /></div>
+              <EntryDocumentField v-model="currentBatch.defaults.docRef" v-model:document-type="currentBatch.defaults.docType" @change="saveCurrentBatch" />
             </template>
             <template v-else>
               <div><span class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Quem retirou</span><PersonPicker :model-value="currentBatch.defaults.requestedBy" placeholder="Buscar pessoa..." @update:model-value="name => updatePerson(currentBatch.defaults, name)" @select="person => { selectPerson(currentBatch.defaults, person); saveCurrentBatch() }" @clear="saveCurrentBatch" /></div>

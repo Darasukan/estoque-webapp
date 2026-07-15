@@ -8,7 +8,7 @@ const props = defineProps({
   placeholder: { type: String, default: 'Buscar fornecedor...' },
 })
 
-const emit = defineEmits(['update:modelValue', 'select', 'clear'])
+const emit = defineEmits(['update:modelValue', 'select', 'change', 'clear'])
 const { activeSuppliers } = useSuppliers()
 const search = ref(props.modelValue || '')
 const open = ref(false)
@@ -22,6 +22,10 @@ const filteredSuppliers = computed(() => {
     normalizeText(`${supplier.name} ${supplier.description || ''}`).includes(query)
   )
 })
+const typedName = computed(() => String(search.value || '').trim())
+const exactSupplier = computed(() => activeSuppliers.value.find(supplier =>
+  normalizeText(supplier.name) === normalizeText(typedName.value)
+) || null)
 
 function openPicker() {
   window.dispatchEvent(new CustomEvent('app-picker-open', { detail: pickerId }))
@@ -38,7 +42,7 @@ function handleOtherPickerOpen(event) {
 }
 
 function handlePointerDownOutside(event) {
-  if (open.value && !rootEl.value?.contains(event.target)) closePicker()
+  if (open.value && !rootEl.value?.contains(event.target)) commitSearch()
 }
 
 function selectSupplier(supplier) {
@@ -53,6 +57,21 @@ function clearSelection() {
   emit('update:modelValue', '')
   emit('clear')
   open.value = false
+}
+
+function commitSearch() {
+  if (!typedName.value) return clearSelection()
+  if (exactSupplier.value) return selectSupplier(exactSupplier.value)
+  search.value = typedName.value
+  emit('update:modelValue', typedName.value)
+  emit('change', typedName.value)
+  open.value = false
+}
+
+function handleEnter() {
+  const supplier = exactSupplier.value || (filteredSuppliers.value.length === 1 ? filteredSuppliers.value[0] : null)
+  if (supplier) selectSupplier(supplier)
+  else commitSearch()
 }
 
 watch(() => props.modelValue, value => {
@@ -83,7 +102,8 @@ onBeforeUnmount(() => {
       class="relative z-40 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
       @focus="openPicker"
       @input="openPicker"
-      @keydown.enter.prevent="filteredSuppliers.length === 1 && selectSupplier(filteredSuppliers[0])"
+      @keydown.enter.prevent="handleEnter"
+      @keydown.tab="commitSearch"
       @keydown.escape.stop="closePicker"
     />
     <button
@@ -98,6 +118,7 @@ onBeforeUnmount(() => {
 
     <div v-if="open" :id="`supplier-options-${pickerId}`" role="listbox" class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-auto rounded-lg border border-gray-300 bg-white text-sm text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
       <button type="button" role="option" :aria-selected="!modelValue" class="w-full px-3 py-2 text-left text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" @mousedown.prevent="clearSelection">Sem fornecedor</button>
+      <button v-if="typedName && !exactSupplier" type="button" role="option" aria-selected="false" class="w-full border-y border-gray-200 px-3 py-2 text-left text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:border-gray-700 dark:text-primary-300 dark:hover:bg-primary-950/40" @mousedown.prevent="commitSearch">Cadastrar “{{ typedName }}” ao confirmar</button>
       <button
         v-for="supplier in filteredSuppliers"
         :key="supplier.id"

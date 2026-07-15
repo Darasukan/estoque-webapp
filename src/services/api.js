@@ -184,6 +184,18 @@ export async function getPhotoBatchImage(batchId, photoId) {
   return requestBlob(`/photo-batches/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}/image`)
 }
 
+export async function putVariationPhotoImage(variationId, blob) {
+  return request(`/photo-batches/variation/${encodeURIComponent(variationId)}/image`, {
+    method: 'PUT',
+    headers: { 'Content-Type': blob.type || 'image/jpeg' },
+    body: blob,
+  })
+}
+
+export async function deleteVariationPhotoImage(variationId) {
+  return request(`/photo-batches/variation/${encodeURIComponent(variationId)}/image`, { method: 'DELETE' })
+}
+
 export async function deleteRemoteBatchPhoto(batchId, photoId) {
   return request(`/photo-batches/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' })
 }

@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import db from '../db.js'
 import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 import { analyzeCatalogImage } from '../utils/catalogSuggestion.js'
+import { findDuplicateItem } from '../utils/catalogIdentity.js'
 
 const router = Router()
 
@@ -89,16 +90,25 @@ router.get('/', (req, res) => {
 // POST /api/items
 router.post('/', requireAuth, requireAdmin, (req, res) => {
   const { name, group, category, subcategory, unit, minStock, attributes, location } = req.body
-  if (!name || !group) return res.status(400).json({ error: 'Nome e grupo obrigatórios' })
+  const item = {
+    name: String(name || '').trim(),
+    group: String(group || '').trim(),
+    category: String(category || '').trim() || null,
+    subcategory: String(subcategory || '').trim() || null,
+  }
+  if (!item.name || !item.group) return res.status(400).json({ error: 'Nome e grupo obrigatórios' })
+
+  const duplicate = findDuplicateItem(item)
+  if (duplicate) return res.status(409).json({ error: `Já existe este item no catálogo: "${duplicate.name}".` })
 
   const id = 'item_' + crypto.randomBytes(6).toString('hex')
   db.prepare(`INSERT INTO items (id, name, group_name, category, subcategory, unit, min_stock, attributes, location)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, name, group, category || null, subcategory || null,
+    id, item.name, item.group, item.category, item.subcategory,
     unit || 'UN', minStock || 0, JSON.stringify(attributes || []), location || ''
   )
 
-  res.json({ id, name, group, category: category || null, subcategory: subcategory || null, unit: unit || 'UN', minStock: minStock || 0, attributes: attributes || [], location: location || '' })
+  res.json({ id, ...item, unit: unit || 'UN', minStock: minStock || 0, attributes: attributes || [], location: location || '' })
 })
 
 // PUT /api/items/:id
@@ -173,10 +183,10 @@ router.post('/variations', requireAuth, requireAdmin, (req, res) => {
 
 // PUT /api/items/variations/:id
 router.put('/variations/:id', requireAuth, requireAdmin, (req, res) => {
-  const existing = db.prepare('SELECT id, initial_stock FROM variations WHERE id = ? AND active = 1').get(req.params.id)
+  const existing = db.prepare('SELECT id, stock, initial_stock FROM variations WHERE id = ? AND active = 1').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Variação não encontrada' })
 
-  const { values, stock, minStock, initialStock, extras, location, locations, destinations } = req.body
+  const { values, minStock, initialStock, extras, location, locations, destinations } = req.body
   const requestedInitialStock = initialStock === undefined ? Number(existing.initial_stock || 0) : Number(initialStock)
   const initialStockChanged = initialStock !== undefined && requestedInitialStock !== Number(existing.initial_stock || 0)
   if (initialStockChanged && req.user?.id !== 'user_admin') {
@@ -187,13 +197,13 @@ router.put('/variations/:id', requireAuth, requireAdmin, (req, res) => {
     : Number(existing.initial_stock || 0)
   const normalizedLocations = normalizeLocations(locations, location)
   const primaryLocation = normalizedLocations[0] || ''
-  db.prepare(`UPDATE variations SET vals=?, stock=?, min_stock=?, initial_stock=?, extras=?, location=?, locations=?, destinations=? WHERE id=?`).run(
-    JSON.stringify(values || {}), stock || 0, minStock || 0, safeInitialStock,
+  db.prepare(`UPDATE variations SET vals=?, min_stock=?, initial_stock=?, extras=?, location=?, locations=?, destinations=? WHERE id=?`).run(
+    JSON.stringify(values || {}), minStock || 0, safeInitialStock,
     JSON.stringify(extras || {}), primaryLocation, JSON.stringify(normalizedLocations), JSON.stringify(destinations || []),
     req.params.id
   )
 
-  res.json({ id: req.params.id, values: values || {}, stock: stock || 0, minStock: minStock || 0, initialStock: safeInitialStock, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
+  res.json({ id: req.params.id, values: values || {}, stock: Number(existing.stock || 0), minStock: minStock || 0, initialStock: safeInitialStock, extras: extras || {}, location: primaryLocation, locations: normalizedLocations, destinations: destinations || [] })
 })
 
 // DELETE /api/items/variations/:id

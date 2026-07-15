@@ -53,6 +53,47 @@ export function photoSuggestionSearch(suggestion) {
   ].filter(Boolean).join(' ')
 }
 
+export function photoCatalogDraft(suggestion) {
+  return {
+    group: String(suggestion?.group || '').trim(),
+    category: String(suggestion?.category || '').trim(),
+    subcategory: String(suggestion?.subcategory || '').trim(),
+    name: String(suggestion?.name || '').trim(),
+    unit: String(suggestion?.unit || 'UN').trim() || 'UN',
+    attributes: (suggestion?.attributes || []).map(attribute => ({
+      name: String(attribute?.name || '').trim(),
+      value: String(attribute?.value || '').trim(),
+    })).filter(attribute => attribute.name),
+    initialStock: 0,
+  }
+}
+
+export function photoCatalogBlockReason(catalog = {}) {
+  if (!String(catalog.group || '').trim() || !String(catalog.name || '').trim()) return 'Revise o grupo e o nome do novo item.'
+  if (String(catalog.subcategory || '').trim() && !String(catalog.category || '').trim()) return 'Defina o subgrupo antes do subnível.'
+  const initialStock = Number(catalog.initialStock ?? 0)
+  if (!Number.isFinite(initialStock) || initialStock < 0) return 'Revise o saldo já existente do novo item.'
+  if ((catalog.attributes || []).some(attribute => !String(attribute?.name || '').trim() && String(attribute?.value || '').trim())) return 'Informe o nome dos atributos preenchidos.'
+  return ''
+}
+
+export function parsePhotoUnitCost(value) {
+  if (value === '' || value == null) return null
+  const text = String(value).trim()
+  const parsed = Number(text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text)
+  return Number.isFinite(parsed) ? parsed : NaN
+}
+
+export function maskPhotoUnitCost(value) {
+  const digits = String(value || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 15)
+  return digits ? (Number(digits) / 100).toFixed(2).replace('.', ',') : ''
+}
+
+export function displayPhotoUnitCost(value) {
+  const parsed = parsePhotoUnitCost(value)
+  return parsed == null || !Number.isFinite(parsed) ? '' : parsed.toFixed(2).replace('.', ',')
+}
+
 export function variationDescription(variation) {
   return [
     ...Object.entries(variation?.values || {}).map(([key, value]) => `${key}: ${value}`),
@@ -104,20 +145,24 @@ export function canDeletePhotoBatch(batch, ownerUserId, isAdmin) {
 export function buildPhotoMovementLine(batch, photo, item, variation) {
   const fields = effectivePhotoFields(batch, photo)
   return {
-    variationId: variation.id,
-    itemId: item.id,
-    itemName: item.name,
-    itemGroup: item.group,
-    itemCategory: item.category || '',
-    itemSubcategory: item.subcategory || '',
-    itemUnit: item.unit,
-    variationValues: { ...(variation.values || {}) },
-    variationExtras: { ...(variation.extras || {}) },
+    ...(photo.createCatalog
+      ? { newCatalog: { ...photo.catalog, attributes: (photo.catalog?.attributes || []).map(attribute => ({ ...attribute })) } }
+      : {
+          variationId: variation.id,
+          itemId: item.id,
+          itemName: item.name,
+          itemGroup: item.group,
+          itemCategory: item.category || '',
+          itemSubcategory: item.subcategory || '',
+          itemUnit: item.unit,
+          variationValues: { ...(variation.values || {}) },
+          variationExtras: { ...(variation.extras || {}) },
+        }),
     qty: Number(photo.qty),
     ...(batch.type === 'entrada'
       ? {
           supplier: fields.supplier || '',
-          unitCost: photo.unitCost === '' || photo.unitCost == null ? null : Number(photo.unitCost),
+          unitCost: parsePhotoUnitCost(photo.unitCost),
           docRef: fields.docRef || '',
           note: fields.note || '',
         }
@@ -137,25 +182,44 @@ export function photoBatchBlockReason(batch, photos, items, variations) {
   const itemIds = new Set(items.map(item => item.id))
   const variationById = new Map(variations.map(variation => [variation.id, variation]))
   const requestedByVariation = new Map()
+  const newCatalogNames = new Set()
 
   for (const photo of photos) {
-    if (!photo.itemId || !itemIds.has(photo.itemId)) return 'Revise o item de todas as fotos.'
-    const variation = variationById.get(photo.variationId)
-    if (!variation || variation.itemId !== photo.itemId) return 'Selecione a variação de todas as fotos.'
+    let variation = null
+    let availableStock = 0
+    let stockKey = ''
+    if (photo.createCatalog) {
+      const catalog = photo.catalog || {}
+      const catalogReason = photoCatalogBlockReason(catalog)
+      if (catalogReason) return catalogReason
+      if (photo.status !== 'matched') return 'Confirme a revisão dos novos cadastros.'
+      const initialStock = Number(catalog.initialStock ?? 0)
+      const identity = normalizeSearchText(catalog.name)
+      if (newCatalogNames.has(identity)) return `O lote tenta cadastrar "${catalog.name}" mais de uma vez. Una as quantidades em uma foto.`
+      newCatalogNames.add(identity)
+      availableStock = initialStock
+      stockKey = `new:${identity}`
+    } else {
+      if (!photo.itemId || !itemIds.has(photo.itemId)) return 'Revise o item de todas as fotos.'
+      variation = variationById.get(photo.variationId)
+      if (!variation || variation.itemId !== photo.itemId) return 'Selecione a variação de todas as fotos.'
+      availableStock = Number(variation.stock || 0)
+      stockKey = variation.id
+    }
     const qty = Number(photo.qty)
     if (!Number.isFinite(qty) || qty <= 0) return 'Informe uma quantidade positiva em todas as fotos.'
 
     const fields = effectivePhotoFields(batch, photo)
     if (batch.type === 'entrada') {
-      const cost = photo.unitCost === '' || photo.unitCost == null ? null : Number(photo.unitCost)
+      const cost = parsePhotoUnitCost(photo.unitCost)
       if (cost !== null && (!Number.isFinite(cost) || cost < 0)) return 'Revise os custos unitários do lote.'
     } else {
       if (!fields.requestedByPersonId || !fields.requestedBy) return 'Selecione quem retirou em todas as fotos.'
       if (!fields.destinationId && !fields.destinationOther) return 'Selecione o destino em todas as fotos.'
       if (fields.destinationOther && !String(fields.destination || '').trim()) return 'Descreva os destinos informados como Outro.'
-      const accumulated = (requestedByVariation.get(variation.id) || 0) + qty
-      if (accumulated > Number(variation.stock || 0)) return `A saída acumulada de ${variationDescription(variation)} excede o saldo disponível.`
-      requestedByVariation.set(variation.id, accumulated)
+      const accumulated = (requestedByVariation.get(stockKey) || 0) + qty
+      if (accumulated > availableStock) return `A saída acumulada de ${variation ? variationDescription(variation) : photo.catalog.name} excede o saldo disponível.`
+      requestedByVariation.set(stockKey, accumulated)
     }
   }
   return ''

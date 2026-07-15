@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
-import { requireAdmin, requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -25,7 +25,7 @@ router.get('/', (req, res) => {
 })
 
 // POST /api/suppliers
-router.post('/', requireAuth, requireAdmin, (req, res) => {
+router.post('/', requireAuth, requireOperator, (req, res) => {
   const name = clean(req.body.name)
   const description = clean(req.body.description)
   const active = req.body.active !== false

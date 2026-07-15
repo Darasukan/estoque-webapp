@@ -39,3 +39,13 @@ export function validateVariationForm(item, form) {
   if (stock < 0) return 'Quantidade não pode ser negativa.'
   return null
 }
+
+export function variationSetupIssues(item, variation) {
+  const issues = []
+  if (!(Number(variation?.minStock) > 0)) issues.push('minStock')
+  const hasLocation = (variation?.locations || []).some(value => String(value || '').trim()) ||
+    String(variation?.location || item?.location || '').trim()
+  if (!hasLocation) issues.push('location')
+  if (!(variation?.destinations || []).some(Boolean)) issues.push('destination')
+  return issues
+}

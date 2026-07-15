@@ -5,6 +5,7 @@ import { analyzeCatalogImage, normalizeCatalogSuggestion } from '../server/utils
 test('normalizes and deduplicates an image catalog suggestion', () => {
   assert.deepEqual(normalizeCatalogSuggestion({
     identified: true,
+    industrialSupply: false,
     group: ' EPIs ',
     category: ' Luvas ',
     subcategory: '',
@@ -20,6 +21,7 @@ test('normalizes and deduplicates an image catalog suggestion', () => {
     observations: [' CA ilegível ', '']
   }), {
     identified: true,
+    industrialSupply: false,
     group: 'EPIs',
     category: 'Luvas',
     subcategory: '',
@@ -32,6 +34,25 @@ test('normalizes and deduplicates an image catalog suggestion', () => {
     ],
     observations: ['CA ilegível']
   })
+})
+
+test('keeps bearings as one item directly under the subgroup', () => {
+  const result = normalizeCatalogSuggestion({
+    identified: true,
+    group: 'Transmissão',
+    category: 'Rolamentos',
+    subcategory: 'Rolamento Rígido de Esferas',
+    name: 'Rolamento Rígido de Esferas',
+    unit: 'UN',
+    attributes: [
+      { name: 'Marca', value: 'NSK', readable: true },
+      { name: 'Modelo', value: '6208ZZC3', readable: true }
+    ]
+  })
+
+  assert.equal(result.subcategory, '')
+  assert.equal(result.name, 'Rolamento')
+  assert.deepEqual(result.attributes.map(attribute => attribute.name), ['Marca', 'Modelo'])
 })
 
 test('sends image and JSON schema to Gemini', async () => {
@@ -58,6 +79,7 @@ test('sends image and JSON schema to Gemini', async () => {
         json: async () => ({
           candidates: [{ content: { parts: [{ text: JSON.stringify({
             identified: true,
+            industrialSupply: true,
             group: 'EPIs',
             category: 'Luvas',
             subcategory: '',
@@ -76,10 +98,14 @@ test('sends image and JSON schema to Gemini', async () => {
   assert.equal(request.options.headers['x-goog-api-key'], 'test-key')
   assert.equal(request.body.contents[0].parts[1].inlineData.data, 'AAAA')
   assert.match(request.body.contents[0].parts[0].text, /prioridade é descobrir a família\/nome genérico/i)
+  assert.match(request.body.contents[0].parts[0].text, /deixe subcategory vazio/i)
+  assert.match(request.body.contents[0].parts[0].text, /rolamentos ficam como grupo Transmissão/i)
   assert.match(request.body.contents[0].parts[0].text, /reutilize exatamente os nomes de atributos/i)
   assert.match(request.body.contents[0].parts[0].text, /Viton/i)
   assert.match(request.body.contents[0].parts[0].text, /Não tente estimar medidas pela foto/i)
+  assert.match(request.body.contents[0].parts[0].text, /fora de suprimentos industriais/i)
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json')
   assert.equal(request.body.generationConfig.responseJsonSchema.required.includes('group'), true)
+  assert.equal(request.body.generationConfig.responseJsonSchema.required.includes('industrialSupply'), true)
   assert.equal(result.name, 'Luva nitrílica')
 })

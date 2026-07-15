@@ -17,3 +17,24 @@ test('indexes variations and stock by item', () => {
   variations.value[0].stock = 10
   assert.equal(getTotalStock('item-a'), 13)
 })
+
+test('finds a named item across hierarchy without merging hierarchy placeholders', () => {
+  const { items, variations, findDuplicateItem } = useItems()
+  variations.value = []
+  items.value = [{
+    id: 'item-adesivo',
+    name: 'Adesivo Anaeróbico',
+    group: 'Materiais de Consumo',
+    category: 'Adesivos',
+    subcategory: '',
+  }]
+
+  assert.equal(findDuplicateItem({
+    name: 'Adesivo anaerobico',
+    group: 'Outro grupo',
+    category: 'Outro subgrupo',
+  })?.id, 'item-adesivo')
+
+  items.value = [{ id: 'hierarchy-luvas', name: 'Luvas', group: 'EPI', category: 'Luvas', subcategory: '' }]
+  assert.equal(findDuplicateItem({ name: 'Luvas', group: 'Consumo', category: 'Luvas' }), null)
+})

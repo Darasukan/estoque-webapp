@@ -660,6 +660,7 @@ let aiCatalogRun = 0
 function emptyAiCatalog() {
   return {
     identified: false,
+    industrialSupply: true,
     group: '',
     category: '',
     subcategory: '',

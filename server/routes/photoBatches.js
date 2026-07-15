@@ -12,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_UPLOAD_DIR = ENV_FILE.endsWith('.prod') ? 'photo-uploads-prod' : 'photo-uploads-dev'
 const PHOTO_UPLOAD_DIR = resolveEnvPath(process.env.PHOTO_UPLOAD_DIR, join(__dirname, '..', DEFAULT_UPLOAD_DIR))
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,140}$/
+const PHOTO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const BATCH_STATUSES = new Set(['pending', 'completed'])
 const PHOTO_STATUSES = new Set(['queued', 'analyzing', 'matched', 'review', 'error'])
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
@@ -105,6 +106,8 @@ function photoPayload(body, batchId) {
     suggestion: object(body.suggestion),
     itemId: text(body.itemId, 160),
     variationId: text(body.variationId, 160),
+    createCatalog: body?.createCatalog === true,
+    catalog: object(body.catalog),
     qty: Number.isFinite(qty) ? qty : 1,
     unitCost: Number.isFinite(unitCost) ? unitCost : '',
     useOverrides: body?.useOverrides === true,
@@ -145,14 +148,8 @@ async function cleanupExpired() {
   await Promise.all(expired.map(row => removeImage(row.image_path)))
 }
 
-async function persistVariationPhotos(batchId, completedAt) {
-  const photos = db.prepare(`
-    SELECT id, image_path, mime_type, data_json
-    FROM photo_batch_photos
-    WHERE batch_id = ? AND image_path <> ''
-    ORDER BY created_at
-  `).all(batchId)
-  const save = db.prepare(`
+function saveVariationPhoto(variationId, mimeType, image, updatedAt, sourceBatchId = '', sourcePhotoId = '') {
+  db.prepare(`
     INSERT INTO variation_photos (
       variation_id, mime_type, image_data, updated_at, source_batch_id, source_photo_id
     ) VALUES (?, ?, ?, ?, ?, ?)
@@ -163,18 +160,58 @@ async function persistVariationPhotos(batchId, completedAt) {
       source_batch_id = excluded.source_batch_id,
       source_photo_id = excluded.source_photo_id
     WHERE excluded.updated_at >= variation_photos.updated_at
-  `)
+  `).run(variationId, mimeType, image, updatedAt, sourceBatchId, sourcePhotoId)
+}
 
+async function persistVariationPhotos(batchId, completedAt) {
+  const photos = db.prepare(`
+    SELECT id, image_path, mime_type, data_json
+    FROM photo_batch_photos
+    WHERE batch_id = ? AND image_path <> ''
+    ORDER BY created_at
+  `).all(batchId)
   for (const photo of photos) {
     const data = parseJson(photo.data_json)
     const variationId = text(data.variationId, 160)
     if (!validId(variationId)) continue
     const image = await readFile(join(PHOTO_UPLOAD_DIR, photo.image_path)).catch(() => null)
     if (!image?.length) continue
-    const mimeType = ['image/jpeg', 'image/png', 'image/webp'].includes(photo.mime_type) ? photo.mime_type : 'image/jpeg'
-    save.run(variationId, mimeType, image, completedAt, batchId, photo.id)
+    const mimeType = PHOTO_MIME_TYPES.has(photo.mime_type) ? photo.mime_type : 'image/jpeg'
+    saveVariationPhoto(variationId, mimeType, image, completedAt, batchId, photo.id)
   }
 }
+
+router.put(
+  '/variation/:variationId/image',
+  requireAuth,
+  requireOperator,
+  raw({ type: [...PHOTO_MIME_TYPES], limit: '2mb' }),
+  (req, res) => {
+    const variationId = req.params.variationId
+    if (!validId(variationId)) return res.status(400).json({ error: 'Variação inválida.' })
+    if (!db.prepare('SELECT id FROM variations WHERE id = ? AND active = 1').get(variationId)) {
+      return res.status(404).json({ error: 'Variação não encontrada.' })
+    }
+    if (!Buffer.isBuffer(req.body) || !req.body.length) {
+      return res.status(415).json({ error: 'Envie uma imagem JPG, PNG ou WEBP.' })
+    }
+
+    const mimeType = String(req.get('content-type') || '').split(';')[0]
+    if (!PHOTO_MIME_TYPES.has(mimeType)) return res.status(415).json({ error: 'Envie uma imagem JPG, PNG ou WEBP.' })
+    saveVariationPhoto(variationId, mimeType, req.body, new Date().toISOString())
+    res.json({ ok: true })
+  }
+)
+
+router.delete('/variation/:variationId/image', requireAuth, requireOperator, (req, res) => {
+  const variationId = req.params.variationId
+  if (!validId(variationId)) return res.status(400).json({ error: 'Variação inválida.' })
+  if (!db.prepare('SELECT id FROM variations WHERE id = ? AND active = 1').get(variationId)) {
+    return res.status(404).json({ error: 'Variação não encontrada.' })
+  }
+  saveVariationPhoto(variationId, 'image/jpeg', Buffer.alloc(0), new Date().toISOString())
+  res.json({ ok: true })
+})
 
 router.get('/variation/:variationId/image', requireAuth, async (req, res) => {
   if (!validId(req.params.variationId)) return res.status(400).json({ error: 'Variação inválida.' })
@@ -196,7 +233,7 @@ router.get('/variation/:variationId/image', requireAuth, async (req, res) => {
       photo = findPermanent.get(req.params.variationId)
     }
   }
-  if (!photo?.image_data) return res.status(404).json({ error: 'Foto não encontrada.' })
+  if (!photo?.image_data?.length) return res.status(404).json({ error: 'Foto não encontrada.' })
   res.type(photo.mime_type || 'image/jpeg').set('Cache-Control', 'private, no-store').send(photo.image_data)
 })
 
@@ -274,7 +311,7 @@ router.put('/:batchId/photos/:photoId', async (req, res) => {
 
 router.put(
   '/:batchId/photos/:photoId/image',
-  raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '2mb' }),
+  raw({ type: [...PHOTO_MIME_TYPES], limit: '2mb' }),
   async (req, res) => {
     const batch = batchById(req.params.batchId)
     const photo = photoById(req.params.photoId)

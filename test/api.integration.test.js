@@ -154,6 +154,18 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   })
   assert.equal(visitorPassword.response.status, 200)
 
+  const visitorCannotCreateSupplier = await jsonRequest(url, '/api/suppliers', {
+    token: visitorToken,
+    body: { name: 'Fornecedor visitante' },
+  })
+  assert.equal(visitorCannotCreateSupplier.response.status, 403)
+  const operatorSupplier = await jsonRequest(url, '/api/suppliers', {
+    token: operatorToken,
+    body: { name: 'Fornecedor digitado' },
+  })
+  assert.equal(operatorSupplier.response.status, 200)
+  assert.equal(operatorSupplier.data.name, 'Fornecedor digitado')
+
   const operatorCannotCreateItem = await jsonRequest(url, '/api/items', {
     token: operatorToken,
     body: { name: 'Item proibido', group: 'Teste' },
@@ -216,7 +228,9 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
       qty: 1,
       variationId: 'var_photo_api',
       movementId: 'mov_photo_api',
-      suggestion: null,
+      suggestion: { identified: true, name: 'Item novo' },
+      createCatalog: true,
+      catalog: { group: 'Teste', name: 'Item novo', unit: 'UN', attributes: [], initialStock: 0 },
       overrides: {},
     },
   })
@@ -265,6 +279,8 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   const accountPhotos = await jsonRequest(url, `/api/photo-batches/${photoBatchId}/photos`, { token: operatorToken })
   assert.equal(accountPhotos.data[0].id, photoId)
   assert.equal(accountPhotos.data[0].hasImage, true)
+  assert.equal(accountPhotos.data[0].createCatalog, true)
+  assert.equal(accountPhotos.data[0].catalog.name, 'Item novo')
 
   const downloadedPhoto = await fetch(`${url}/api/photo-batches/${photoBatchId}/photos/${photoId}/image`, {
     headers: { 'x-auth-token': operatorToken },
@@ -373,11 +389,57 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   })
   assert.equal(item.response.status, 200)
 
+  const duplicateItem = await jsonRequest(url, '/api/items', {
+    token,
+    body: { name: 'ROLAMENTO DE TESTE', group: 'Outro grupo', category: 'Reposição', unit: 'UN' },
+  })
+  assert.equal(duplicateItem.response.status, 409)
+  assert.match(duplicateItem.data.error, /já existe este item no catálogo/i)
+
   const variation = await jsonRequest(url, '/api/items/variations', {
     token,
     body: { itemId: item.data.id, values: { medida: '10mm' }, stock: 2 },
   })
   assert.equal(variation.response.status, 200)
+
+  const directPhotoBytes = Buffer.from([0xff, 0xd8, 0x02, 0xff, 0xd9])
+  const visitorCannotUploadVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    method: 'PUT',
+    headers: { 'x-auth-token': visitorToken, 'content-type': 'image/jpeg' },
+    body: directPhotoBytes,
+  })
+  assert.equal(visitorCannotUploadVariationPhoto.status, 403)
+  const directVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    method: 'PUT',
+    headers: { 'x-auth-token': operatorToken, 'content-type': 'image/jpeg' },
+    body: directPhotoBytes,
+  })
+  assert.equal(directVariationPhoto.status, 200)
+  const downloadedVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    headers: { 'x-auth-token': visitorToken },
+  })
+  assert.equal(downloadedVariationPhoto.status, 200)
+  assert.deepEqual(Buffer.from(await downloadedVariationPhoto.arrayBuffer()), directPhotoBytes)
+  const visitorCannotDeleteVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    method: 'DELETE',
+    headers: { 'x-auth-token': visitorToken },
+  })
+  assert.equal(visitorCannotDeleteVariationPhoto.status, 403)
+  const removedVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    method: 'DELETE',
+    headers: { 'x-auth-token': operatorToken },
+  })
+  assert.equal(removedVariationPhoto.status, 200)
+  const missingVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    headers: { 'x-auth-token': visitorToken },
+  })
+  assert.equal(missingVariationPhoto.status, 404)
+  const restoredVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {
+    method: 'PUT',
+    headers: { 'x-auth-token': operatorToken, 'content-type': 'image/jpeg' },
+    body: directPhotoBytes,
+  })
+  assert.equal(restoredVariationPhoto.status, 200)
 
   const secondaryAdmin = await jsonRequest(url, '/api/auth/users', {
     token,
@@ -434,6 +496,16 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.equal(movement.response.status, 200)
   assert.equal(movement.data.stockAfter, 5)
 
+  const staleVariationEdit = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {
+    method: 'PUT',
+    token,
+    body: { ...changedInitialStock.data, stock: 0 },
+  })
+  assert.equal(staleVariationEdit.response.status, 200)
+  assert.equal(staleVariationEdit.data.stock, 5)
+  const variationsAfterStaleEdit = await jsonRequest(url, '/api/items/variations')
+  assert.equal(variationsAfterStaleEdit.data.find(row => row.id === variation.data.id).stock, 5)
+
   const batchBody = {
     requestId: 'photo_batch_test_001',
     type: 'entrada',
@@ -455,6 +527,61 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.deepEqual(repeatedBatch.data, firstBatch.data)
   const variationsAfterRepeatedBatch = await jsonRequest(url, '/api/items/variations')
   assert.equal(variationsAfterRepeatedBatch.data.find(row => row.id === variation.data.id).stock, 7)
+
+  const newCatalogLine = {
+    newCatalog: {
+      group: 'Materiais de Consumo',
+      category: 'Adesivos',
+      subcategory: '',
+      name: 'Adesivo por foto',
+      unit: 'UN',
+      attributes: [
+        { name: 'Modelo', value: '120' },
+        { name: 'Marca', value: 'Tekbond' },
+      ],
+      initialStock: 4,
+    },
+    qty: 2,
+    unitCost: 12.5,
+  }
+  const operatorCannotCatalogByMovement = await jsonRequest(url, '/api/movements/batch', {
+    token: operatorToken,
+    body: { requestId: 'photo_catalog_operator_001', type: 'entrada', items: [newCatalogLine] },
+  })
+  assert.equal(operatorCannotCatalogByMovement.response.status, 403)
+
+  const catalogBatchBody = {
+    requestId: 'photo_catalog_admin_001',
+    type: 'entrada',
+    fields: { docRef: 'NF FOTO 1', note: 'Cadastro na implantação' },
+    items: [newCatalogLine],
+  }
+  const catalogBatch = await jsonRequest(url, '/api/movements/batch', { token, body: catalogBatchBody })
+  assert.equal(catalogBatch.response.status, 200)
+  assert.equal(catalogBatch.data.initialMovements.length, 1)
+  assert.equal(catalogBatch.data.initialMovements[0].stockBefore, 0)
+  assert.equal(catalogBatch.data.initialMovements[0].stockAfter, 4)
+  assert.equal(catalogBatch.data.initialMovements[0].docRef, 'AJUSTE')
+  assert.equal(catalogBatch.data.movements[0].stockBefore, 4)
+  assert.equal(catalogBatch.data.movements[0].stockAfter, 6)
+
+  const repeatedCatalogBatch = await jsonRequest(url, '/api/movements/batch', { token, body: catalogBatchBody })
+  assert.deepEqual(repeatedCatalogBatch.data, catalogBatch.data)
+  const catalogItems = await jsonRequest(url, '/api/items')
+  const catalogedItem = catalogItems.data.find(row => row.name === 'Adesivo por foto')
+  assert.ok(catalogedItem)
+  const catalogVariations = await jsonRequest(url, '/api/items/variations')
+  const catalogedVariation = catalogVariations.data.find(row => row.itemId === catalogedItem.id)
+  assert.equal(catalogedVariation.stock, 6)
+  assert.equal(catalogedVariation.initialStock, 4)
+  assert.deepEqual(catalogedVariation.values, { Modelo: '120', Marca: 'Tekbond' })
+
+  const duplicateCatalogBatch = await jsonRequest(url, '/api/movements/batch', {
+    token,
+    body: { requestId: 'photo_catalog_admin_002', type: 'entrada', items: [newCatalogLine] },
+  })
+  assert.equal(duplicateCatalogBatch.response.status, 409)
+  assert.equal(duplicateCatalogBatch.data.code, 'ITEM_DUPLICATE')
 
   const operatorCannotDeleteMovement = await jsonRequest(url, `/api/movements/${movement.data.id}`, {
     method: 'DELETE',

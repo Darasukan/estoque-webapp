@@ -54,7 +54,7 @@ export function useMovements() {
       ...(requestId ? { requestId } : {}),
     })
     const created = result.movements || []
-    movements.value.unshift(...created)
+    movements.value.unshift(...(result.initialMovements || []), ...created)
     return created
   }
 

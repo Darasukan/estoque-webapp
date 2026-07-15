@@ -18,6 +18,7 @@ const {
   getCategoriesForGroup,
   getSubcategoriesForCategory,
   getVariationsForItem,
+  findDuplicateItem,
   addItem,
   addVariation,
 } = useItems()
@@ -39,11 +40,13 @@ const dialogSubtitle = computed(() => isSearchMode.value
 function emptyAiCatalog() {
   return {
     identified: false,
+    industrialSupply: true,
     group: '',
     category: '',
     subcategory: '',
     name: '',
     unit: 'UN',
+    initialStock: 0,
     confidence: null,
     attributes: [],
     values: {},
@@ -60,7 +63,7 @@ const aiCatalogReady = computed(() =>
 )
 
 function sameName(a, b) {
-  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+  return normalizeComparable(a) === normalizeComparable(b)
 }
 
 function normalizeComparable(value) {
@@ -103,7 +106,7 @@ function findExactItem(data) {
 }
 
 function exactExistingItem() {
-  return findExactItem(aiCatalog.value)
+  return findDuplicateItem(aiCatalog.value) || findExactItem(aiCatalog.value)
 }
 
 function searchExistingItem() {
@@ -115,7 +118,7 @@ function searchExistingItem() {
 }
 
 function canonicalizeSuggestionAttributes(suggestion) {
-  const item = findExactItem(suggestion)
+  const item = findDuplicateItem(suggestion) || findExactItem(suggestion)
   const attributes = suggestion.attributes || []
   if (!item) return attributes
 
@@ -166,8 +169,11 @@ const aiCatalogMatchedVariation = computed(() => {
   const values = aiCatalogValueAttrs.value
     .map(attribute => [attribute, aiCatalog.value.values[attribute]])
     .filter(([, value]) => String(value || '').trim())
-  if (!values.length) return null
-  return getVariationsForItem(item.id).find(variation =>
+  const variations = getVariationsForItem(item.id)
+  if (!values.length) {
+    return variations.find(variation => !Object.keys(variation.values || {}).length) || null
+  }
+  return variations.find(variation =>
     values.every(([attribute, value]) => sameValue(variation.values?.[attribute], value))
   ) || null
 })
@@ -234,9 +240,15 @@ async function onAiCatalogImageSelected(event) {
     const suggestion = await suggestCatalogFromImage({ image })
     if (run !== aiCatalogRun) return
 
+    const existingItem = findDuplicateItem(suggestion)
     const attributes = canonicalizeSuggestionAttributes(suggestion)
     aiCatalog.value = {
       ...suggestion,
+      group: existingItem?.group || suggestion.group,
+      category: existingItem?.category || suggestion.category,
+      subcategory: existingItem?.subcategory || suggestion.subcategory,
+      name: existingItem?.name || suggestion.name,
+      initialStock: 0,
       attributes: attributes.map(attribute => attribute.name).filter(Boolean),
       values: Object.fromEntries(attributes.map(attribute => [attribute.name, attribute.value || ''])),
     }
@@ -283,6 +295,11 @@ async function saveAiCatalog() {
     aiCatalogError.value = 'Defina o subgrupo antes do subnível.'
     return
   }
+  const initialStock = Number(data.initialStock || 0)
+  if (!Number.isInteger(initialStock) || initialStock < 0) {
+    aiCatalogError.value = 'Informe um estoque inicial inteiro e não negativo.'
+    return
+  }
 
   let item = exactExistingItem()
   if (!item) {
@@ -309,9 +326,9 @@ async function saveAiCatalog() {
       .map(attribute => [attribute, String(data.values[attribute] || '').trim()])
       .filter(([, value]) => value)
   )
-  if (Object.keys(values).length) {
+  if ((Object.keys(values).length || initialStock > 0) && !aiCatalogMatchedVariation.value) {
     try {
-      const variation = await addVariation(item.id, values, 0)
+      const variation = await addVariation(item.id, values, initialStock)
       if (!variation.ok) error(`Item encontrado, mas a variação não foi criada: ${variation.error}`)
     } catch {
       error('Item encontrado, mas não foi possível criar a variação sugerida.')
@@ -381,6 +398,11 @@ async function saveAiCatalog() {
           </ul>
         </section>
 
+        <div v-if="aiCatalog.identified && aiCatalog.industrialSupply === false" role="status" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-300">
+          <p class="text-sm font-semibold">Pode não fazer parte de suprimentos industriais</p>
+          <p class="mt-1 text-xs opacity-80">A classificação é apenas um aviso. Revise os dados e catalogue normalmente se o item pertence ao seu estoque.</p>
+        </div>
+
         <template v-if="aiCatalogImage && !aiCatalogLoading">
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="block">
@@ -423,6 +445,11 @@ async function saveAiCatalog() {
             <input v-model="aiCatalog.name" :class="aiInputClass(aiCatalogNew.item)" />
           </label>
 
+          <div v-if="!isSearchMode && aiCatalogFoundItem && aiCatalogReady" role="status" class="rounded-lg border border-green-200 bg-green-50 px-3 py-3 text-green-800 dark:border-green-900/60 dark:bg-green-950/25 dark:text-green-300">
+            <p class="text-sm font-semibold">Este item já existe no catálogo</p>
+            <p class="mt-1 text-xs opacity-80">{{ [aiCatalogFoundItem.group, aiCatalogFoundItem.category, aiCatalogFoundItem.subcategory, aiCatalogFoundItem.name].filter(Boolean).join(' > ') }} será reutilizado; nenhum item duplicado será criado.</p>
+          </div>
+
           <div v-if="isSearchMode && aiCatalogReady" class="rounded-lg border px-3 py-3 text-sm" :class="aiCatalogFoundItem ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900/60 dark:bg-green-950/25 dark:text-green-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-300'">
             <p class="font-semibold">{{ aiCatalogFoundItem ? 'Encontrado no catálogo' : 'Cadastro igual não encontrado' }}</p>
             <p class="mt-1 text-xs opacity-80">
@@ -448,7 +475,7 @@ async function saveAiCatalog() {
           <div v-if="aiCatalogValueAttrs.length">
             <div class="mb-1.5 flex items-center justify-between gap-3">
               <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Valores identificados</p>
-              <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ isSearchMode ? 'usados para filtrar a variação' : 'criam uma variação com estoque zero' }}</span>
+              <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ isSearchMode ? 'usados para filtrar a variação' : 'definem a nova variação' }}</span>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
               <label v-for="attribute in aiCatalogValueAttrs" :key="attribute" class="block">
@@ -457,6 +484,16 @@ async function saveAiCatalog() {
               </label>
             </div>
           </div>
+
+          <label v-if="!isSearchMode && !aiCatalogMatchedVariation" class="block sm:max-w-xs">
+            <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Estoque inicial</span>
+            <input v-model.number="aiCatalog.initialStock" type="number" min="0" step="1" inputmode="numeric" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-primary-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
+            <span class="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">Quantidade já disponível ao criar esta variação.</span>
+          </label>
+
+          <p v-else-if="!isSearchMode && aiCatalogMatchedVariation" class="text-xs text-gray-500 dark:text-gray-400">
+            A variação já existe; o saldo atual não será alterado.
+          </p>
         </template>
       </div>
 
@@ -474,7 +511,7 @@ async function saveAiCatalog() {
           </button>
           <button v-else class="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg bg-primary-600 px-4 text-sm font-medium hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none" style="color: var(--ds-primary-text)" :disabled="!aiCatalogReady || aiCatalogLoading" @click="saveAiCatalog">
             <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-            {{ keepCataloging ? 'Aprovar e continuar' : 'Aprovar e catalogar' }}
+            {{ aiCatalogFoundItem ? (keepCataloging ? 'Reutilizar e continuar' : 'Reutilizar cadastro') : (keepCataloging ? 'Aprovar e continuar' : 'Aprovar e catalogar') }}
           </button>
         </div>
       </div>

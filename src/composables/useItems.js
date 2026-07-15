@@ -165,14 +165,17 @@ function _findDuplicateItem(data, excludeId = null) {
   const category = normalizeDuplicateText(data.category)
   const subcategory = normalizeDuplicateText(data.subcategory)
   const name = normalizeDuplicateText(data.name || data.subcategory || data.category || data.group)
+  const hierarchyName = normalizeDuplicateText(data.subcategory || data.category || data.group)
+  const isHierarchyEntry = name === hierarchyName
   if (!group || !name) return null
 
   return items.value.find(item => {
     if (item.id === excludeId) return false
+    if (normalizeDuplicateText(itemDuplicateName(item)) !== name) return false
+    if (!isHierarchyEntry && !_isHierarchyModelItem(item)) return true
     return normalizeDuplicateText(item.group) === group &&
       normalizeDuplicateText(item.category) === category &&
-      normalizeDuplicateText(item.subcategory) === subcategory &&
-      normalizeDuplicateText(itemDuplicateName(item)) === name
+      normalizeDuplicateText(item.subcategory) === subcategory
   }) || null
 }
 
@@ -199,20 +202,25 @@ export function useItems() {
     if (duplicate) {
       return {
         ok: false,
-        error: `Já existe um item parecido neste caminho: "${itemDuplicateName(duplicate)}".`,
+        error: `Já existe este item no catálogo: "${itemDuplicateName(duplicate)}".`,
         duplicate,
       }
     }
-    const created = await api.createItem({
-      name: resolvedName,
-      group: data.group,
-      category: data.category || null,
-      subcategory: data.subcategory || null,
-      unit: data.unit || 'UN',
-      minStock: _sanitizeNumber(data.minStock),
-      attributes: data.attributes || [],
-      location: data.location || ''
-    })
+    let created
+    try {
+      created = await api.createItem({
+        name: resolvedName,
+        group: data.group,
+        category: data.category || null,
+        subcategory: data.subcategory || null,
+        unit: data.unit || 'UN',
+        minStock: _sanitizeNumber(data.minStock),
+        attributes: data.attributes || [],
+        location: data.location || ''
+      })
+    } catch (cause) {
+      return { ok: false, error: cause.message || 'Não foi possível criar o item.' }
+    }
     items.value.push(created)
     items.value = sortItems(items.value)
     return { ok: true, item: created }
@@ -227,7 +235,7 @@ export function useItems() {
     if (duplicate) {
       return {
         ok: false,
-        error: `Já existe um item parecido neste caminho: "${itemDuplicateName(duplicate)}".`,
+        error: `Já existe este item no catálogo: "${itemDuplicateName(duplicate)}".`,
         duplicate,
       }
     }
@@ -829,7 +837,7 @@ export function useItems() {
     // Init
     loadData,
     // CRUD
-    addItem, editItem, deleteItem,
+    addItem, editItem, deleteItem, findDuplicateItem: _findDuplicateItem,
     // Variations
     getVariationsForItem, addVariation, editVariation, deleteVariation, getTotalStock,
     // Hierarchy lookups

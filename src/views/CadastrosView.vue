@@ -7,6 +7,7 @@ import PeopleTab from '../components/cadastros/PeopleTab.vue'
 import SuppliersTab from '../components/cadastros/SuppliersTab.vue'
 import EpisTab from '../components/cadastros/EpisTab.vue'
 import UsersTab from '../components/cadastros/UsersTab.vue'
+import CatalogPendingTab from '../components/cadastros/CatalogPendingTab.vue'
 import { backupCountdownLabel } from '../utils/backupStatus.js'
 
 const isAdmin = inject('isAdmin')
@@ -16,7 +17,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['quick-movement', 'update:tab'])
 
-const validTabs = ['hierarquia', 'destinos', 'locais', 'pessoas', 'fornecedores', 'cargos', 'epis', 'operadores']
+const validTabs = ['hierarquia', 'pendencias', 'destinos', 'locais', 'pessoas', 'fornecedores', 'cargos', 'epis', 'operadores']
 const activeSubTab = ref(validTabs.includes(props.initialTab) ? props.initialTab : 'hierarquia')
 const now = ref(Date.now())
 let countdownTimer = null
@@ -35,6 +36,7 @@ const backupIntervalLabel = computed(() => {
 })
 const cadastroTabs = computed(() => [
   { id: 'hierarquia', label: 'Materiais' },
+  { id: 'pendencias', label: 'Pendências' },
   { id: 'destinos', label: 'Destinos e máquinas' },
   { id: 'locais', label: 'Locais' },
   { id: 'pessoas', label: 'Pessoas' },
@@ -103,6 +105,8 @@ onUnmounted(() => {
 
   <!-- Hierarquia -->
   <EditHierarchyView v-if="activeSubTab === 'hierarquia'" />
+
+  <CatalogPendingTab v-else-if="activeSubTab === 'pendencias'" />
 
   <!-- ===== Destinos ===== -->
   <DestinationsTab v-else-if="activeSubTab === 'destinos'" />

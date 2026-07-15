@@ -1038,6 +1038,11 @@ const {
           </ul>
         </section>
 
+        <div v-if="aiCatalog.identified && aiCatalog.industrialSupply === false" role="status" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-300">
+          <p class="text-sm font-semibold">Pode não fazer parte de suprimentos industriais</p>
+          <p class="mt-1 text-xs opacity-80">A classificação é apenas um aviso. Revise os dados e catalogue normalmente se o item pertence ao seu estoque.</p>
+        </div>
+
         <template v-if="aiCatalogImage && !aiCatalogLoading">
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="block">

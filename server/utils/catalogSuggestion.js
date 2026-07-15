@@ -5,6 +5,7 @@ const suggestionSchema = {
   additionalProperties: false,
   properties: {
     identified: { type: 'boolean' },
+    industrialSupply: { type: 'boolean' },
     group: { type: 'string' },
     category: { type: 'string' },
     subcategory: { type: 'string' },
@@ -26,7 +27,20 @@ const suggestionSchema = {
     },
     observations: { type: 'array', items: { type: 'string' } }
   },
-  required: ['identified', 'group', 'category', 'subcategory', 'name', 'unit', 'confidence', 'attributes', 'observations']
+  required: ['identified', 'industrialSupply', 'group', 'category', 'subcategory', 'name', 'unit', 'confidence', 'attributes', 'observations']
+}
+
+function taxonomyKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function singularTaxonomyKey(value) {
+  return taxonomyKey(value).replace(/s$/, '')
 }
 
 export function normalizeCatalogSuggestion(value) {
@@ -44,12 +58,24 @@ export function normalizeCatalogSuggestion(value) {
       return true
     })
 
+  const category = String(value?.category || '').trim()
+  let subcategory = String(value?.subcategory || '').trim()
+  let name = String(value?.name || '').trim()
+  const isBearing = singularTaxonomyKey(category) === 'rolamento' && taxonomyKey(name).startsWith('rolamento')
+  if (isBearing) {
+    subcategory = ''
+    name = 'Rolamento'
+  } else if (subcategory && [category, name].some(candidate => singularTaxonomyKey(candidate) === singularTaxonomyKey(subcategory))) {
+    subcategory = ''
+  }
+
   return {
     identified: Boolean(value?.identified),
+    industrialSupply: value?.industrialSupply !== false,
     group: String(value?.group || '').trim(),
-    category: String(value?.category || '').trim(),
-    subcategory: String(value?.subcategory || '').trim(),
-    name: String(value?.name || '').trim(),
+    category,
+    subcategory,
+    name,
     unit: UNITS.includes(value?.unit) ? value.unit : 'UN',
     confidence: Math.min(1, Math.max(0, Number(value?.confidence) || 0)),
     attributes,
@@ -71,13 +97,13 @@ export async function analyzeCatalogImage({ image, catalog, apiKey, model, fetch
     },
     body: JSON.stringify({
       systemInstruction: {
-        parts: [{ text: 'Você cataloga materiais de estoque industrial a partir de fotos. Responda somente no schema JSON solicitado.' }]
+        parts: [{ text: 'Você identifica e cataloga produtos e materiais a partir de fotos. Responda somente no schema JSON solicitado.' }]
       },
       contents: [{
         role: 'user',
         parts: [
           {
-            text: `Catálogo atual: ${JSON.stringify(catalog)}\n\nIdentifique o material principal e proponha o caminho completo: grupo, subgrupo (category), subnível opcional (subcategory), nome do item, unidade e atributos. A prioridade é descobrir a família/nome genérico do item; os atributos são opcionais e servem apenas como ajuda. Prefira grupos, subgrupos e nomes de item existentes quando forem semanticamente adequados; crie nomes novos somente quando necessário. Quando o item existir no catálogo, reutilize exatamente os nomes de atributos já listados em attributes, variationAttributes e variationExamples; não crie sinônimos. Exemplo: se o item usa o atributo Viton com valor Sim/Não, retorne Viton, não Material de Vedação. Use como nome a família genérica do produto. Marca, modelo, medida, cor, potência, tensão, CA e demais especificações devem ser atributos, nunca parte do nome do item. Não tente estimar medidas pela foto: diâmetro, peso, tamanho, rosca, tensão e valores exatos só devem ter value preenchido quando estiverem legíveis no rótulo, embalagem, gravação ou forem visualmente inequívocos. Para atributo relevante mas ilegível/incerto, mantenha o atributo, use value vazio e readable=false. Não invente texto ou especificações. Se não houver material catalogável ou a imagem for ambígua, use identified=false, campos de hierarquia e nome vazios, e explique em observations.`
+            text: `Catálogo atual: ${JSON.stringify(catalog)}\n\nIdentifique o produto ou material principal e proponha o caminho completo: grupo, subgrupo (category), subnível opcional (subcategory), nome do item, unidade e atributos. O item pode ficar diretamente no subgrupo: deixe subcategory vazio sempre que o subgrupo já classificar o produto; nunca crie subnível para repetir o subgrupo ou o nome do item, nem para guardar marca, modelo ou especificação. Exemplo obrigatório: rolamentos ficam como grupo Transmissão, subgrupo Rolamentos, subcategory vazio e item Rolamento; marca e número do modelo pertencem aos atributos da variação. Mesmo que o produto pareça doméstico, pessoal, comercial ou fora de suprimentos industriais, identifique-o normalmente, use identified=true, marque industrialSupply=false e inclua o motivo em observations; essa classificação nunca deve impedir o cadastro. Use identified=false somente quando não houver um produto identificável ou a imagem for ambígua. A prioridade é descobrir a família/nome genérico do item; os atributos são opcionais e servem apenas como ajuda. Prefira grupos, subgrupos e nomes de item existentes quando forem semanticamente adequados; crie nomes novos somente quando necessário. Quando o item existir no catálogo, reutilize exatamente os nomes de atributos já listados em attributes, variationAttributes e variationExamples; não crie sinônimos. Exemplo: se o item usa o atributo Viton com valor Sim/Não, retorne Viton, não Material de Vedação. Use como nome a família genérica do produto. Marca, modelo, medida, cor, potência, tensão, CA e demais especificações devem ser atributos, nunca parte do nome do item. Não tente estimar medidas pela foto: diâmetro, peso, tamanho, rosca, tensão e valores exatos só devem ter value preenchido quando estiverem legíveis no rótulo, embalagem, gravação ou forem visualmente inequívocos. Para atributo relevante mas ilegível/incerto, mantenha o atributo, use value vazio e readable=false. Não invente texto ou especificações.`
           },
           { inlineData: { mimeType: match[1], data: match[2] } }
         ]

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import db from '../db.js'
 import { requireAdmin, requireAuth, requireOperator } from '../middleware/auth.js'
+import { findDuplicateItem, normalizeItemIdentity } from '../utils/catalogIdentity.js'
 import { calculateStockAfter, isAdminStockAdjustment, parsePositiveQty } from '../utils/stockMath.js'
 import { getDestinationFullName } from '../utils/destinations.js'
 
@@ -71,6 +72,84 @@ function validateMovementSupplier(fields) {
   if (!row) return { ok: false, error: 'Fornecedor precisa estar cadastrado antes de registrar a entrada.' }
   if (!row.active) return { ok: false, error: 'Fornecedor selecionado esta inativo.' }
   return { ok: true, supplier: row.name }
+}
+
+function prepareNewCatalog(raw) {
+  const group = clean(raw?.group).slice(0, 160)
+  const category = clean(raw?.category).slice(0, 160)
+  const subcategory = clean(raw?.subcategory).slice(0, 160)
+  const name = clean(raw?.name).slice(0, 240)
+  const unit = clean(raw?.unit).slice(0, 16) || 'UN'
+  const initialStock = Number(raw?.initialStock ?? 0)
+  if (!group || !name) return { error: 'Revise o grupo e o nome dos novos itens.' }
+  if (subcategory && !category) return { error: 'Defina o subgrupo antes do subnivel.' }
+  if (!Number.isFinite(initialStock) || initialStock < 0) return { error: 'Saldo ja existente deve ser zero ou positivo.' }
+
+  const attributes = []
+  const values = {}
+  const seen = new Set()
+  for (const row of Array.isArray(raw?.attributes) ? raw.attributes.slice(0, 30) : []) {
+    const attribute = clean(row?.name).slice(0, 80)
+    const key = normalizeItemIdentity(attribute)
+    if (!attribute || !key || seen.has(key)) continue
+    seen.add(key)
+    attributes.push(attribute)
+    const value = clean(row?.value).slice(0, 240)
+    if (value) values[attribute] = value
+  }
+
+  return {
+    catalog: {
+      group,
+      category,
+      subcategory,
+      name,
+      unit,
+      attributes,
+      values,
+      initialStock,
+    },
+  }
+}
+
+function insertBatchMovement({ type, item, qty, stockBefore, stockAfter, date, supplier = '', unitCost = null, requestedBy = '', requestedByPersonId = '', destination = '', docRef = '', note = '', operatorId, operatorName }) {
+  const id = 'mov_' + crypto.randomBytes(6).toString('hex')
+  const movement = {
+    id,
+    type,
+    variationId: item.variationId,
+    itemId: item.itemId,
+    itemName: item.itemName || '',
+    itemGroup: item.itemGroup || '',
+    itemCategory: item.itemCategory || '',
+    itemSubcategory: item.itemSubcategory || '',
+    itemUnit: item.itemUnit || '',
+    variationValues: item.variationValues || {},
+    variationExtras: item.variationExtras || {},
+    qty,
+    stockBefore,
+    stockAfter,
+    date,
+    supplier,
+    unitCost,
+    requestedBy,
+    requestedByPersonId,
+    destination,
+    docRef,
+    note,
+    operatorId,
+    operatorName,
+  }
+  db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, requested_by_person_id, destination, doc_ref, note, operator_id, operator_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, type, item.variationId, item.itemId,
+    movement.itemName, movement.itemGroup, movement.itemCategory, movement.itemSubcategory, movement.itemUnit,
+    JSON.stringify(movement.variationValues), JSON.stringify(movement.variationExtras),
+    qty, stockBefore, stockAfter, date,
+    supplier, unitCost, requestedBy, requestedByPersonId, destination, docRef, note,
+    operatorId, operatorName
+  )
+  return movement
 }
 
 function toMovement(row) {
@@ -226,21 +305,61 @@ router.post('/batch', requireAuth, requireOperator, (req, res) => {
 
   const liveStockByVariation = new Map()
   const prepared = []
+  const pendingCatalogNames = new Set()
 
-  for (const item of items) {
-    const lineType = ['entrada', 'saida'].includes(item.type) ? item.type : type
+  for (const rawItem of items) {
+    const lineType = ['entrada', 'saida'].includes(rawItem.type) ? rawItem.type : type
     if (!['entrada', 'saida'].includes(lineType)) {
       return res.status(400).json({ error: 'Todos os itens do lote precisam de tipo entrada ou saida.' })
     }
-    const qty = parsePositiveQty(item.qty)
-    if (!item.variationId || !item.itemId || !qty) {
-      return res.status(400).json({ error: 'Itens do lote precisam de variationId, itemId e qty positiva.' })
-    }
+    const qty = parsePositiveQty(rawItem.qty)
+    if (!qty) return res.status(400).json({ error: 'Todos os itens do lote precisam de quantidade positiva.' })
 
-    const variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ? AND active = 1').get(item.variationId)
-    if (!variation) return res.status(404).json({ error: `Variacao nao encontrada: ${item.variationId}` })
-    if (variation.item_id !== item.itemId) {
-      return res.status(400).json({ error: 'Variacao nao pertence ao item informado.' })
+    let item = rawItem
+    let variation
+    let newCatalog = null
+    if (rawItem.newCatalog) {
+      if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Somente administradores podem cadastrar itens pela movimentacao.' })
+      const preparedCatalog = prepareNewCatalog(rawItem.newCatalog)
+      if (preparedCatalog.error) return res.status(400).json({ error: preparedCatalog.error })
+      newCatalog = preparedCatalog.catalog
+      const duplicate = findDuplicateItem(newCatalog)
+      if (duplicate) {
+        return res.status(409).json({
+          error: `Este item ja existe no catalogo: "${duplicate.name}". Atualize os dados e selecione a variacao existente.`,
+          code: 'ITEM_DUPLICATE',
+        })
+      }
+      const identity = normalizeItemIdentity(newCatalog.name)
+      if (pendingCatalogNames.has(identity)) {
+        return res.status(409).json({ error: `O lote tenta cadastrar "${newCatalog.name}" mais de uma vez. Una as quantidades em uma foto.`, code: 'ITEM_DUPLICATE' })
+      }
+      pendingCatalogNames.add(identity)
+
+      const itemId = 'item_' + crypto.randomBytes(6).toString('hex')
+      const variationId = 'var_' + crypto.randomBytes(6).toString('hex')
+      item = {
+        ...rawItem,
+        itemId,
+        variationId,
+        itemName: newCatalog.name,
+        itemGroup: newCatalog.group,
+        itemCategory: newCatalog.category,
+        itemSubcategory: newCatalog.subcategory,
+        itemUnit: newCatalog.unit,
+        variationValues: newCatalog.values,
+        variationExtras: {},
+      }
+      variation = { stock: newCatalog.initialStock, item_id: itemId }
+    } else {
+      if (!rawItem.variationId || !rawItem.itemId) {
+        return res.status(400).json({ error: 'Itens do lote precisam de variationId e itemId.' })
+      }
+      variation = db.prepare('SELECT stock, item_id FROM variations WHERE id = ? AND active = 1').get(rawItem.variationId)
+      if (!variation) return res.status(404).json({ error: `Variacao nao encontrada: ${rawItem.variationId}` })
+      if (variation.item_id !== rawItem.itemId) {
+        return res.status(400).json({ error: 'Variacao nao pertence ao item informado.' })
+      }
     }
 
     const stockBefore = liveStockByVariation.has(item.variationId)
@@ -278,73 +397,78 @@ router.post('/batch', requireAuth, requireOperator, (req, res) => {
       requestedByPersonId: personValidation.requestedByPersonId,
       destination: destinationValidation.destination,
       unitCost: lineType === 'entrada' ? costValidation.value : null,
+      newCatalog,
     })
   }
 
   const date = fields.date || new Date().toISOString()
   const created = []
+  const initialMovements = []
 
   const createBatch = db.transaction(() => {
+    for (const line of prepared.filter(row => row.newCatalog)) {
+      const catalog = line.newCatalog
+      db.prepare(`INSERT INTO items (id, name, group_name, category, subcategory, unit, min_stock, attributes, location)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, '')`).run(
+        line.item.itemId, catalog.name, catalog.group, catalog.category || null, catalog.subcategory || null,
+        catalog.unit, JSON.stringify(catalog.attributes)
+      )
+      db.prepare(`INSERT INTO variations (id, item_id, vals, stock, min_stock, initial_stock, extras, location, locations, destinations)
+        VALUES (?, ?, ?, 0, 0, ?, '{}', '', '[]', '[]')`).run(
+        line.item.variationId, line.item.itemId, JSON.stringify(catalog.values), catalog.initialStock
+      )
+      if (catalog.initialStock > 0) {
+        initialMovements.push(insertBatchMovement({
+          type: 'entrada',
+          item: line.item,
+          qty: catalog.initialStock,
+          stockBefore: 0,
+          stockAfter: catalog.initialStock,
+          date,
+          docRef: 'AJUSTE',
+          note: 'Saldo ja existente informado no cadastro pela movimentacao por foto.',
+          operatorId,
+          operatorName,
+        }))
+      }
+    }
+
     for (const [variationId, stock] of liveStockByVariation.entries()) {
       db.prepare('UPDATE variations SET stock = ? WHERE id = ?').run(stock, variationId)
     }
 
     for (const line of prepared) {
       const m = line.item
-      const id = 'mov_' + crypto.randomBytes(6).toString('hex')
-      const supplier = line.supplier
-      const requestedBy = line.requestedBy
-      const requestedByPersonId = line.requestedByPersonId
-      const destination = line.destination
       const docRef = movementField(m, fields, 'docRef')
       const note = movementField(m, fields, 'note')
-      const unitCost = line.unitCost
-      db.prepare(`INSERT INTO movements (id, type, variation_id, item_id, item_name, item_group, item_category, item_subcategory, item_unit, variation_values, variation_extras, qty, stock_before, stock_after, date, supplier, unit_cost, requested_by, requested_by_person_id, destination, doc_ref, note, operator_id, operator_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        id, line.type, m.variationId, m.itemId,
-        m.itemName || '', m.itemGroup || '', m.itemCategory || '', m.itemSubcategory || '', m.itemUnit || '',
-        JSON.stringify(m.variationValues || {}), JSON.stringify(m.variationExtras || {}),
-        line.qty, line.stockBefore, line.stockAfter,
-        date,
-        supplier, unitCost, requestedBy, requestedByPersonId, destination, docRef, note,
-        operatorId, operatorName
-      )
-      created.push({
-        id,
+      created.push(insertBatchMovement({
         type: line.type,
-        variationId: m.variationId,
-        itemId: m.itemId,
-        itemName: m.itemName || '',
-        itemGroup: m.itemGroup || '',
-        itemCategory: m.itemCategory || '',
-        itemSubcategory: m.itemSubcategory || '',
-        itemUnit: m.itemUnit || '',
-        variationValues: m.variationValues || {},
-        variationExtras: m.variationExtras || {},
+        item: m,
         qty: line.qty,
         stockBefore: line.stockBefore,
         stockAfter: line.stockAfter,
         date,
-        supplier,
-        unitCost,
-        requestedBy,
-        requestedByPersonId,
-        destination,
+        supplier: line.supplier,
+        unitCost: line.unitCost,
+        requestedBy: line.requestedBy,
+        requestedByPersonId: line.requestedByPersonId,
+        destination: line.destination,
         docRef,
         note,
         operatorId,
         operatorName,
-      })
+      }))
     }
 
+    const response = { movements: created, initialMovements }
     if (cleanRequestId) {
       db.prepare('INSERT INTO movement_batch_requests (request_id, user_id, response_json) VALUES (?, ?, ?)')
-        .run(cleanRequestId, operatorId, JSON.stringify({ movements: created }))
+        .run(cleanRequestId, operatorId, JSON.stringify(response))
     }
   })
 
   createBatch()
-  res.json({ movements: created })
+  res.json({ movements: created, initialMovements })
 })
 
 // PUT /api/movements/:id

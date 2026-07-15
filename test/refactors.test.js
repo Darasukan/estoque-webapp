@@ -14,6 +14,7 @@ import { workOrderMaintenanceKindLabel, workOrderMaintenanceSearchParts } from '
 import {
   extrasListToObject,
   validateVariationForm,
+  variationSetupIssues,
   variationFormForEdit,
   variationFormForItem,
 } from '../src/utils/variationForm.js'
@@ -75,6 +76,17 @@ test('variation form helpers preserve catalog behavior', () => {
   assert.equal(validateVariationForm(item, variationFormForItem(item)), 'Preencha ao menos um atributo.')
   assert.equal(validateVariationForm(item, { ...variationFormForItem(item), values: { Cor: 'Azul' }, stock: -1 }), 'Quantidade não pode ser negativa.')
   assert.equal(validateVariationForm(item, { ...variationFormForItem(item), values: { Cor: 'Azul' }, stock: 1 }), null)
+})
+
+test('variation setup reports only missing operational fields', () => {
+  assert.deepEqual(variationSetupIssues(
+    { location: 'Prateleira A' },
+    { minStock: 0, locations: [], destinations: [] },
+  ), ['minStock', 'destination'])
+  assert.deepEqual(variationSetupIssues(
+    {},
+    { minStock: 2, locations: ['Prateleira B'], destinations: ['Máquina 1'] },
+  ), [])
 })
 
 test('stock alert transition only fires when saída enters a bad stock band', () => {

@@ -7,8 +7,12 @@ import {
   canDeletePhotoBatch,
   canEditPhotoBatch,
   effectivePhotoFields,
+  displayPhotoUnitCost,
   findExactPhotoMatch,
+  maskPhotoUnitCost,
+  parsePhotoUnitCost,
   photoBatchBlockReason,
+  photoCatalogDraft,
   photoBatchExpired,
 } from '../src/utils/photoMovement.js'
 import { isPhotoStorageQuotaError, photoSyncWarning, toPhotoStorageRecord } from '../src/services/photoMovementDrafts.js'
@@ -148,6 +152,40 @@ test('distinguishes network, session and outdated server sync failures', () => {
   assert.match(photoSyncWarning(new TypeError('Failed to fetch')), /sem conexão/i)
   assert.match(photoSyncWarning({ status: 401 }), /sessão/i)
   assert.match(photoSyncWarning({ status: 404 }), /atualize o servidor/i)
+})
+
+test('reuses the Gemini suggestion when cataloging and moving a new item', () => {
+  const catalog = photoCatalogDraft(suggestion({ unit: 'PAR', industrialSupply: false }))
+  catalog.initialStock = 4
+  const batch = { type: 'entrada', defaults: { supplier: '', docRef: 'NF 1', note: 'Implantação' } }
+  const photo = { createCatalog: true, catalog, status: 'matched', qty: 2, unitCost: '12,50' }
+
+  assert.deepEqual(buildPhotoMovementLine(batch, photo), {
+    newCatalog: catalog,
+    qty: 2,
+    supplier: '',
+    unitCost: 12.5,
+    docRef: 'NF 1',
+    note: 'Implantação',
+  })
+  assert.equal(photoBatchBlockReason(batch, [photo], items, variations), '')
+})
+
+test('blocks a new-item exit above its declared existing balance', () => {
+  const batch = { type: 'saida', defaults: { requestedBy: 'Maria', requestedByPersonId: 'person_1', destination: 'Fábrica', destinationId: 'dest_1' } }
+  const photo = { createCatalog: true, catalog: { ...photoCatalogDraft(suggestion()), initialStock: 2 }, status: 'matched', qty: 3 }
+  assert.match(photoBatchBlockReason(batch, [photo], items, variations), /excede o saldo/i)
+  photo.catalog.initialStock = 3
+  assert.equal(photoBatchBlockReason(batch, [photo], items, variations), '')
+})
+
+test('requires explicit review and masks photo entry unit cost in pt-BR', () => {
+  const batch = { type: 'entrada', defaults: { supplier: '', docRef: '', note: '' } }
+  const photo = { createCatalog: true, catalog: photoCatalogDraft(suggestion()), status: 'review', qty: 1, unitCost: '12,34' }
+  assert.match(photoBatchBlockReason(batch, [photo], items, variations), /confirme a revisão/i)
+  assert.equal(maskPhotoUnitCost('1234'), '12,34')
+  assert.equal(displayPhotoUnitCost(12.34), '12,34')
+  assert.equal(parsePhotoUnitCost('1.234,56'), 1234.56)
 })
 
 test('requires an explicit edit action for another account pending batch', () => {
