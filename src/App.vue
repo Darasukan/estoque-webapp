@@ -90,7 +90,7 @@ const showLoginModal = ref(false)
 const mobileSidebarOpen = ref(false)
 const mobileSidebarTrigger = ref(null)
 const railOpen = ref(false)
-const catalogSidebarDismissed = ref(false)
+const catalogSidebarDismissed = ref(true)
 const catalogSearch = ref(savedUiState.catalogSearch || '')
 const catalogRef = ref(null)
 const activeTab = ref(savedActiveTab)
@@ -139,7 +139,9 @@ const showHistorySidebar = computed(() =>
 )
 const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
 const catalogSidebarDocked = computed(() => showCatalogSidebar.value)
-const sidebarOverlayOpen = computed(() => anySidebar.value && mobileSidebarOpen.value && !catalogSidebarDocked.value)
+const historySidebarDocked = computed(() => showHistorySidebar.value && mobileSidebarOpen.value)
+const sidebarDocked = computed(() => catalogSidebarDocked.value || historySidebarDocked.value)
+const sidebarOverlayOpen = computed(() => anySidebar.value && mobileSidebarOpen.value && !sidebarDocked.value)
 const navigationGroups = [
   { id: 'inicio', label: 'Início', defaultTab: 'dashboard', icon: 'M2.25 12l8.954-8.955a1.125 1.125 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75', tabs: [{ id: 'dashboard', label: 'Início' }] },
   {
@@ -325,17 +327,17 @@ watch(user, (newUser, oldUser) => {
 
 watch(activeTab, value => {
   railOpen.value = false
-  if (value === 'catalogo' || value === 'movimentacoes') catalogSidebarDismissed.value = false
+  if (value === 'catalogo' || value === 'movimentacoes') catalogSidebarDismissed.value = true
   saveUiState({ activeTab: value })
 })
 
 watch(movBrowsing, browsing => {
-  if (activeTab.value === 'movimentacoes' && browsing) catalogSidebarDismissed.value = false
+  if (activeTab.value === 'movimentacoes' && browsing) catalogSidebarDismissed.value = true
 })
 
-// Abre o drawer de filtros só quando o painel não está dockado.
+// Fecha painéis antigos ao trocar de contexto; a abertura é sempre manual.
 watch([anySidebar, catalogSidebarDocked], ([available, docked]) => {
-  mobileSidebarOpen.value = available && !docked
+  if (!available || docked) mobileSidebarOpen.value = false
 }, { immediate: true })
 
 function openMobileSidebar() {
@@ -726,7 +728,7 @@ function handleGlobalShortcutKeydown(event) {
 </script>
 
 <template>
-  <div class="ds-page" :class="{ 'has-docked-catalog-sidebar': catalogSidebarDocked }">
+  <div class="ds-page" :class="{ 'has-docked-sidebar': sidebarDocked }">
     <!-- Catalog Sidebar -->
     <AppSidebar
       v-if="showCatalogSidebar"
@@ -752,7 +754,7 @@ function handleGlobalShortcutKeydown(event) {
     <HistorySidebar
       v-if="showHistorySidebar && movRef"
       id="mobile-side-panel"
-      :class="{ 'mobile-sidebar-open': mobileSidebarOpen }"
+      :class="{ 'mobile-sidebar-open': mobileSidebarOpen, 'history-sidebar-docked': historySidebarDocked }"
       :role="sidebarOverlayOpen ? 'dialog' : undefined"
       :aria-modal="sidebarOverlayOpen ? 'true' : undefined"
       aria-label="Filtros do histórico"
@@ -930,9 +932,9 @@ function handleGlobalShortcutKeydown(event) {
           variant="ghost"
           size="icon"
           aria-controls="mobile-side-panel"
-          :aria-expanded="catalogSidebarDocked || mobileSidebarOpen"
-          :aria-label="catalogSidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
-          :title="catalogSidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
+          :aria-expanded="sidebarDocked || mobileSidebarOpen"
+          :aria-label="sidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
+          :title="sidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
           @click="toggleSidebar"
         >
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

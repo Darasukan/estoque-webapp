@@ -75,7 +75,7 @@ function toggleSection(facet) {
       </div>
     </div>
 
-    <template>
+    <div class="flex min-h-0 flex-1 flex-col">
       <button
         v-if="hasActiveFilters"
         class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1 cursor-pointer"
@@ -296,7 +296,7 @@ function toggleSection(facet) {
           Nenhuma movimentação registrada.
         </p>
       </div>
-    </template>
+    </div>
   </aside>
 </template>
 

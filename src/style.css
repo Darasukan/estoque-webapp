@@ -249,7 +249,7 @@
     flex-direction: column;
   }
 
-  /* Painéis de filtro: overlay por padrão; dockados no catálogo. */
+  /* Painéis de filtro: ocupam o lugar do rail quando ativos. */
   .catalog-sidebar,
   .history-filter-sidebar {
     left: 0 !important;
@@ -268,13 +268,13 @@
     transition-delay: 0s;
   }
 
-  .ds-page.has-docked-catalog-sidebar .ds-rail {
+  .ds-page.has-docked-sidebar .ds-rail {
     transform: translateX(-100%);
     visibility: hidden;
     pointer-events: none;
   }
 
-  .ds-page.has-docked-catalog-sidebar .ds-app-main {
+  .ds-page.has-docked-sidebar .ds-app-main {
     margin-left: 17rem !important;
   }
 
@@ -282,11 +282,18 @@
     transform: translateX(0);
     visibility: visible;
     box-shadow: none !important;
-    transition-delay: 0s;
-    animation: catalog-sidebar-slide-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+    transition: none;
+    animation: sidebar-slide-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
-  @keyframes catalog-sidebar-slide-in {
+  .history-filter-sidebar.history-sidebar-docked {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: none !important;
+    transition-delay: 0s;
+  }
+
+  @keyframes sidebar-slide-in {
     from {
       transform: translateX(-100%);
     }
