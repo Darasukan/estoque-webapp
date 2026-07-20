@@ -26,6 +26,7 @@ const { success, error } = useToast()
 const destinationSearch = ref('')
 const selectedParentId = ref('')
 const selectedMaterialDestId = ref('')
+const mobileDetailOpen = ref(false)
 
 const addingDest = ref(false)
 const newDestName = ref('')
@@ -142,6 +143,7 @@ function selectParent(id) {
 
 function selectDestination(destination) {
   selectParent(destination.id)
+  mobileDetailOpen.value = true
 }
 
 function startAddDest(parentId = null) {
@@ -780,9 +782,12 @@ async function removeMaterialFromDestination(variation) {
 </script>
 
 <template>
-  <div class="flex gap-0 min-h-[560px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+  <div class="flex min-h-[calc(100dvh-11rem)] gap-0 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 md:min-h-[560px]">
     <!-- Left panel -->
-    <aside class="destination-management-sidebar w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <aside
+      class="destination-management-sidebar w-full flex-shrink-0 flex-col bg-gray-50 dark:bg-gray-800 md:w-64 md:border-r md:border-gray-200 md:dark:border-gray-700"
+      :class="mobileDetailOpen ? 'hidden md:flex' : 'flex'"
+    >
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Destinos</p>
         <div class="relative">
@@ -790,7 +795,7 @@ async function removeMaterialFromDestination(variation) {
           <input
             v-model="destinationSearch"
             placeholder="Filtrar..."
-            class="w-full pl-6 pr-2 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-700/60 border border-transparent focus:border-gray-300 dark:focus:border-gray-600 text-gray-600 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none transition-colors"
+            class="min-h-10 w-full pl-6 pr-2 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-700/60 border border-transparent focus:border-gray-300 dark:focus:border-gray-600 text-gray-600 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none transition-colors"
           />
         </div>
       </div>
@@ -808,7 +813,7 @@ async function removeMaterialFromDestination(variation) {
           v-for="destination in filteredDestinationList"
           :key="destination.id"
           type="button"
-          class="group/row w-[calc(100%-0.5rem)] flex items-center gap-1.5 px-2 py-1.5 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors text-left"
+          class="group/row min-h-11 w-[calc(100%-0.5rem)] flex items-center gap-1.5 px-2 py-1.5 mx-1 my-0.5 rounded-lg cursor-pointer transition-colors text-left md:min-h-0"
           :class="selectedMaterialDestId === destination.id
             ? 'bg-primary-600 dark:bg-primary-700 text-[var(--ds-primary-text)]'
             : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'"
@@ -852,7 +857,7 @@ async function removeMaterialFromDestination(variation) {
         </div>
         <button
           v-else
-          class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-md transition-colors"
+          class="flex min-h-10 w-full items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-md transition-colors md:min-h-0"
           @click="startAddDest(null)"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -862,14 +867,26 @@ async function removeMaterialFromDestination(variation) {
     </aside>
 
     <!-- Right panel -->
-    <main class="flex-1 min-w-0 bg-white dark:bg-gray-900 overflow-y-auto">
+    <main
+      class="min-w-0 flex-1 overflow-y-auto bg-white dark:bg-gray-900"
+      :class="mobileDetailOpen ? 'block' : 'hidden md:block'"
+    >
       <div v-if="!selectedParent" class="flex flex-col items-center justify-center h-full py-20 text-gray-300 dark:text-gray-600">
         <svg class="w-10 h-10 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
         <p class="text-sm">Selecione um destino a esquerda.</p>
       </div>
 
       <template v-else>
-        <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
+        <div class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900 sm:px-5 sm:py-3">
+          <button
+            type="button"
+            class="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/30 md:hidden"
+            @click="mobileDetailOpen = false"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 19.5-7.5-7.5 7.5-7.5" /></svg>
+            Destinos
+          </button>
+          <span class="h-5 w-px bg-gray-200 dark:bg-gray-700 md:hidden"></span>
           <template v-for="(destination, index) in selectedDestinationPath" :key="destination.id">
             <button
               type="button"
@@ -889,17 +906,17 @@ async function removeMaterialFromDestination(variation) {
           </span>
         </div>
 
-        <div class="p-5 space-y-6">
+        <div class="space-y-5 p-3 sm:space-y-6 sm:p-5">
           <!-- Selected destination details -->
           <section
             class="rounded-xl border border-primary-500 bg-gray-50 ring-1 ring-primary-500/30 dark:border-primary-500 dark:bg-gray-800 overflow-hidden transition-all"
             @contextmenu="openContextMenu($event, detailDestination)"
           >
-            <div class="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-700">
+            <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 px-3 py-3 dark:border-gray-700 sm:px-4">
               <template v-if="editingDestId === detailDestination.id">
                 <input
                   v-model="editDestName"
-                  class="flex-1 min-w-0 px-2 py-1.5 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
+                  class="w-full min-w-0 flex-1 px-2 py-2 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none sm:w-auto"
                   autofocus
                   @keydown.enter="confirmEditDest"
                   @keydown.escape="cancelEditDest"
@@ -907,7 +924,7 @@ async function removeMaterialFromDestination(variation) {
                 <input
                   v-model="editDestDesc"
                   placeholder="Descricao..."
-                  class="flex-1 min-w-0 px-2 py-1.5 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
+                  class="w-full min-w-0 flex-1 px-2 py-2 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none sm:w-auto"
                   @keydown.enter="confirmEditDest"
                   @keydown.escape="cancelEditDest"
                 />
@@ -921,7 +938,7 @@ async function removeMaterialFromDestination(variation) {
 
               <template v-else>
                 <div
-                  class="flex-1 min-w-0 text-left rounded-lg px-2 py-1 -mx-2 hover:bg-white dark:hover:bg-gray-700/60 transition-colors"
+                  class="min-w-0 basis-full rounded-lg px-2 py-1 -mx-2 text-left transition-colors hover:bg-white dark:hover:bg-gray-700/60 sm:basis-auto sm:flex-1"
                 >
                   <p class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                     <span class="truncate">{{ detailDestination.name }}</span>
@@ -931,21 +948,21 @@ async function removeMaterialFromDestination(variation) {
                 <span
                   class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
                 >Selecionado</span>
-                <div v-if="isLoggedIn" class="flex items-center gap-1">
+                <div v-if="isLoggedIn" class="ml-auto flex items-center gap-1">
                   <button
-                    class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+                    class="inline-flex min-h-10 items-center px-3 py-0.5 rounded-full text-[11px] font-medium transition-colors"
                     :class="detailDestination.active
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
                     @click="onToggleActive(detailDestination)"
                   >{{ detailDestination.active ? 'Ativo' : 'Inativo' }}</button>
-                  <button class="p-1 rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click="startMoveDest(detailDestination)">
+                  <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click="startMoveDest(detailDestination)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h15m0 0-3-3m3 3-3 3M21 16.5H6m0 0 3 3m-3-3 3-3" /></svg>
                   </button>
-                  <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click="startEditDest(detailDestination)">
+                  <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click="startEditDest(detailDestination)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                   </button>
-                  <button class="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click="onDeleteDest(detailDestination)">
+                  <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click="onDeleteDest(detailDestination)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                   </button>
                 </div>
@@ -959,7 +976,7 @@ async function removeMaterialFromDestination(variation) {
               <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Sub-destinos</p>
               <button
                 v-if="isLoggedIn && selectedParent.active && !(addingDest && newDestParentId === selectedParent.id)"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
+                class="inline-flex min-h-10 items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
                 @click="startAddDest(selectedParent.id)"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -967,7 +984,7 @@ async function removeMaterialFromDestination(variation) {
               </button>
             </div>
 
-            <div v-if="addingDest && newDestParentId === selectedParent.id" class="mb-3 rounded-xl border border-primary-300 dark:border-primary-700 bg-primary-50/40 dark:bg-primary-900/10 p-3 flex items-center gap-2">
+            <div v-if="addingDest && newDestParentId === selectedParent.id" class="mb-3 flex flex-col gap-2 rounded-xl border border-primary-300 bg-primary-50/40 p-3 dark:border-primary-700 dark:bg-primary-900/10 sm:flex-row sm:items-center">
               <input
                 v-model="newDestName"
                 placeholder="Nome do sub-destino"
@@ -1030,7 +1047,7 @@ async function removeMaterialFromDestination(variation) {
                 </template>
 
                 <template v-else>
-                  <button class="w-full text-left p-4 cursor-pointer" type="button" @click="selectDestination(child)">
+                  <button class="w-full cursor-pointer p-4 pb-14 text-left md:pb-4" type="button" @click="selectDestination(child)">
                     <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate pr-20">{{ child.name }}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 line-clamp-2">{{ child.description || 'Sem descricao' }}</p>
                     <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-3">
@@ -1048,21 +1065,21 @@ async function removeMaterialFromDestination(variation) {
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
                   >{{ child.active ? 'Ativo' : 'Inativo' }}</span>
-                  <div v-if="isLoggedIn" class="absolute bottom-2 right-2 flex gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                  <div v-if="isLoggedIn" class="absolute bottom-2 right-2 flex gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/card:opacity-100">
                     <button
-                      class="p-1 rounded text-gray-400 hover:text-green-500 dark:hover:text-green-400 bg-white dark:bg-gray-700 shadow-sm"
+                      class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-green-500 dark:hover:text-green-400 bg-white dark:bg-gray-700 shadow-sm"
                       :title="child.active ? 'Inativar' : 'Ativar'"
                       @click.stop="onToggleActive(child)"
                     >
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                     </button>
-                    <button class="p-1 rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click.stop="startMoveDest(child)">
+                    <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 bg-white dark:bg-gray-700 shadow-sm" title="Mover" @click.stop="startMoveDest(child)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h15m0 0-3-3m3 3-3 3M21 16.5H6m0 0 3 3m-3-3 3-3" /></svg>
                     </button>
-                    <button class="p-1 rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click.stop="startEditDest(child)">
+                    <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 bg-white dark:bg-gray-700 shadow-sm" title="Editar" @click.stop="startEditDest(child)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>
-                    <button class="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click.stop="onDeleteDest(child)">
+                    <button class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-700 shadow-sm" title="Excluir" @click.stop="onDeleteDest(child)">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79" /></svg>
                     </button>
                   </div>

@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/local-brand/favicon.png" />
     <link rel="apple-touch-icon" href="/local-brand/favicon.png" />
+    <script>
+      try {
+        document.documentElement.classList.toggle('dark', localStorage.getItem('theme') !== 'light')
+      } catch {
+        document.documentElement.classList.add('dark')
+      }
+    </script>
+    <link id="app-theme" rel="stylesheet" href="/themes/industrial.css" data-theme="industrial" />
     <title>Estoque</title>
   </head>
   <body>

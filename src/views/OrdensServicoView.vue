@@ -2908,7 +2908,7 @@ function matBackToStep2() {
           class="ds-list-row"
         >
           <div
-            class="flex flex-wrap items-center gap-3 px-4 py-3 cursor-pointer transition-colors"
+            class="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3 cursor-pointer transition-colors sm:gap-3 sm:px-4"
             @click="toggleOrder(order.id)"
           >
             <svg
@@ -2926,13 +2926,13 @@ function matBackToStep2() {
             <span v-if="order.motorTag" class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap">
               Motor {{ order.motorTag }}
             </span>
-            <span class="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 min-w-[180px] flex items-center gap-2 truncate">
+            <span class="flex w-full basis-full items-center gap-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100 sm:w-auto sm:min-w-[180px] sm:basis-auto sm:flex-1">
               <span class="truncate">{{ orderDisplayTitle(order) }}</span>
               <span v-if="isMotorMode && motorOrderEventLabel(order)" class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300 whitespace-nowrap">
                 {{ motorOrderEventLabel(order) }}
               </span>
             </span>
-            <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ order.requestedBy || 'Sem solicitante' }}</span>
+            <span class="max-w-full truncate text-xs text-gray-500 dark:text-gray-400 sm:whitespace-nowrap">{{ order.requestedBy || 'Sem solicitante' }}</span>
             <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{{ formatDateTimeParts(order.requestDate, order.requestTime, order.createdAt) }}</span>
             <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
               {{ (order.items || []).length }} {{ (order.items || []).length === 1 ? 'material' : 'materiais' }}
@@ -2940,7 +2940,7 @@ function matBackToStep2() {
             <button
               v-if="canManageOs"
               type="button"
-              class="px-3 py-1.5 text-xs font-medium text-[var(--ds-primary-text)] bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+              class="ml-auto min-h-10 px-3 py-1.5 text-xs font-medium text-[var(--ds-primary-text)] bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors sm:ml-0"
               @click.stop="startEditOS(order)"
             >
               Editar
@@ -2948,7 +2948,7 @@ function matBackToStep2() {
             <button
               v-if="isMotorMode && isAdmin && confirmDeleteId !== order.id"
               type="button"
-              class="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              class="min-h-10 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               @click.stop="confirmDeleteId = order.id"
             >
               Excluir
@@ -2957,14 +2957,14 @@ function matBackToStep2() {
               <span class="text-xs text-red-600 dark:text-red-400">Confirmar?</span>
               <button
                 type="button"
-                class="px-2 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded"
+                class="min-h-10 px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded"
                 @click.stop="handleDeleteOS(order.id)"
               >
                 Sim
               </button>
               <button
                 type="button"
-                class="px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                class="min-h-10 px-3 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                 @click.stop="confirmDeleteId = null"
               >
                 Não

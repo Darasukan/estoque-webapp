@@ -33,7 +33,7 @@ const MovimentacoesView = defineAsyncComponent(() => import('./views/Movimentaco
 const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
 
-const { isDark, toggleTheme, visualStyleName, cycleStyle } = useTheme()
+const { isDark, toggleTheme } = useTheme()
 const { items, variations, uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
 const { loadData: loadMovements } = useMovements()
 const { loadData: loadLocations } = useLocations()
@@ -74,8 +74,9 @@ function saveUiState(patch) {
 
 function loadStoredList(key) {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || '[]')
-    return Array.isArray(value) ? value : []
+    const value = localStorage.getItem(key) || '[]'
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
@@ -86,7 +87,10 @@ const savedActiveTab = ['dashboard', 'catalogo', 'inventario', 'movimentacoes', 
   ? savedUiState.activeTab
   : 'dashboard'
 const showLoginModal = ref(false)
-const sidebarCollapsed = ref(Boolean(savedUiState.sidebarCollapsed))
+const mobileSidebarOpen = ref(false)
+const mobileSidebarTrigger = ref(null)
+const railOpen = ref(false)
+const catalogSidebarDismissed = ref(false)
 const catalogSearch = ref(savedUiState.catalogSearch || '')
 const catalogRef = ref(null)
 const activeTab = ref(savedActiveTab)
@@ -126,42 +130,51 @@ watch(mustChangePassword, required => {
   if (required) passwordModalOpen.value = true
 }, { immediate: true })
 
-const showCatalogSidebar = computed(() =>
+const catalogSidebarAvailable = computed(() =>
   activeTab.value === 'catalogo' || (activeTab.value === 'movimentacoes' && movBrowsing.value)
 )
+const showCatalogSidebar = computed(() => catalogSidebarAvailable.value && !catalogSidebarDismissed.value)
 const showHistorySidebar = computed(() =>
   activeTab.value === 'movimentacoes' && movSubTab.value === 'historico'
 )
 const anySidebar = computed(() => showCatalogSidebar.value || showHistorySidebar.value)
+const catalogSidebarDocked = computed(() => showCatalogSidebar.value)
+const sidebarOverlayOpen = computed(() => anySidebar.value && mobileSidebarOpen.value && !catalogSidebarDocked.value)
 const navigationGroups = [
-  { id: 'inicio', label: 'Início', defaultTab: 'dashboard', tabs: [{ id: 'dashboard', label: 'Início' }] },
+  { id: 'inicio', label: 'Início', defaultTab: 'dashboard', icon: 'M2.25 12l8.954-8.955a1.125 1.125 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75', tabs: [{ id: 'dashboard', label: 'Início' }] },
   {
     id: 'materiais',
     label: 'Materiais',
     defaultTab: 'catalogo',
+    icon: 'M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9',
     tabs: [
       { id: 'catalogo', label: 'Consultar materiais' },
       { id: 'inventario', label: 'Controle de estoque' },
     ],
   },
-  { id: 'movimentacoes', label: 'Entradas e saídas', defaultTab: 'movimentacoes', tabs: [{ id: 'movimentacoes', label: 'Entradas e saídas' }] },
+  { id: 'movimentacoes', label: 'Entradas e saídas', defaultTab: 'movimentacoes', icon: 'M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5', tabs: [{ id: 'movimentacoes', label: 'Entradas e saídas' }] },
   {
     id: 'manutencao',
     label: 'Manutenção',
     defaultTab: 'ordens',
+    icon: 'M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085',
     tabs: [
       { id: 'ordens', label: 'Ordens de serviço' },
       { id: 'motores', label: 'Motores' },
     ],
   },
-  { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAdmin: true },
+  { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', icon: 'M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAdmin: true },
 ]
 const activeNavigationGroup = computed(() =>
   navigationGroups.find(group => group.tabs.some(tab => tab.id === activeTab.value))?.id || 'inicio'
 )
-const contextualTabs = computed(() =>
-  navigationGroups.find(group => group.id === activeNavigationGroup.value)?.tabs || []
-)
+const activeTabLabel = computed(() => {
+  for (const group of navigationGroups) {
+    const tab = group.tabs.find(t => t.id === activeTab.value)
+    if (tab) return group.tabs.length > 1 ? `${group.label} · ${tab.label}` : tab.label
+  }
+  return ''
+})
 
 const navigationShortcuts = [
   { chord: 'G D', key: 'd', label: 'Início', target: { tab: 'dashboard' } },
@@ -311,9 +324,52 @@ watch(user, (newUser, oldUser) => {
 })
 
 watch(activeTab, value => {
+  railOpen.value = false
+  if (value === 'catalogo' || value === 'movimentacoes') catalogSidebarDismissed.value = false
   saveUiState({ activeTab: value })
 })
-watch(sidebarCollapsed, value => saveUiState({ sidebarCollapsed: value }))
+
+watch(movBrowsing, browsing => {
+  if (activeTab.value === 'movimentacoes' && browsing) catalogSidebarDismissed.value = false
+})
+
+// Abre o drawer de filtros só quando o painel não está dockado.
+watch([anySidebar, catalogSidebarDocked], ([available, docked]) => {
+  mobileSidebarOpen.value = available && !docked
+}, { immediate: true })
+
+function openMobileSidebar() {
+  mobileSidebarOpen.value = true
+  nextTick(() => document.querySelector('[data-mobile-sidebar-close]')?.focus())
+}
+
+function closeMobileSidebar(restoreFocus = true) {
+  mobileSidebarOpen.value = false
+  if (restoreFocus) {
+    nextTick(() => (mobileSidebarTrigger.value?.$el || mobileSidebarTrigger.value)?.focus?.())
+  }
+}
+
+function closeCatalogSidebar() {
+  if (catalogSidebarDocked.value) {
+    catalogSidebarDismissed.value = true
+    return
+  }
+  closeMobileSidebar()
+}
+
+function toggleSidebar() {
+  if (catalogSidebarAvailable.value) {
+    catalogSidebarDismissed.value = !catalogSidebarDismissed.value
+    return
+  }
+  mobileSidebarOpen.value ? closeMobileSidebar() : openMobileSidebar()
+}
+
+function selectSidebarGroup(group) {
+  setActiveGroup(group)
+}
+
 watch(catalogSearch, value => saveUiState({ catalogSearch: value }))
 watch(activeGroup, value => saveUiState({ catalogGroup: value || '' }))
 watch(requestedInventorySection, value => { if (value) saveUiState({ inventorySection: value }) })
@@ -433,6 +489,14 @@ function closeTopPopup() {
     accountMenuOpen.value = false
     return true
   }
+  if (mobileSidebarOpen.value) {
+    closeMobileSidebar()
+    return true
+  }
+  if (railOpen.value) {
+    railOpen.value = false
+    return true
+  }
   if (showLoginModal.value) {
     showLoginModal.value = false
     return true
@@ -477,7 +541,6 @@ function toggleShortcutHelp() {
 
 function closeShortcutHelp() {
   shortcutHelpOpen.value = false
-  clearShortcutPrefix()
 }
 
 function runNavigationShortcut(shortcut) {
@@ -660,22 +723,25 @@ function handleGlobalShortcutKeydown(event) {
     return
   }
 }
-
 </script>
 
 <template>
-  <div class="ds-page">
+  <div class="ds-page" :class="{ 'has-docked-catalog-sidebar': catalogSidebarDocked }">
     <!-- Catalog Sidebar -->
     <AppSidebar
       v-if="showCatalogSidebar"
+      id="mobile-side-panel"
+      :class="{ 'mobile-sidebar-open': mobileSidebarOpen, 'catalog-sidebar-docked': catalogSidebarDocked }"
+      :role="sidebarOverlayOpen ? 'dialog' : undefined"
+      :aria-modal="sidebarOverlayOpen ? 'true' : undefined"
+      aria-label="Categorias e filtros"
       :groups="uniqueGroups"
       :active-group="activeGroup"
-      :collapsed="sidebarCollapsed"
       :facets="facets"
       :has-active-filters="hasActiveFilters"
       :search="catalogSearch"
-      @toggle="sidebarCollapsed = !sidebarCollapsed"
-      @select-group="(g) => setActiveGroup(g)"
+      @close="closeCatalogSidebar"
+      @select-group="selectSidebarGroup"
       @toggle-filter="(k, v) => toggleFilter(k, v)"
       @clear-filters="clearFilters"
       @update:search="v => catalogSearch = v"
@@ -685,13 +751,17 @@ function handleGlobalShortcutKeydown(event) {
     <!-- History Sidebar -->
     <HistorySidebar
       v-if="showHistorySidebar && movRef"
-      :collapsed="sidebarCollapsed"
+      id="mobile-side-panel"
+      :class="{ 'mobile-sidebar-open': mobileSidebarOpen }"
+      :role="sidebarOverlayOpen ? 'dialog' : undefined"
+      :aria-modal="sidebarOverlayOpen ? 'true' : undefined"
+      aria-label="Filtros do histórico"
       :facets="movRef.histFacets"
       :has-active-filters="movRef.hasHistFilters"
       :search="movRef.histSearch"
       :date-from="movRef.histDateFrom"
       :date-to="movRef.histDateTo"
-      @toggle="sidebarCollapsed = !sidebarCollapsed"
+      @close="closeMobileSidebar()"
       @toggle-filter="(k, v) => movRef.toggleHistFilter(k, v)"
       @clear-filters="movRef.clearHistFilters()"
       @update:search="v => movRef.histSearch = v"
@@ -699,48 +769,180 @@ function handleGlobalShortcutKeydown(event) {
       @update:date-to="v => movRef.histDateTo = v"
     />
 
-    <!-- Main content -->
-    <div
-      class="ds-app-main flex flex-col min-h-screen"
-      :class="anySidebar ? (sidebarCollapsed ? 'ml-12' : 'ml-60') : ''"
-    >
-      <!-- Navbar -->
-      <nav class="sticky top-0 z-30 ds-nav">
-        <div class="ds-nav-shell">
-          <button class="ds-nav-brand" type="button" title="Ir para o início" @click="selectMainTab('dashboard')">
-            <img
-              :src="localBrandFavicon"
-              :alt="localBrandName"
-              class="h-8 w-8 rounded-md bg-white object-contain p-0.5"
-              @error="$event.currentTarget.style.display = 'none'"
-            />
-            <span class="ds-nav-brand-name text-sm font-semibold text-white">{{ localBrandName }}</span>
-            <span
-              v-if="environmentBadge"
-              class="rounded px-1.5 py-0.5 text-[10px] font-bold leading-none"
-              :class="environmentBadge.env === 'PROD' ? 'bg-red-500/20 text-red-200' : 'bg-sky-500/20 text-sky-200'"
-            >
-              {{ environmentBadge.env }} :{{ environmentBadge.port }}
-            </span>
-          </button>
+    <button
+      v-if="sidebarOverlayOpen"
+      type="button"
+      class="mobile-sidebar-backdrop"
+      aria-label="Fechar painel lateral"
+      @click="closeMobileSidebar()"
+    ></button>
 
-          <div class="ds-nav-tabs" aria-label="Navegação principal">
+    <!-- Rail de navegação -->
+    <aside
+      class="ds-rail"
+      :class="{ 'rail-open': railOpen }"
+      :role="railOpen ? 'dialog' : undefined"
+      :aria-modal="railOpen ? 'true' : undefined"
+      aria-label="Navegação principal"
+    >
+      <button class="ds-rail-brand" type="button" title="Ir para o início" @click="selectMainTab('dashboard')">
+        <img
+          :src="localBrandFavicon"
+          :alt="localBrandName"
+          class="h-7 w-7 rounded-md object-contain"
+          @error="$event.currentTarget.style.display = 'none'"
+        />
+        <span class="ds-rail-brand-name text-sm truncate">{{ localBrandName }}</span>
+        <span
+          v-if="environmentBadge"
+          class="rounded px-1.5 py-0.5 text-[10px] font-bold leading-none"
+          :class="environmentBadge.env === 'PROD' ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-sky-500/15 text-sky-600 dark:text-sky-400'"
+        >
+          {{ environmentBadge.env }}
+        </span>
+      </button>
+
+      <nav class="ds-rail-nav ds-scrollbar">
+        <template v-for="group in visibleNavigationGroups" :key="group.id">
+          <button
+            type="button"
+            class="ds-rail-item"
+            :class="activeNavigationGroup === group.id ? 'ds-rail-item-active' : ''"
+            :title="group.requiresAdmin && !isAdmin ? 'Acesso restrito a administradores' : group.label"
+            @click="selectNavigationGroup(group)"
+          >
+            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" :d="group.icon" />
+            </svg>
+            {{ group.label }}
+          </button>
+          <div v-if="activeNavigationGroup === group.id && group.tabs.length > 1" class="ds-rail-sub">
             <button
-              v-for="group in visibleNavigationGroups"
-              :key="group.id"
-              class="ds-tab"
-              :class="activeNavigationGroup === group.id ? 'ds-tab-active' : ''"
-              :title="group.requiresAdmin && !isAdmin ? 'Acesso restrito a administradores' : group.label"
-              @click="selectNavigationGroup(group)"
+              v-for="tab in group.tabs"
+              :key="tab.id"
+              type="button"
+              class="ds-rail-item"
+              :class="activeTab === tab.id ? 'ds-rail-item-active' : ''"
+              @click="selectMainTab(tab.id)"
             >
-              {{ group.label }}
+              {{ tab.label }}
             </button>
           </div>
+        </template>
+      </nav>
 
-          <!-- Auth + Theme -->
-          <div class="ds-nav-actions">
+      <div class="ds-rail-footer">
+        <div v-if="isLoggedIn" ref="accountMenuRootRef" class="relative min-w-0 flex-1">
           <AppButton
             variant="ghost"
+            size="sm"
+            class="w-full !justify-start"
+            title="Conta"
+            :aria-expanded="accountMenuOpen"
+            @click="accountMenuOpen = !accountMenuOpen"
+          >
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
+            </svg>
+            <span class="truncate">{{ user.name }}</span>
+          </AppButton>
+          <div
+            v-if="accountMenuOpen"
+            class="ds-menu absolute bottom-full left-0 mb-2 w-44 p-1"
+          >
+            <button
+              type="button"
+              class="ds-menu-item text-sm"
+              @click="openPasswordModal"
+            >
+              Trocar senha
+            </button>
+            <button
+              type="button"
+              class="ds-menu-item ds-menu-item-danger text-sm"
+              @click="logoutFromMenu"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+        <AppButton
+          v-else
+          variant="ghost"
+          size="sm"
+          class="flex-1 !justify-start"
+          title="Entrar"
+          @click="showLoginModal = true"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+          </svg>
+          <span>Entrar</span>
+        </AppButton>
+        <AppButton
+          variant="ghost"
+          size="icon"
+          class="!w-9 !min-w-9 !h-9"
+          title="Alternar tema claro/escuro"
+          @click="toggleTheme"
+        >
+          <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+          </svg>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+          </svg>
+        </AppButton>
+      </div>
+    </aside>
+
+    <button
+      v-if="railOpen"
+      type="button"
+      class="rail-backdrop"
+      aria-label="Fechar navegação"
+      @click="railOpen = false"
+    ></button>
+
+    <!-- Main content -->
+    <div
+      class="ds-app-main"
+      :inert="sidebarOverlayOpen ? '' : undefined"
+    >
+      <!-- Topbar -->
+      <header class="ds-topbar">
+        <AppButton
+          variant="ghost"
+          size="icon"
+          class="!w-9 !min-w-9 !h-9 min-[840px]:!hidden"
+          aria-label="Abrir navegação"
+          :aria-expanded="railOpen"
+          @click="railOpen = true"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        </AppButton>
+        <AppButton
+          v-if="catalogSidebarAvailable || showHistorySidebar"
+          ref="mobileSidebarTrigger"
+          class="!w-9 !min-w-9 !h-9"
+          variant="ghost"
+          size="icon"
+          aria-controls="mobile-side-panel"
+          :aria-expanded="catalogSidebarDocked || mobileSidebarOpen"
+          :aria-label="catalogSidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
+          :title="catalogSidebarDocked || mobileSidebarOpen ? 'Fechar filtros' : catalogSidebarAvailable ? 'Mostrar categorias e filtros' : 'Mostrar filtros'"
+          @click="toggleSidebar"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M6.75 12h10.5m-7.5 6.75h4.5" />
+          </svg>
+        </AppButton>
+        <span class="ds-topbar-title truncate">{{ activeTabLabel }}</span>
+        <div class="ml-auto flex items-center gap-1.5">
+          <AppButton
+            variant="secondary"
             size="sm"
             title="Busca global (Ctrl+K)"
             @click="openGlobalSearch"
@@ -765,13 +967,13 @@ function handleGlobalShortcutKeydown(event) {
             </AppButton>
             <div
               v-if="globalCreateOpen"
-              class="absolute right-0 mt-2 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
+              class="ds-menu absolute right-0 mt-2 w-72 p-2"
             >
               <button
                 v-for="action in createActions"
                 :key="action.id"
                 type="button"
-                class="block w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                class="ds-menu-item"
                 @click="runCreateAction(action)"
               >
                 <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ action.label }}</span>
@@ -779,87 +981,8 @@ function handleGlobalShortcutKeydown(event) {
               </button>
             </div>
           </div>
-          <div v-if="isLoggedIn" ref="accountMenuRootRef" class="relative">
-            <AppButton
-              variant="ghost"
-              size="sm"
-              title="Conta"
-              :aria-expanded="accountMenuOpen"
-              @click="accountMenuOpen = !accountMenuOpen"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
-              </svg>
-              <span class="hidden lg:inline">{{ user.name }}</span>
-            </AppButton>
-            <div
-              v-if="accountMenuOpen"
-              class="ds-account-menu absolute right-0 mt-2 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-white/[0.08] dark:bg-gray-900"
-            >
-              <button
-                type="button"
-                class="ds-account-menu-action w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
-                @click="openPasswordModal"
-              >
-                Trocar senha
-              </button>
-              <button
-                type="button"
-                class="ds-account-menu-action w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/[0.06]"
-                title="Alternar estilo visual"
-                @click="cycleStyle"
-              >
-                Estilo: {{ visualStyleName }}
-              </button>
-              <button
-                type="button"
-                class="ds-account-menu-danger w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
-                @click="logoutFromMenu"
-              >
-                Sair
-              </button>
-            </div>
-          </div>
-          <AppButton
-            v-else
-            variant="ghost"
-            size="sm"
-            title="Entrar"
-            @click="showLoginModal = true"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-            </svg>
-            <span class="hidden sm:inline">Entrar</span>
-          </AppButton>
-          <AppButton
-            variant="ghost"
-            size="icon"
-            title="Alternar tema claro/escuro"
-            @click="toggleTheme"
-          >
-            <svg v-if="isDark" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-            </svg>
-            <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-            </svg>
-          </AppButton>
-          </div>
         </div>
-        <div v-if="contextualTabs.length > 1" class="ds-context-nav" aria-label="Seções da área atual">
-          <button
-            v-for="tab in contextualTabs"
-            :key="tab.id"
-            type="button"
-            class="ds-context-tab"
-            :class="activeTab === tab.id ? 'ds-context-tab-active' : ''"
-            @click="selectMainTab(tab.id)"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
-      </nav>
+      </header>
 
       <!-- Page content -->
       <main class="flex-1 p-4 sm:p-5 lg:p-6">
@@ -959,7 +1082,7 @@ function handleGlobalShortcutKeydown(event) {
       aria-label="Busca global"
       @close="closeGlobalSearch"
     >
-      <div class="w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
+      <div class="ds-menu w-full max-w-2xl overflow-hidden rounded-xl">
         <div class="border-b border-gray-200 p-3 dark:border-white/[0.08]">
           <div class="relative">
             <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -969,7 +1092,7 @@ function handleGlobalShortcutKeydown(event) {
               v-model="globalSearchQuery"
               type="text"
               autofocus
-              class="w-full rounded-lg border border-gray-300 bg-white py-3 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+              class="ds-input !py-3 !pl-9"
               placeholder="Buscar ou executar uma ação..."
               role="combobox"
               aria-controls="global-search-results"
@@ -1046,7 +1169,7 @@ function handleGlobalShortcutKeydown(event) {
       aria-label="Atalhos de teclado"
       @close="closeShortcutHelp"
     >
-      <div class="w-full max-w-xl rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-white/[0.08] dark:bg-gray-900">
+      <div class="ds-menu w-full max-w-xl">
         <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/[0.08]">
           <div>
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Atalhos</h2>
@@ -1067,7 +1190,7 @@ function handleGlobalShortcutKeydown(event) {
                 @click="runNavigationShortcut(shortcut)"
               >
                 <span>{{ shortcut.label }}</span>
-                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">{{ shortcut.chord }}</kbd>
+                <kbd class="ds-kbd">{{ shortcut.chord }}</kbd>
               </button>
             </div>
           </section>
@@ -1081,11 +1204,11 @@ function handleGlobalShortcutKeydown(event) {
                 class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
               >
                 <span>{{ shortcut.label }}</span>
-                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">{{ shortcut.chord }}</kbd>
+                <kbd class="ds-kbd">{{ shortcut.chord }}</kbd>
               </div>
               <div class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
                 <span>Fechar menus</span>
-                <kbd class="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-gray-300">Esc</kbd>
+                <kbd class="ds-kbd">Esc</kbd>
               </div>
             </div>
           </section>
@@ -1095,7 +1218,7 @@ function handleGlobalShortcutKeydown(event) {
 
     <div
       v-if="shortcutPrefix"
-      class="fixed bottom-5 left-5 z-50 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-lg dark:border-white/[0.08] dark:bg-gray-900 dark:text-gray-200"
+      class="ds-menu fixed bottom-5 left-5 z-50 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200"
     >
       {{ shortcutPrefix.toUpperCase() }}...
     </div>

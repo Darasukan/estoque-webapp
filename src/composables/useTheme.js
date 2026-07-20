@@ -3,6 +3,16 @@ import * as api from '../services/api.js'
 
 const safeStyle = style => /^[a-z0-9][a-z0-9_-]*$/i.test(style || '') ? style.toLowerCase() : 'industrial'
 
+function storedIsDark() {
+  const saved = localStorage.getItem('theme')
+  return saved ? saved === 'dark' : true
+}
+
+export function applyStoredTheme() {
+  document.documentElement.classList.toggle('dark', storedIsDark())
+  loadVisualStyle(localStorage.getItem('visual-style'))
+}
+
 export function loadVisualStyle(style) {
   const selected = safeStyle(style)
   const root = document.documentElement
@@ -22,7 +32,7 @@ export function loadVisualStyle(style) {
 }
 
 export function useTheme() {
-  const isDark = ref(true)
+  const isDark = ref(storedIsDark())
   const visualStyle = ref('industrial')
   const styles = ref([{ id: 'industrial', name: 'Industrial' }])
   const visualStyleName = computed(() =>
@@ -43,13 +53,8 @@ export function useTheme() {
 
   // Load preference from localStorage or system
   function init() {
-    const saved = localStorage.getItem('theme')
     const savedStyle = localStorage.getItem('visual-style')
-    if (saved) {
-      isDark.value = saved === 'dark'
-    } else {
-      isDark.value = true
-    }
+    isDark.value = storedIsDark()
     visualStyle.value = safeStyle(savedStyle)
     applyTheme()
     loadStyles()

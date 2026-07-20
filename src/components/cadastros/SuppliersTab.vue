@@ -155,8 +155,8 @@ async function onDelete(supplier) {
       </div>
     </div>
 
-    <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-      <table v-if="filteredSuppliers.length" class="w-full text-sm">
+    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      <table v-if="filteredSuppliers.length" class="w-full min-w-[40rem] text-sm">
         <thead>
           <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
             <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome</th>

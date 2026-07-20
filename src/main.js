@@ -2,8 +2,8 @@ import { createApp } from 'vue'
 import './style.css'
 import './ui-system.css'
 import App from './App.vue'
-import { loadVisualStyle } from './composables/useTheme.js'
+import { applyStoredTheme } from './composables/useTheme.js'
 
-loadVisualStyle(localStorage.getItem('visual-style'))
+applyStoredTheme()
 
 createApp(App).mount('#app')

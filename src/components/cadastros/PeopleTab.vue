@@ -410,7 +410,7 @@ function personStatusClass(person) {
           </select>
         </div>
       </div>
-      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
         <div v-if="selectedPersonIds.length" class="flex flex-col gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs dark:border-red-900/40 dark:bg-red-950/20 sm:flex-row sm:items-center sm:justify-between">
           <span class="font-semibold text-red-700 dark:text-red-300">{{ selectedPersonIds.length }} pessoa(s) selecionada(s)</span>
           <button
@@ -422,7 +422,7 @@ function personStatusClass(person) {
             {{ bulkDeleting ? 'Removendo...' : 'Excluir selecionadas' }}
           </button>
         </div>
-        <table v-if="filteredPeople.length" class="w-full text-sm">
+        <table v-if="filteredPeople.length" class="w-full min-w-[40rem] text-sm">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <th class="w-10 px-3 py-2.5 text-center">

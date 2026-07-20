@@ -868,16 +868,16 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
       <!-- Variations table — condensed -->
       <div class="ds-table-wrap">
         <div class="overflow-x-auto">
-          <table class="ds-table min-w-[760px]">
+          <table class="ds-table min-w-full md:min-w-[760px]">
             <thead>
               <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
                 <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Variação</th>
-                <th class="text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-20">Qtd.</th>
-                <th class="text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-20">Mín.</th>
-                <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Local</th>
-                <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Destinos</th>
-                <th class="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300">Obs.</th>
-                <th v-if="isAdmin" class="text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-24">Ações</th>
+                <th class="w-16 px-2 py-2.5 text-center font-semibold text-gray-600 dark:text-gray-300 sm:w-20 sm:px-4">Qtd.</th>
+                <th class="hidden text-center px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 w-20 md:table-cell">Mín.</th>
+                <th class="hidden text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 md:table-cell">Local</th>
+                <th class="hidden text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 md:table-cell">Destinos</th>
+                <th class="hidden text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 md:table-cell">Obs.</th>
+                <th v-if="isAdmin" class="w-24 px-2 py-2.5 text-center font-semibold text-gray-600 dark:text-gray-300 sm:px-4">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -903,7 +903,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                 </td>
                 <!-- Qtd -->
                 <td
-                  class="px-4 py-2.5 text-center tabular-nums font-medium"
+                  class="px-2 py-2.5 text-center tabular-nums font-medium sm:px-4"
                   :class="v.stock <= 0 ? 'text-red-500 dark:text-red-400' : (v.minStock > 0 && v.stock <= v.minStock) ? 'text-amber-500 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'"
                 >
                   {{ v.stock }}
@@ -911,15 +911,15 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                   <span v-else-if="v.minStock > 0 && v.stock <= v.minStock" class="ml-1 text-[10px]">&#x1F7E1;</span>
                 </td>
                 <!-- Mín -->
-                <td class="px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400">
+                <td class="hidden px-4 py-2.5 text-center tabular-nums text-gray-500 dark:text-gray-400 md:table-cell">
                   {{ v.minStock ?? 0 }}
                 </td>
                 <!-- Local -->
-                <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400">
+                <td class="hidden px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 md:table-cell">
                   {{ v.location || viewingItem.location || '—' }}
                 </td>
                 <!-- Destinos (count + tooltip) -->
-                <td class="px-4 py-2.5 text-sm">
+                <td class="hidden px-4 py-2.5 text-sm md:table-cell">
                   <span v-if="v.destinations && v.destinations.length" class="relative group/dests inline-flex items-center gap-1 cursor-default">
                     <span class="text-blue-600 dark:text-blue-400">{{ v.destinations.length }} {{ v.destinations.length === 1 ? 'destino' : 'destinos' }}</span>
                     <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover/dests:text-blue-500 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
@@ -930,7 +930,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                   <span v-else class="text-gray-300 dark:text-gray-600">—</span>
                 </td>
                 <!-- Obs (count + tooltip) -->
-                <td class="px-4 py-2.5 text-sm">
+                <td class="hidden px-4 py-2.5 text-sm md:table-cell">
                   <span v-if="v.extras && Object.keys(v.extras).length" class="relative group/obs inline-flex items-center gap-1 cursor-default">
                     <span class="text-amber-600 dark:text-amber-400">{{ Object.keys(v.extras).length }} {{ Object.keys(v.extras).length === 1 ? 'campo' : 'campos' }}</span>
                     <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover/obs:text-amber-500 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
@@ -941,7 +941,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                   <span v-else class="text-gray-300 dark:text-gray-600">—</span>
                 </td>
                 <!-- Ações -->
-                <td v-if="isAdmin" class="px-4 py-2.5">
+                <td v-if="isAdmin" class="px-1 py-2.5 sm:px-4">
                   <div class="flex items-center justify-center gap-1">
                     <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click.stop="openVariationSheet(v, 'edit')">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>

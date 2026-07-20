@@ -2,7 +2,6 @@
 import { computed, reactive } from 'vue'
 
 const props = defineProps({
-  collapsed: { type: Boolean, default: false },
   facets: { type: Array, default: () => [] },
   hasActiveFilters: { type: Boolean, default: false },
   search: { type: String, default: '' },
@@ -10,7 +9,7 @@ const props = defineProps({
   dateTo: { type: String, default: '' },
 })
 
-defineEmits(['toggle', 'toggle-filter', 'clear-filters', 'update:search', 'update:dateFrom', 'update:dateTo'])
+defineEmits(['close', 'toggle-filter', 'clear-filters', 'update:search', 'update:dateFrom', 'update:dateTo'])
 
 const expandedSections = reactive({})
 const expandedGroups = reactive({ details: false })
@@ -56,34 +55,27 @@ function toggleSection(facet) {
 
 <template>
   <aside
-    class="history-filter-sidebar fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
-    :class="collapsed ? 'w-12' : 'w-60'"
+    class="history-filter-sidebar fixed top-0 left-0 h-full z-40 w-60 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
   >
     <div class="border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center p-3" :class="collapsed ? 'justify-center' : 'gap-2'">
+      <div class="flex items-center justify-between gap-2 p-3">
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Filtros</span>
         <button
-          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
-          :title="collapsed ? 'Expandir menu' : 'Recolher menu'"
-          @click="$emit('toggle')"
+          data-mobile-sidebar-close
+          class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+          type="button"
+          title="Fechar painel"
+          aria-label="Fechar filtros"
+          @click="$emit('close')"
         >
-          <svg class="w-5 h-5 transition-transform" :class="{ 'rotate-180': collapsed }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
-        <span v-if="!collapsed" class="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Filtros</span>
       </div>
     </div>
 
-    <div v-if="collapsed" class="flex-1 flex flex-col items-center py-3 gap-3">
-      <div class="w-6 h-6 text-gray-400 dark:text-gray-500" title="Filtros do histórico">
-        <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-        </svg>
-      </div>
-      <span v-if="hasActiveFilters" class="w-2 h-2 rounded-full bg-primary-500"></span>
-    </div>
-
-    <template v-else>
+    <template>
       <button
         v-if="hasActiveFilters"
         class="w-full text-left px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-200 dark:border-gray-700 flex items-center gap-1 cursor-pointer"

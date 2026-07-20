@@ -11,7 +11,7 @@ defineEmits(['update:modelValue'])
 
 <template>
   <nav
-    :class="variant === 'line' ? 'flex items-center gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700' : 'ds-segmented'"
+    :class="variant === 'line' ? 'ds-scroll-x flex items-center gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700' : 'ds-segmented'"
     :aria-label="ariaLabel"
   >
     <button
@@ -19,7 +19,7 @@ defineEmits(['update:modelValue'])
       :key="tab.id"
       type="button"
       :class="variant === 'line'
-        ? ['relative inline-flex min-h-10 items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors', modelValue === tab.id ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200']
+        ? ['relative inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors', modelValue === tab.id ? 'text-primary-700 dark:text-primary-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200']
         : ['ds-segmented-item', modelValue === tab.id ? 'ds-segmented-item-active' : '']"
       @click="$emit('update:modelValue', tab.id)"
     >

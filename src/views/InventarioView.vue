@@ -939,12 +939,12 @@ function exportCSV() {
 
     <template v-if="inventorySection === 'estoque'">
     <!-- Filter tabs + CSV export -->
-    <div class="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center gap-1">
+    <div class="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div class="ds-scroll-x flex w-full items-center gap-1 overflow-x-auto sm:w-auto">
         <button
           v-for="tab in FILTER_TABS"
           :key="tab.id"
-          class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors relative"
+          class="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors"
           :class="filterStatus === tab.id
             ? 'text-primary-700 dark:text-primary-400'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
@@ -964,11 +964,11 @@ function exportCSV() {
       </div>
 
       <!-- Monthly report export -->
-      <div class="flex items-center gap-2 pb-1">
+      <div class="flex w-full flex-wrap items-center gap-2 pb-2 sm:w-auto sm:flex-nowrap sm:pb-1">
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+            class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
             @click="columnMenuOpen = !columnMenuOpen"
           >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -1003,18 +1003,18 @@ function exportCSV() {
         </div>
         <select
           v-model="csvSelectedMonth"
-          class="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+          class="shrink-0 px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
         >
           <option v-for="m in CSV_MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
         </select>
         <select
           v-model="csvSelectedYear"
-          class="px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+          class="shrink-0 px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
         >
           <option v-for="y in csvYears" :key="y" :value="y">{{ y }}</option>
         </select>
         <button
-          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+          class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
           title="Exportar relatório mensal de estoque em CSV"
           @click="exportCSV"
         >
@@ -1036,10 +1036,10 @@ function exportCSV() {
     </div>
 
     <!-- Body: facet sidebar + table -->
-    <div v-if="showBody" class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-start">
+    <div v-if="showBody" class="flex flex-col items-stretch overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 md:flex-row md:items-start">
 
       <!-- ===== Facet sidebar ===== -->
-      <div class="inventory-filter-sidebar w-44 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 space-y-2 self-stretch">
+      <div class="inventory-filter-sidebar max-h-56 w-full flex-shrink-0 self-stretch space-y-2 overflow-y-auto border-b border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800 md:max-h-none md:w-44 md:border-b-0 md:border-r">
 
         <!-- Search -->
         <div class="relative">
@@ -1216,12 +1216,12 @@ function exportCSV() {
                     Item <span class="text-[10px]">{{ sortArrow('item') }}</span>
                   </button>
                 </th>
-                <th v-if="isColumnVisible('variation')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                <th v-if="isColumnVisible('variation')" class="hidden px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider md:table-cell">
                   <button type="button" class="inline-flex items-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('variation')">
                     Variação <span class="text-[10px]">{{ sortArrow('variation') }}</span>
                   </button>
                 </th>
-                <th v-if="isColumnVisible('location')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-56">
+                <th v-if="isColumnVisible('location')" class="hidden px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-56 md:table-cell">
                   <div class="flex items-center gap-1.5">
                     <button
                       v-if="activeHeaderSearch !== 'location'"
@@ -1270,7 +1270,7 @@ function exportCSV() {
                     </div>
                   </div>
                 </th>
-                <th v-if="isColumnVisible('destinations')" class="px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-72">
+                <th v-if="isColumnVisible('destinations')" class="hidden px-4 py-2.5 text-left font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-72 md:table-cell">
                   <div class="flex items-center gap-1.5">
                     <button
                       v-if="activeHeaderSearch !== 'destinations'"
@@ -1324,18 +1324,18 @@ function exportCSV() {
                     Qtd. atual <span class="text-[10px]">{{ sortArrow('current') }}</span>
                   </button>
                 </th>
-                <th v-if="isColumnVisible('min')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20">
+                <th v-if="isColumnVisible('min')" class="hidden px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-20 md:table-cell">
                   <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('min')">
                     Mín. <span class="text-[10px]">{{ sortArrow('min') }}</span>
                   </button>
                 </th>
-                <th v-if="isColumnVisible('status')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32">
+                <th v-if="isColumnVisible('status')" class="hidden px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-32 md:table-cell">
                   <button type="button" class="inline-flex items-center justify-center gap-1 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer" @click="setSort('status')">
                     Status <span class="text-[10px]">{{ sortArrow('status') }}</span>
                   </button>
                 </th>
-                <th v-if="isColumnVisible('history')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28">Histórico</th>
-                <th v-if="canOperate && isColumnVisible('adjust')" class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-44">Ações</th>
+                <th v-if="isColumnVisible('history')" class="hidden px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-28 md:table-cell">Histórico</th>
+                <th v-if="canOperate && isColumnVisible('adjust')" class="hidden px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-44 md:table-cell">Ações</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1346,13 +1346,16 @@ function exportCSV() {
                 @click="openVariationSheet(row)"
               >
                 <!-- Item -->
-                <td class="px-4 py-3">
+                <td class="px-3 py-3 md:px-4">
                   <p class="font-medium text-gray-800 dark:text-gray-100 leading-snug">{{ row.item.name }}</p>
                   <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{{ hierarchyLabel(row.item) }}</p>
+                  <p class="mt-1 line-clamp-2 text-[11px] leading-tight text-gray-500 dark:text-gray-400 md:hidden">
+                    {{ Object.values({ ...(row.variation.values || {}), ...(row.variation.extras || {}) }).filter(Boolean).join(' · ') || 'Variação única' }}
+                  </p>
                 </td>
 
                 <!-- Variação: attribute pills -->
-                <td v-if="isColumnVisible('variation')" class="px-4 py-3">
+                <td v-if="isColumnVisible('variation')" class="hidden px-4 py-3 md:table-cell">
                   <div class="flex flex-wrap gap-1">
                     <!-- Template attribute pills (blue) -->
                     <template v-for="attr in (row.item.attributes || [])" :key="attr">
@@ -1383,13 +1386,13 @@ function exportCSV() {
                 </td>
 
                 <!-- Local -->
-                <td v-if="isColumnVisible('location')" class="px-4 py-3">
+                <td v-if="isColumnVisible('location')" class="hidden px-4 py-3 md:table-cell">
                   <span v-if="inventoryLocation(row)" class="text-sm text-gray-600 dark:text-gray-300">{{ inventoryLocation(row) }}</span>
                   <span v-else class="text-xs text-gray-300 dark:text-gray-600">—</span>
                 </td>
 
                 <!-- Destinos -->
-                <td v-if="isColumnVisible('destinations')" class="px-4 py-3">
+                <td v-if="isColumnVisible('destinations')" class="hidden px-4 py-3 md:table-cell">
                   <div v-if="inventoryDestinations(row).length" class="flex flex-wrap gap-1">
                     <span
                       v-for="dest in inventoryDestinations(row).slice(0, 2)"
@@ -1426,12 +1429,12 @@ function exportCSV() {
                 </td>
 
                 <!-- Mín. -->
-                <td v-if="isColumnVisible('min')" class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('min')" class="hidden px-4 py-3 text-center md:table-cell">
                   <span class="tabular-nums text-gray-600 dark:text-gray-400">{{ row.variation.minStock ?? 0 }}</span>
                 </td>
 
                 <!-- Status pill -->
-                <td v-if="isColumnVisible('status')" class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('status')" class="hidden px-4 py-3 text-center md:table-cell">
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
                     :class="STATUS_CONFIG[row.status].pillClass"
@@ -1439,7 +1442,7 @@ function exportCSV() {
                 </td>
 
                 <!-- Histórico -->
-                <td v-if="isColumnVisible('history')" class="px-4 py-3 text-center">
+                <td v-if="isColumnVisible('history')" class="hidden px-4 py-3 text-center md:table-cell">
                   <button
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                     @click.stop="openVariationHistory(row)"
@@ -1452,7 +1455,7 @@ function exportCSV() {
                 </td>
 
                 <!-- Ações rápidas -->
-                <td v-if="canOperate && isColumnVisible('adjust')" class="px-4 py-3 text-center">
+                <td v-if="canOperate && isColumnVisible('adjust')" class="hidden px-4 py-3 text-center md:table-cell">
                   <div v-if="adjustingId === row.variation.id" class="flex items-center justify-center gap-1">
                     <input
                       ref="adjustInput"
@@ -1541,9 +1544,9 @@ function exportCSV() {
           </div>
 
           <!-- Pagination controls -->
-          <div class="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40">
+          <div class="flex flex-col gap-3 border-t border-gray-200 bg-gray-50/50 px-3 py-3 dark:border-gray-700 dark:bg-gray-800/40 sm:flex-row sm:items-center sm:justify-between sm:px-4">
             <!-- Page size selector -->
-            <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <span>Exibir</span>
               <select
                 v-model.number="pageSize"
@@ -1558,9 +1561,9 @@ function exportCSV() {
             </div>
 
             <!-- Page navigation -->
-            <div class="flex items-center gap-1">
+            <div class="flex w-full items-center justify-center gap-1 sm:w-auto">
               <button
-                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+                class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors dark:border-gray-600 dark:text-gray-400"
                 :class="currentPage <= 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'"
                 :disabled="currentPage <= 1"
                 @click="currentPage = 1"
@@ -1569,7 +1572,7 @@ function exportCSV() {
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 19.5-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" /></svg>
               </button>
               <button
-                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+                class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors dark:border-gray-600 dark:text-gray-400"
                 :class="currentPage <= 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'"
                 :disabled="currentPage <= 1"
                 @click="currentPage--"
@@ -1583,7 +1586,7 @@ function exportCSV() {
               </span>
 
               <button
-                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+                class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors dark:border-gray-600 dark:text-gray-400"
                 :class="currentPage >= totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'"
                 :disabled="currentPage >= totalPages"
                 @click="currentPage++"
@@ -1592,7 +1595,7 @@ function exportCSV() {
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
               </button>
               <button
-                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+                class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors dark:border-gray-600 dark:text-gray-400"
                 :class="currentPage >= totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'"
                 :disabled="currentPage >= totalPages"
                 @click="currentPage = totalPages"

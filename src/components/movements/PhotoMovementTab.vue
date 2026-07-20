@@ -585,7 +585,7 @@ async function confirmBatch() {
 </script>
 
 <template>
-  <div class="space-y-4 pb-24 lg:pb-4">
+  <div class="min-w-0 max-w-full space-y-4 pb-24 lg:pb-4">
     <div class="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <div>
         <p class="text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Movimentação assistida</p>
@@ -626,7 +626,7 @@ async function confirmBatch() {
         </section>
       </div>
 
-      <div v-if="currentBatch" class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <div v-if="currentBatch" class="min-w-0 max-w-full overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
           <div>
             <div class="flex flex-wrap items-center gap-2">
@@ -635,13 +635,13 @@ async function confirmBatch() {
             </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ photos.length }} foto(s)<span v-if="queueCount"> · {{ queueCount }} na fila</span><span v-if="isAdmin && currentBatch.operatorName"> · {{ currentBatch.operatorName }}</span></p>
           </div>
-          <div v-if="needsAdminEditToggle || canEditCurrentBatch || canDeleteCurrentBatch" class="flex flex-wrap items-center justify-end gap-2">
+          <div v-if="needsAdminEditToggle || canEditCurrentBatch || canDeleteCurrentBatch" class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <AppButton v-if="needsAdminEditToggle" variant="secondary" size="sm" :disabled="canEditCurrentBatch && processing" @click="toggleBatchEditing">{{ canEditCurrentBatch ? 'Sair da edição' : 'Editar lote' }}</AppButton>
-            <label v-if="canEditCurrentBatch" class="ds-button ds-button-secondary ds-button-sm inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400">
+            <label v-if="canEditCurrentBatch" class="ds-button ds-button-secondary ds-button-sm inline-flex flex-1 cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400 sm:flex-none">
               <input class="sr-only" type="file" multiple accept="image/*" @change="onFilesSelected" />
               Escolher várias fotos
             </label>
-            <label v-if="canEditCurrentBatch" class="ds-button ds-button-primary ds-button-md inline-flex cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400" style="color: var(--ds-primary-text)">
+            <label v-if="canEditCurrentBatch" class="ds-button ds-button-primary ds-button-md !hidden cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400 lg:!inline-flex" style="color: var(--ds-primary-text)">
               <input class="sr-only" type="file" accept="image/*" capture="environment" @change="onFilesSelected" />
               <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.8 6.2 7.7 4.7A1.5 1.5 0 0 1 9 3.9h6a1.5 1.5 0 0 1 1.3.8l.9 1.5a1.5 1.5 0 0 0 1.3.7h1A1.5 1.5 0 0 1 21 8.4V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V8.4a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 0 1.3-.7Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15.8 12.8a3.8 3.8 0 1 1-7.6 0 3.8 3.8 0 0 1 7.6 0Z"/></svg>
               Tirar próxima foto
@@ -651,10 +651,10 @@ async function confirmBatch() {
           </div>
         </header>
 
-        <div v-if="photos.length" class="grid min-h-[520px] lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.35fr)]">
-          <aside class="border-b border-gray-200 p-3 dark:border-gray-700 lg:border-b-0 lg:border-r">
-            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-              <div v-for="(photo, index) in photos" :key="photo.id" class="grid min-h-24 grid-cols-[72px_1fr] gap-3 rounded-lg border p-2 transition-colors" :class="selectedPhotoId === photo.id ? 'border-primary-400 bg-primary-50/70 dark:border-primary-700 dark:bg-primary-950/20' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'">
+        <div v-if="photos.length" class="grid min-h-[520px] min-w-0 max-w-full lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.35fr)]">
+          <aside class="min-w-0 max-w-full overflow-hidden border-b border-gray-200 p-3 dark:border-gray-700 lg:border-b-0 lg:border-r">
+            <div class="ds-scroll-x flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 lg:grid-cols-1">
+              <div v-for="(photo, index) in photos" :key="photo.id" class="grid min-h-24 w-[17rem] max-w-[calc(100vw-3.5rem)] shrink-0 grid-cols-[72px_1fr] gap-3 rounded-lg border p-2 transition-colors sm:w-auto sm:max-w-none" :class="selectedPhotoId === photo.id ? 'border-primary-400 bg-primary-50/70 dark:border-primary-700 dark:bg-primary-950/20' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'">
                 <button type="button" class="h-[72px] w-[72px] rounded-md outline-none ring-black/10 focus-visible:ring-2 focus-visible:ring-primary-400 dark:ring-white/10" :aria-label="`Ampliar foto ${index + 1} do lote`" title="Ampliar foto" @click="expandPhoto(photo)">
                   <img :src="photoUrl(photo)" alt="" class="h-full w-full rounded-md object-cover ring-1 ring-inset ring-black/10 dark:ring-white/10" />
                 </button>
@@ -668,7 +668,7 @@ async function confirmBatch() {
             </div>
           </aside>
 
-          <main v-if="selectedPhoto" class="min-w-0 p-4">
+          <main v-if="selectedPhoto" class="min-w-0 p-3 sm:p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Foto selecionada</p>
@@ -810,9 +810,16 @@ async function confirmBatch() {
     </AppDialog>
 
     <footer v-if="canEditCurrentBatch" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 p-3 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95 lg:sticky lg:inset-x-auto lg:rounded-xl lg:border">
-      <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-        <p class="min-w-0 text-xs" :class="blockReason ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'">{{ blockReason || `${photos.length} foto(s) pronta(s) para confirmar.` }}</p>
-        <AppButton variant="primary" size="lg" :loading="saving" :disabled="Boolean(blockReason) || queueCount > 0" @click="confirmBatch">Confirmar lote</AppButton>
+      <div class="mx-auto flex max-w-7xl items-center gap-2 lg:justify-between">
+        <p class="hidden min-w-0 flex-1 text-xs sm:block" :class="blockReason ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'">{{ blockReason || `${photos.length} foto(s) pronta(s) para confirmar.` }}</p>
+        <div class="flex w-full gap-2 sm:w-auto">
+          <label class="ds-button ds-button-secondary ds-button-lg inline-flex flex-1 cursor-pointer items-center justify-center gap-2 focus-within:ring-2 focus-within:ring-primary-400 lg:hidden">
+            <input class="sr-only" type="file" accept="image/*" capture="environment" @change="onFilesSelected" />
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.8 6.2 7.7 4.7A1.5 1.5 0 0 1 9 3.9h6a1.5 1.5 0 0 1 1.3.8l.9 1.5a1.5 1.5 0 0 0 1.3.7h1A1.5 1.5 0 0 1 21 8.4V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V8.4a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 0 1.3-.7Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15.8 12.8a3.8 3.8 0 1 1-7.6 0 3.8 3.8 0 0 1 7.6 0Z"/></svg>
+            Tirar foto
+          </label>
+          <AppButton class="flex-1 sm:flex-none" variant="primary" size="lg" :loading="saving" :disabled="Boolean(blockReason) || queueCount > 0" @click="confirmBatch">Confirmar lote</AppButton>
+        </div>
       </div>
     </footer>
   </div>

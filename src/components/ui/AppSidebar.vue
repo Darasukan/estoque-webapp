@@ -4,13 +4,12 @@ import { reactive } from 'vue'
 defineProps({
   groups: { type: Array, required: true },
   activeGroup: { type: String, default: null },
-  collapsed: { type: Boolean, default: false },
   facets: { type: Array, default: () => [] },
   hasActiveFilters: { type: Boolean, default: false },
   search: { type: String, default: '' }
 })
 
-defineEmits(['toggle', 'select-group', 'toggle-filter', 'clear-filters', 'update:search', 'search-submit'])
+defineEmits(['close', 'select-group', 'toggle-filter', 'clear-filters', 'update:search', 'search-submit'])
 
 // Sections start collapsed — track which ones the user has expanded
 const expandedSections = reactive({})
@@ -22,56 +21,29 @@ function toggleSection(key) {
 
 <template>
   <aside
-    class="catalog-sidebar fixed top-0 left-0 h-full z-40 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
-    :class="collapsed ? 'w-12' : 'w-60'"
+    class="catalog-sidebar fixed top-0 left-0 h-full z-40 w-60 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
   >
-    <!-- Header: collapse toggle -->
+    <!-- Header -->
     <div class="border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center p-3" :class="collapsed ? 'justify-center' : ''">
+      <div class="flex items-center justify-between p-3">
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Categorias e filtros</span>
         <button
-          class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors cursor-pointer"
-          :title="collapsed ? 'Expandir menu' : 'Recolher menu'"
-          @click="$emit('toggle')"
+          data-mobile-sidebar-close
+          class="inline-flex min-h-10 min-w-10 items-center justify-center rounded text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+          type="button"
+          title="Fechar painel"
+          aria-label="Fechar categorias e filtros"
+          @click="$emit('close')"
         >
-          <svg class="w-5 h-5 transition-transform" :class="{ 'rotate-180': collapsed }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
       </div>
     </div>
 
-    <!-- ===== COLLAPSED MODE ===== -->
-    <nav v-if="collapsed" class="flex-1 overflow-y-auto py-2">
-      <button
-        class="w-full flex items-center justify-center py-2.5 transition-colors cursor-pointer"
-        :class="!activeGroup
-          ? 'text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-gray-700'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'"
-        title="Todos os Grupos"
-        @click="$emit('select-group', null)"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
-        </svg>
-      </button>
-      <button
-        v-for="group in groups"
-        :key="group"
-        class="w-full flex items-center justify-center py-2.5 transition-colors cursor-pointer"
-        :class="activeGroup === group
-          ? 'text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-gray-700'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'"
-        :title="group"
-        @click="$emit('select-group', group)"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-        </svg>
-      </button>
-    </nav>
-
-    <!-- ===== EXPANDED: NAVIGATION MODE (no group selected) ===== -->
-    <template v-else-if="!activeGroup">
+    <!-- ===== NAVIGATION MODE (no group selected) ===== -->
+    <template v-if="!activeGroup">
       <button
         class="w-full text-left px-3 py-2 text-sm font-medium transition-colors truncate border-b border-gray-200 dark:border-gray-700 bg-primary-50 dark:bg-gray-700 text-primary-700 dark:text-primary-400 border-r-2 border-r-primary-700 dark:border-r-primary-400 cursor-pointer"
         @click="$emit('select-group', null)"
