@@ -68,6 +68,14 @@ Acesse:
 http://localhost:5173
 ```
 
+### Desenvolvimento + produção local
+
+```powershell
+npm run server
+```
+
+Esse comando inicia DEV e PROD juntos. Na primeira execução, os arquivos `.env.dev` e `.env.prod` são criados automaticamente a partir de `.env.example`, usando bancos e pastas de fotos separados. Pressione `r` e Enter para reiniciar os dois servidores.
+
 ### Produção/local estável
 
 ```powershell

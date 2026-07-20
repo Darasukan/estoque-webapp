@@ -1,8 +1,17 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const devPort = process.env.DEV_PORT || '3001'
 const prodPort = process.env.PROD_PORT || '3000'
+
+if (!existsSync('.env.prod')) {
+  const prodEnv = readFileSync('.env.example', 'utf8')
+    .replace(/^DB_PATH=.*$/m, 'DB_PATH=./server/estoque-prod.db')
+    .replace(/^PHOTO_UPLOAD_DIR=.*$/m, 'PHOTO_UPLOAD_DIR=./server/photo-uploads-prod')
+  writeFileSync('.env.prod', prodEnv)
+  console.log('Criado .env.prod a partir de .env.example com dados separados de DEV')
+}
 
 if (devPort === prodPort) {
   console.error('DEV_PORT e PROD_PORT precisam ser diferentes.')
