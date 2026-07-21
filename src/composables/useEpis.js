@@ -39,22 +39,28 @@ export function useEpis() {
   const activeRoleRules = computed(() => sortRules(roleRules.value.filter(r => r.active)))
   const activePeriodicities = computed(() => sortPeriods(periodicities.value.filter(p => p.active)))
 
-  async function addRoleRule(roleName, target, days = 30) {
+  async function addRoleRule(roleName, target, days = 30, quantity = 1) {
     const cleanRole = String(roleName || '').trim()
     const cleanTarget = normalizeTarget(target)
     const cleanDays = Number(days)
+    const cleanQuantity = Number(quantity)
     if (!cleanRole) return { ok: false, error: 'Cargo obrigatorio.' }
     if (!cleanTarget.targetType || !cleanTarget.targetKey) return { ok: false, error: 'EPI obrigatorio.' }
     if (!Number.isInteger(cleanDays) || cleanDays <= 0) return { ok: false, error: 'Periodicidade invalida.' }
+    if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0) return { ok: false, error: 'Quantidade invalida.' }
     if (roleRules.value.some(r =>
       r.roleName.toLowerCase() === cleanRole.toLowerCase() &&
       r.targetType === cleanTarget.targetType &&
       r.targetKey === cleanTarget.targetKey
     )) return { ok: false, error: 'Este EPI ja esta vinculado ao cargo.' }
 
-    const created = await api.createEpiRoleRule({ roleName: cleanRole, ...cleanTarget, days: cleanDays, active: true })
-    roleRules.value = sortRules([...roleRules.value, created])
-    return { ok: true, rule: created }
+    try {
+      const created = await api.createEpiRoleRule({ roleName: cleanRole, ...cleanTarget, days: cleanDays, quantity: cleanQuantity, active: true })
+      roleRules.value = sortRules([...roleRules.value, created])
+      return { ok: true, rule: created }
+    } catch (cause) {
+      return { ok: false, error: cause.message || 'Nao foi possivel vincular o EPI ao cargo.' }
+    }
   }
 
   async function editRoleRule(id, changes) {

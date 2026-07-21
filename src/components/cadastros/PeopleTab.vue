@@ -21,12 +21,14 @@ const isDev = computed(() =>
 
 const newPersonName = ref('')
 const newPersonRole = ref('')
+const newPersonRegistration = ref('')
 const newPersonStatus = ref('ativo')
 const addingPerson = ref(false)
 const peopleSection = ref(props.initialSection === 'cargos' ? 'cargos' : 'funcionarios')
 const editingPersonId = ref(null)
 const editPersonName = ref('')
 const editPersonRole = ref('')
+const editPersonRegistration = ref('')
 const editPersonStatus = ref('ativo')
 const personStatusFilter = ref(['all'])
 const personSearch = ref('')
@@ -62,7 +64,7 @@ const filteredPeople = computed(() =>
   ).filter(person => {
     const q = normalizeSearch(personSearch.value)
     if (!q) return true
-    return [person.name, person.role, personStatusLabel(personStatus(person))]
+    return [person.name, person.registration, person.role, personStatusLabel(personStatus(person))]
       .some(value => normalizeSearch(value).includes(q))
   })
 )
@@ -93,13 +95,13 @@ watch(totalPages, total => {
   if (currentPage.value > total) currentPage.value = total
 })
 
-function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = ''; newPersonStatus.value = 'ativo' }
+function startAddPerson() { addingPerson.value = true; newPersonName.value = ''; newPersonRole.value = ''; newPersonRegistration.value = ''; newPersonStatus.value = 'ativo' }
 function cancelAddPerson() { addingPerson.value = false }
 async function confirmAddPerson() {
   if (!canAddPerson.value) return
   personSaving.value = true
   try {
-    const r = await addPerson(newPersonName.value, newPersonRole.value, newPersonStatus.value)
+    const r = await addPerson(newPersonName.value, newPersonRole.value, newPersonStatus.value, newPersonRegistration.value)
     if (!r.ok) { error(r.error); return }
     success('Pessoa adicionada.')
     addingPerson.value = false
@@ -162,6 +164,7 @@ function startEditPerson(p) {
   editingPersonId.value = p.id
   editPersonName.value = p.name
   editPersonRole.value = p.role || ''
+  editPersonRegistration.value = p.registration || ''
   editPersonStatus.value = p.status || (p.active ? 'ativo' : 'inativo')
 }
 function cancelEditPerson() { editingPersonId.value = null }
@@ -172,6 +175,7 @@ async function confirmEditPerson() {
     const r = await editPerson(editingPersonId.value, {
       name: editPersonName.value,
       role: editPersonRole.value,
+      registration: editPersonRegistration.value,
       status: editPersonStatus.value,
       active: editPersonStatus.value === 'ativo',
     })
@@ -340,6 +344,13 @@ function personStatusClass(person) {
           @keydown.enter="confirmAddPerson"
           @keydown.escape="cancelAddPerson"
         />
+        <input
+          v-model="newPersonRegistration"
+          placeholder="Nº da matrícula (opcional)"
+          class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:border-primary-400 dark:focus:border-primary-500"
+          @keydown.enter="confirmAddPerson"
+          @keydown.escape="cancelAddPerson"
+        />
         <div v-if="activeRoles.length">
           <select
             v-model="newPersonRole"
@@ -382,7 +393,7 @@ function personStatusClass(person) {
           <input
             v-model="personSearch"
             type="search"
-            placeholder="Buscar por nome ou cargo..."
+            placeholder="Buscar por nome, matrícula ou cargo..."
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-600"
           />
           <div class="flex min-h-10 flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
@@ -435,6 +446,7 @@ function personStatusClass(person) {
                 />
               </th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>
+              <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Matrícula</th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Cargo</th>
               <th class="text-center px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Status</th>
               <th class="px-4 py-2.5 w-20"></th>
@@ -462,6 +474,9 @@ function personStatusClass(person) {
                   <input v-model="editPersonName" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditPerson" @keydown.escape="cancelEditPerson" autofocus />
                 </td>
                 <td class="px-4 py-2">
+                  <input v-model="editPersonRegistration" placeholder="Opcional" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none" @keydown.enter="confirmEditPerson" @keydown.escape="cancelEditPerson" />
+                </td>
+                <td class="px-4 py-2">
                   <select v-if="activeRoles.length" v-model="editPersonRole" class="w-full px-2 py-1 text-sm border border-primary-400 dark:border-primary-500 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none">
                     <option value="">— Sem cargo —</option>
                     <option v-for="r in activeRoles" :key="r.id" :value="r.name">{{ r.name }}</option>
@@ -487,6 +502,7 @@ function personStatusClass(person) {
               <!-- Display row -->
               <template v-else>
                 <td class="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{{ p.name }}</td>
+                <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{{ p.registration || '—' }}</td>
                 <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{{ p.role || '—' }}</td>
                 <td class="px-4 py-3 text-center">
                   <button

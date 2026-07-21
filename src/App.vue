@@ -584,6 +584,11 @@ function openContextQuickMovement(payload) {
   openMovementTab(payload.type || 'saida', payload)
 }
 
+function handleMovementComplete(target) {
+  requestedMovementPrefill.value = null
+  navigateTab(target)
+}
+
 function selectMainTab(tabId) {
   if (tabId === 'cadastros' && !isAdmin.value) {
     if (!isLoggedIn.value) showLoginModal.value = true
@@ -1059,6 +1064,7 @@ function handleGlobalShortcutKeydown(event) {
           :prefill-movement="requestedMovementPrefill"
           @update:browsing="v => movBrowsing = v"
           @update:sub-tab="v => { movSubTab = v; requestedMovSubTab = v }"
+          @movement-complete="handleMovementComplete"
         />
 
         <!-- Ordens de Serviço tab -->

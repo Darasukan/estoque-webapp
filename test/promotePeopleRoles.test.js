@@ -15,14 +15,15 @@ function createPeopleRolesDb(path, { roles = [], people = [] } = {}) {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       role_text TEXT DEFAULT '',
+      registration TEXT DEFAULT '',
       active INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo','inativo','demitido','afastado'))
     );
   `)
   const insertRole = db.prepare('INSERT INTO roles (id, name, description, active) VALUES (?, ?, ?, ?)')
-  const insertPerson = db.prepare('INSERT INTO people (id, name, role_text, active, status) VALUES (?, ?, ?, ?, ?)')
+  const insertPerson = db.prepare('INSERT INTO people (id, name, role_text, registration, active, status) VALUES (?, ?, ?, ?, ?, ?)')
   for (const role of roles) insertRole.run(role.id, role.name, role.description || '', role.active ?? 1)
-  for (const person of people) insertPerson.run(person.id, person.name, person.role_text || '', person.active ?? 1, person.status || 'ativo')
+  for (const person of people) insertPerson.run(person.id, person.name, person.role_text || '', person.registration || '', person.active ?? 1, person.status || 'ativo')
   db.close()
 }
 
@@ -53,7 +54,7 @@ test('promove pessoas e cargos do dev para prod com backup', async t => {
       { id: 'role_dev_2', name: 'ALMOXARIFE', description: 'Controle', active: 1 },
     ],
     people: [
-      { id: 'person_dev_1', name: 'ANDRE SILVA COSTA', role_text: 'OPERADOR DE RAMEUSE', active: 1, status: 'ativo' },
+      { id: 'person_dev_1', name: 'ANDRE SILVA COSTA', role_text: 'OPERADOR DE RAMEUSE', registration: '1234', active: 1, status: 'ativo' },
     ],
   })
   createPeopleRolesDb(prodPath, {
@@ -69,7 +70,7 @@ test('promove pessoas e cargos do dev para prod com backup', async t => {
   assert.equal(result.peopleUpdated, 1)
   assert.ok(existsSync(result.backupPath))
   assert.deepEqual(rows(prodPath, 'roles').map(row => row.name), ['Almoxarife', 'Operador De Rameuse'])
-  assert.deepEqual(rows(prodPath, 'people').map(row => [row.name, row.role_text, row.status]), [
-    ['Andre Silva Costa', 'Operador De Rameuse', 'ativo'],
+  assert.deepEqual(rows(prodPath, 'people').map(row => [row.name, row.role_text, row.registration, row.status]), [
+    ['Andre Silva Costa', 'Operador De Rameuse', '1234', 'ativo'],
   ])
 })

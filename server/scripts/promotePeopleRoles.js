@@ -90,7 +90,7 @@ export async function promotePeopleRoles({ devPath, prodPath, backupDir = join(d
     await prod.backup(backupPath)
 
     const devRoles = dev.prepare('SELECT id, name, description, active FROM roles ORDER BY name').all()
-    const devPeople = dev.prepare('SELECT id, name, role_text, active, status FROM people ORDER BY name').all()
+    const devPeople = dev.prepare('SELECT id, name, role_text, registration, active, status FROM people ORDER BY name').all()
     const prodRoles = prod.prepare('SELECT id, name FROM roles').all()
     const prodPeople = prod.prepare('SELECT id, name FROM people').all()
     const usedRoleIds = new Set(prodRoles.map(row => row.id))
@@ -101,8 +101,8 @@ export async function promotePeopleRoles({ devPath, prodPath, backupDir = join(d
 
     const insertRole = prod.prepare('INSERT INTO roles (id, name, description, active) VALUES (?, ?, ?, ?)')
     const updateRole = prod.prepare('UPDATE roles SET name = ?, description = ?, active = ? WHERE id = ?')
-    const insertPerson = prod.prepare('INSERT INTO people (id, name, role_text, active, status) VALUES (?, ?, ?, ?, ?)')
-    const updatePerson = prod.prepare('UPDATE people SET name = ?, role_text = ?, active = ?, status = ? WHERE id = ?')
+    const insertPerson = prod.prepare('INSERT INTO people (id, name, role_text, registration, active, status) VALUES (?, ?, ?, ?, ?, ?)')
+    const updatePerson = prod.prepare('UPDATE people SET name = ?, role_text = ?, registration = ?, active = ?, status = ? WHERE id = ?')
 
     prod.transaction(() => {
       for (const role of devRoles) {
@@ -127,11 +127,11 @@ export async function promotePeopleRoles({ devPath, prodPath, backupDir = join(d
         const status = PERSON_STATUSES.has(person.status) ? person.status : (person.active ? 'ativo' : 'inativo')
         const existing = personByName.get(key(name))
         if (existing) {
-          updatePerson.run(name, role, status === 'ativo' ? 1 : 0, status, existing.id)
+          updatePerson.run(name, role, person.registration || '', status === 'ativo' ? 1 : 0, status, existing.id)
           result.peopleUpdated += 1
         } else {
           const id = chooseId(person.id, 'person', usedPersonIds)
-          insertPerson.run(id, name, role, status === 'ativo' ? 1 : 0, status)
+          insertPerson.run(id, name, role, person.registration || '', status === 'ativo' ? 1 : 0, status)
           personByName.set(key(name), { id, name })
           result.peopleInserted += 1
         }

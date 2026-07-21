@@ -23,6 +23,7 @@ function presentPerson(row) {
     id: row.id,
     name: row.name,
     role: row.role_text,
+    registration: row.registration || '',
     active: status === 'ativo',
     status,
   }
@@ -38,6 +39,7 @@ router.get('/', (req, res) => {
 router.post('/', requireAuth, requireAdmin, (req, res) => {
   const name = clean(req.body.name)
   const role = clean(req.body.role)
+  const registration = clean(req.body.registration)
   const status = normalizeStatus(req.body.status, req.body.active !== false)
   const active = status === 'ativo'
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
@@ -46,11 +48,11 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   if (dup) return res.status(409).json({ error: 'Nome ja existe' })
 
   const id = 'person_' + crypto.randomBytes(6).toString('hex')
-  db.prepare('INSERT INTO people (id, name, role_text, active, status) VALUES (?, ?, ?, ?, ?)').run(
-    id, name, role, active ? 1 : 0, status
+  db.prepare('INSERT INTO people (id, name, role_text, registration, active, status) VALUES (?, ?, ?, ?, ?, ?)').run(
+    id, name, role, registration, active ? 1 : 0, status
   )
 
-  res.json({ id, name, role, active, status })
+  res.json({ id, name, role, registration, active, status })
 })
 
 // PUT /api/people/:id
@@ -60,6 +62,7 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
 
   const name = clean(req.body.name ?? current.name)
   const role = clean(req.body.role ?? current.role_text)
+  const registration = clean(req.body.registration ?? current.registration)
   const status = normalizeStatus(
     req.body.status,
     req.body.active !== undefined ? req.body.active !== false : !!current.active
@@ -71,8 +74,8 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   if (dup) return res.status(409).json({ error: 'Nome ja existe' })
 
   db.transaction(() => {
-    db.prepare('UPDATE people SET name=?, role_text=?, active=?, status=? WHERE id=?').run(
-      name, role, active ? 1 : 0, status, req.params.id
+    db.prepare('UPDATE people SET name=?, role_text=?, registration=?, active=?, status=? WHERE id=?').run(
+      name, role, registration, active ? 1 : 0, status, req.params.id
     )
     if (current.name.toLowerCase() !== name.toLowerCase()) {
       db.prepare('UPDATE movements SET requested_by = ? WHERE requested_by_person_id = ? OR lower(requested_by) = lower(?)').run(name, req.params.id, current.name)
@@ -81,7 +84,7 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
       db.prepare('UPDATE motor_events SET performed_by = ? WHERE lower(performed_by) = lower(?)').run(name, current.name)
     }
   })()
-  res.json({ id: req.params.id, name, role, active, status })
+  res.json({ id: req.params.id, name, role, registration, active, status })
 })
 
 // DELETE /api/people/:id

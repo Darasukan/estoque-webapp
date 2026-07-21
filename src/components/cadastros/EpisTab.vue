@@ -29,7 +29,9 @@ const activeTab = ref('cargo')
 const selectedRoleName = ref('')
 const selectedPersonId = ref('')
 const selectedRuleTarget = ref(null)
+const newRuleQuantity = ref(1)
 const ruleDayDrafts = ref({})
+const ruleQuantityDrafts = ref({})
 const selectorOpen = ref(false)
 const selectorContext = ref('rule')
 const selectorSearch = ref('')
@@ -416,10 +418,11 @@ function statusClass(status) {
 async function onAddRule() {
   if (!isLoggedIn?.value) return
   if (!selectedRuleTarget.value) { error('Selecione um EPI.'); return }
-  const result = await addRoleRule(selectedRoleName.value, selectedRuleTarget.value)
+  const result = await addRoleRule(selectedRoleName.value, selectedRuleTarget.value, 30, newRuleQuantity.value)
   if (!result.ok) { error(result.error); return }
   success('EPI vinculado ao cargo.')
   selectedRuleTarget.value = null
+  newRuleQuantity.value = 1
 }
 
 async function onToggleRule(rule) {
@@ -433,12 +436,14 @@ async function onDeleteRule(rule) {
   success('Vinculo removido.')
 }
 
-async function onUpdateRuleDays(rule) {
+async function onUpdateRule(rule) {
   const days = Number(ruleDayDrafts.value[rule.id] ?? rule.days)
-  const result = await editRoleRule(rule.id, { days })
+  const quantity = Number(ruleQuantityDrafts.value[rule.id] ?? rule.quantity)
+  const result = await editRoleRule(rule.id, { days, quantity })
   if (!result.ok) { error(result.error); return }
   ruleDayDrafts.value[rule.id] = result.rule.days
-  success('Periodicidade do cargo atualizada.')
+  ruleQuantityDrafts.value[rule.id] = result.rule.quantity
+  success('Regra do cargo atualizada.')
 }
 
 function ruleDayValue(rule) {
@@ -447,6 +452,14 @@ function ruleDayValue(rule) {
 
 function setRuleDayValue(rule, value) {
   ruleDayDrafts.value[rule.id] = Number(value)
+}
+
+function ruleQuantityValue(rule) {
+  return ruleQuantityDrafts.value[rule.id] ?? rule.quantity ?? 1
+}
+
+function setRuleQuantityValue(rule, value) {
+  ruleQuantityDrafts.value[rule.id] = Number(value)
 }
 
 function quickMovement(record) {
@@ -460,6 +473,8 @@ function quickMovement(record) {
     targetLabel: record.rule.targetLabel,
     requestedBy: selectedPerson.value?.name || '',
     requestedByPersonId: selectedPerson.value?.id || '',
+    destination: 'EPI',
+    returnTo: { tab: 'cadastros', subTab: 'epis' },
     nonce: `epi-cadastro:${selectedPerson.value?.id || 'pessoa'}:${record.rule.id}:${Date.now()}`,
   })
 }
@@ -498,6 +513,8 @@ function quickMovement(record) {
             <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'EPI' }}</span>
             <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget ? readableTargetLabel(selectedRuleTarget) : 'Selecionar por blocos do catálogo' }}</span>
           </button>
+          <label class="mt-3 mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Quantidade padrão</label>
+          <input v-model.number="newRuleQuantity" type="number" min="1" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
           <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
         </div>
       </aside>
@@ -507,7 +524,7 @@ function quickMovement(record) {
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">EPIs obrigatorios de {{ selectedRoleName || 'cargo' }}</h3>
         </div>
         <div v-if="rulesForRole.length" class="divide-y divide-gray-100 dark:divide-gray-700">
-          <article v-for="rule in rulesForRole" :key="rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_14rem_auto]" :class="{ 'opacity-60': !rule.active }">
+          <article v-for="rule in rulesForRole" :key="rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_20rem_auto]" :class="{ 'opacity-60': !rule.active }">
             <div>
               <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
                 {{ targetTypeLabels[rule.targetType] }}
@@ -518,9 +535,21 @@ function quickMovement(record) {
               </template>
               <p v-else class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ readableTargetLabel(rule) }}</p>
             </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Periodicidade</label>
-              <div class="flex items-center gap-2">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Quantidade</label>
+                <input
+                  :value="ruleQuantityValue(rule)"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  @input="setRuleQuantityValue(rule, $event.target.value)"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Periodicidade</label>
+                <div class="flex items-center gap-2">
                 <input
                   :value="ruleDayValue(rule)"
                   type="number"
@@ -530,10 +559,11 @@ function quickMovement(record) {
                   @input="setRuleDayValue(rule, $event.target.value)"
                 />
                 <span class="text-xs text-gray-500 dark:text-gray-400">dias</span>
+                </div>
               </div>
             </div>
             <div class="flex items-center gap-2">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="onUpdateRuleDays(rule)">Atualizar</button>
+              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="onUpdateRule(rule)">Atualizar</button>
               <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
               <button type="button" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700" @click="onDeleteRule(rule)">Excluir</button>
             </div>
