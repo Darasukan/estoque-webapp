@@ -734,8 +734,8 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 </script>
 
 <template>
-  <div>
-    <div v-if="isAdmin && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2">
+  <div class="relative">
+    <div v-if="isAdmin && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2 lg:absolute lg:right-0 lg:top-0 lg:mb-0">
       <button
         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
         @click="startAiCatalogSearch"
@@ -1216,7 +1216,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         </div>
       </div>
 
-      <div v-if="searchedGroups.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-if="searchedGroups.length" class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         <button
           v-for="g in searchedGroups"
           :key="g"

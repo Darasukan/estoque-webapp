@@ -6,6 +6,7 @@ import { usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import { useToast } from '../../composables/useToast.js'
+import { normalizeSearchText } from '../../utils/globalSearch.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
 import AppDialog from '../ui/AppDialog.vue'
 
@@ -27,6 +28,8 @@ const { success, error } = useToast()
 
 const activeTab = ref('cargo')
 const selectedRoleName = ref('')
+const rolePickerOpen = ref(false)
+const roleSearch = ref('')
 const selectedPersonId = ref('')
 const selectedRuleTarget = ref(null)
 const newRuleQuantity = ref(1)
@@ -61,6 +64,21 @@ const targetTypeLabels = {
 const DIRECT_ITEMS_SUBCATEGORY = 'Itens diretos'
 
 const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
+const filteredRoles = computed(() => {
+  const search = normalizeSearchText(roleSearch.value)
+  if (!search) return activeRoles.value
+  return activeRoles.value.filter(role => normalizeSearchText(role.name).includes(search))
+})
+
+function openRolePicker() {
+  roleSearch.value = ''
+  rolePickerOpen.value = true
+}
+
+function selectRole(role) {
+  selectedRoleName.value = role.name
+  rolePickerOpen.value = false
+}
 
 function hierarchy(item) {
   return [item.group, item.category, item.subcategory].filter(Boolean).join(' > ')
@@ -498,10 +516,49 @@ function quickMovement(record) {
     <section v-if="activeTab === 'cargo'" class="grid gap-4 lg:grid-cols-[22rem_1fr]">
       <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo</label>
-        <select v-model="selectedRoleName" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
-          <option value="">Selecione um cargo</option>
-          <option v-for="role in activeRoles" :key="role.id" :value="role.name">{{ role.name }}</option>
-        </select>
+        <div class="relative">
+          <button
+            type="button"
+            role="combobox"
+            :aria-expanded="rolePickerOpen"
+            class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 outline-none transition-colors hover:border-gray-400 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            @click="openRolePicker"
+          >
+            <span class="truncate">{{ selectedRoleName || 'Selecione um cargo' }}</span>
+            <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+          </button>
+          <div v-if="rolePickerOpen" class="fixed inset-0 z-10" @click="rolePickerOpen = false"></div>
+          <div v-if="rolePickerOpen" role="listbox" class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <div class="border-b border-gray-200 p-2 dark:border-gray-700">
+              <input
+                v-model="roleSearch"
+                type="search"
+                autocomplete="off"
+                autofocus
+                placeholder="Buscar cargo..."
+                class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                @keydown.escape.stop="rolePickerOpen = false"
+                @keydown.enter.prevent="filteredRoles.length === 1 && selectRole(filteredRoles[0])"
+              />
+            </div>
+            <div class="max-h-64 overflow-y-auto py-1">
+              <button
+                v-for="role in filteredRoles"
+                :key="role.id"
+                type="button"
+                role="option"
+                :aria-selected="selectedRoleName === role.name"
+                class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                :class="selectedRoleName === role.name ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300' : 'text-gray-800 dark:text-gray-100'"
+                @click="selectRole(role)"
+              >
+                <span class="truncate">{{ role.name }}</span>
+                <svg v-if="selectedRoleName === role.name" class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+              </button>
+              <p v-if="!filteredRoles.length" class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Nenhum cargo encontrado.</p>
+            </div>
+          </div>
+        </div>
 
         <div class="mt-4">
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Adicionar EPI</label>

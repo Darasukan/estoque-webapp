@@ -2627,7 +2627,7 @@ defineExpose({
             <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar saidas em sequencia</h2>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[9rem_minmax(0,1fr)]">
             <div class="lg:col-span-2">
               <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
               <div class="relative">
