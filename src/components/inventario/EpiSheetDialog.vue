@@ -40,6 +40,7 @@ const pickerRowId = ref('')
 const pickerSearch = ref('')
 const sheetEl = ref(null)
 const blankDate = '        /         /'
+const localBrandLogo = '/local-brand/logo.jpg'
 
 const itemById = computed(() => new Map(items.value.map(item => [item.id, item])))
 const variationById = computed(() => new Map(variations.value.map(variation => [variation.id, variation])))
@@ -411,7 +412,7 @@ function printSheet() {
           <section v-else ref="sheetEl" class="epi-sheet-document mx-auto min-w-[1050px] bg-white text-black shadow-xl">
             <div class="epi-sheet-top">
               <div class="epi-sheet-identification">
-                <div class="epi-sheet-heading"><img src="/local-brand/logo.jpg" alt="Colorindo" /><h1>FICHA INDIVIDUAL DE EPI</h1></div>
+                <div class="epi-sheet-heading"><img :src="localBrandLogo" alt="Colorindo" /><h1>FICHA INDIVIDUAL DE EPI</h1></div>
                 <h2>{{ selectedPerson.name }}</h2>
                 <div class="epi-sheet-person-meta"><p class="epi-sheet-role"><strong>CARGO:</strong> {{ selectedPerson.role || '' }}</p><p><strong>MATRÍCULA:</strong> {{ registration }}</p></div>
                 <p class="epi-sheet-note"><strong>OBS:</strong> {{ notes }}</p>
