@@ -2920,14 +2920,14 @@ defineExpose({
                           :key="key"
                           class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px]"
                         >
-                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                          <span class="font-medium">{{ key }}:</span>{{ val }}
                         </span>
                         <span
                           v-for="(val, key) in m.variationExtras"
                           :key="'x'+key"
                           class="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
                         >
-                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                          <span class="font-medium">{{ key }}:</span>{{ val }}
                         </span>
                       </div>
                     </td>

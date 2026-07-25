@@ -34,7 +34,7 @@ export function useAuth() {
 
   async function changeOwnPassword(pin) {
     if (!user.value?.id) return { ok: false, error: 'Usuario nao autenticado.' }
-    if (!pin || String(pin).trim().length < 8) return { ok: false, error: 'Senha deve ter ao menos 8 caracteres.' }
+    if (!pin || String(pin).trim().length < 4) return { ok: false, error: 'Senha deve ter ao menos 4 caracteres.' }
     try {
       await api.updateUser(user.value.id, { pin: String(pin).trim() })
       user.value = { ...user.value, mustChangePassword: false }

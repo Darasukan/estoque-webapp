@@ -2,37 +2,27 @@
 import { computed, inject, ref, watch } from 'vue'
 import { useItems } from '../../composables/useItems.js'
 import { useRoles } from '../../composables/useRoles.js'
-import { usePeople } from '../../composables/usePeople.js'
-import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
 import { useToast } from '../../composables/useToast.js'
 import { normalizeSearchText } from '../../utils/globalSearch.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
 import AppDialog from '../ui/AppDialog.vue'
 
-const emit = defineEmits(['quick-movement'])
 const isLoggedIn = inject('isLoggedIn')
 const { items, variations } = useItems()
 const { activeRoles } = useRoles()
-const { activePeople } = usePeople()
-const { movements } = useMovements()
 const {
   roleRules,
-  activeRoleRules,
-  activePeriodicities,
   addRoleRule,
   editRoleRule,
   deleteRoleRule,
 } = useEpis()
 const { success, error } = useToast()
 
-const activeTab = ref('cargo')
 const selectedRoleName = ref('')
 const rolePickerOpen = ref(false)
 const roleSearch = ref('')
-const selectedPersonId = ref('')
 const selectedRuleTarget = ref(null)
-const newRuleQuantity = ref(1)
 const ruleDayDrafts = ref({})
 const ruleQuantityDrafts = ref({})
 const selectorOpen = ref(false)
@@ -47,10 +37,6 @@ const modalSelectedTarget = ref(null)
 
 watch(activeRoles, roles => {
   if (!selectedRoleName.value && roles.length) selectedRoleName.value = roles[0].name
-}, { immediate: true })
-
-watch(activePeople, people => {
-  if (!selectedPersonId.value && people.length) selectedPersonId.value = people[0].id
 }, { immediate: true })
 
 const targetTypeRank = { grupo: 1, categoria: 2, subcategoria: 3, item: 4, variacao: 5 }
@@ -345,102 +331,15 @@ function resetSelectorPath(level = 'root') {
 const rulesForRole = computed(() =>
   roleRules.value.filter(rule => rule.roleName === selectedRoleName.value)
 )
-
-const selectedPerson = computed(() =>
-  activePeople.value.find(person => person.id === selectedPersonId.value) || null
-)
-
-const selectedPersonRules = computed(() => {
-  const role = selectedPerson.value?.role || ''
-  return activeRoleRules.value.filter(rule => rule.roleName.toLowerCase() === role.toLowerCase())
-})
-
-function movementPersonMatches(movement, person) {
-  if (!person || movement.type !== 'saida') return false
-  if (movement.requestedByPersonId) return movement.requestedByPersonId === person.id
-  return String(movement.requestedBy || '').trim().toLowerCase() === person.name.toLowerCase()
-}
-
-function targetMatchesMovement(target, movement) {
-  if (!target || !movement) return false
-  if (target.targetType === 'grupo') return movement.itemGroup === target.targetKey
-  if (target.targetType === 'categoria') return `${movement.itemGroup || ''}|${movement.itemCategory || ''}` === target.targetKey
-  if (target.targetType === 'subcategoria') return `${movement.itemGroup || ''}|${movement.itemCategory || ''}|${movement.itemSubcategory || ''}` === target.targetKey
-  if (target.targetType === 'item') return movement.itemId === target.targetKey
-  if (target.targetType === 'variacao') return movement.variationId === target.targetKey
-  return false
-}
-
-function targetFromRule(rule) {
-  return {
-    targetType: rule.targetType,
-    targetKey: rule.targetKey,
-    targetLabel: rule.targetLabel,
-  }
-}
-
-function periodForRule(rule) {
-  const days = Number(rule?.days || 0)
-  if (Number.isInteger(days) && days > 0) return { days }
-  return activePeriodicities.value.find(p => p.targetType === rule.targetType && p.targetKey === rule.targetKey) || null
-}
-
-function addDays(date, days) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + Number(days || 0))
-  return next
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleDateString('pt-BR')
-}
-
-function epiStatus(record) {
-  if (!record.movement) return 'Pendente'
-  if (!record.dueDate) return 'Em dia'
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const due = new Date(record.dueDate)
-  due.setHours(0, 0, 0, 0)
-  const daysLeft = Math.ceil((due - today) / 86400000)
-  if (daysLeft < 0) return 'Vencido'
-  if (daysLeft <= 7) return 'Vence em breve'
-  return 'Em dia'
-}
-
-const personEpiRecords = computed(() => {
-  const person = selectedPerson.value
-  if (!person) return []
-  return selectedPersonRules.value.map(rule => {
-    const movement = movements.value
-      .filter(m => movementPersonMatches(m, person) && targetMatchesMovement(targetFromRule(rule), m))
-      .slice()
-      .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null
-    const period = periodForRule(rule)
-    const dueDate = movement && period ? addDays(movement.date, period.days) : null
-    const record = { rule, movement, period, dueDate }
-    return { ...record, status: epiStatus(record) }
-  })
-})
-
-function statusClass(status) {
-  if (status === 'Vencido') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-  if (status === 'Vence em breve') return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-  if (status === 'Pendente') return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-}
+const activeRuleCount = computed(() => rulesForRole.value.filter(rule => rule.active).length)
 
 async function onAddRule() {
   if (!isLoggedIn?.value) return
   if (!selectedRuleTarget.value) { error('Selecione um EPI.'); return }
-  const result = await addRoleRule(selectedRoleName.value, selectedRuleTarget.value, 30, newRuleQuantity.value)
+  const result = await addRoleRule(selectedRoleName.value, selectedRuleTarget.value, 30, 1)
   if (!result.ok) { error(result.error); return }
   success('EPI vinculado ao cargo.')
   selectedRuleTarget.value = null
-  newRuleQuantity.value = 1
 }
 
 async function onToggleRule(rule) {
@@ -480,205 +379,147 @@ function setRuleQuantityValue(rule, value) {
   ruleQuantityDrafts.value[rule.id] = Number(value)
 }
 
-function quickMovement(record) {
-  const target = catalogTargets.value.find(t => t.targetType === record.rule.targetType && t.targetKey === record.rule.targetKey)
-  emit('quick-movement', {
-    type: 'saida',
-    itemId: target?.itemId,
-    variationId: target?.variationId,
-    targetType: record.rule.targetType,
-    targetKey: record.rule.targetKey,
-    targetLabel: record.rule.targetLabel,
-    requestedBy: selectedPerson.value?.name || '',
-    requestedByPersonId: selectedPerson.value?.id || '',
-    destination: 'EPI',
-    returnTo: { tab: 'cadastros', subTab: 'epis' },
-    nonce: `epi-cadastro:${selectedPerson.value?.id || 'pessoa'}:${record.rule.id}:${Date.now()}`,
-  })
-}
 </script>
 
 <template>
-  <div>
-    <div class="mb-5 flex flex-wrap items-start justify-start gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
-      <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
-        <button
-          v-for="tab in [{ id: 'cargo', label: 'Por cargo' }, { id: 'pessoas', label: 'Por pessoa' }]"
-          :key="tab.id"
-          type="button"
-          class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-          :class="activeTab === tab.id ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'"
-          @click="activeTab = tab.id"
-        >{{ tab.label }}</button>
+  <div class="ds-page-stack">
+    <header class="ds-page-header">
+      <div>
+        <h1 class="ds-page-title">Editar EPIs</h1>
+        <p class="ds-page-subtitle">Defina os equipamentos obrigatórios, a quantidade e a periodicidade de entrega por cargo.</p>
       </div>
-    </div>
+    </header>
 
-    <section v-if="activeTab === 'cargo'" class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo</label>
-        <div class="relative">
-          <button
-            type="button"
-            role="combobox"
-            :aria-expanded="rolePickerOpen"
-            class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 outline-none transition-colors hover:border-gray-400 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            @click="openRolePicker"
-          >
-            <span class="truncate">{{ selectedRoleName || 'Selecione um cargo' }}</span>
-            <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-          </button>
-          <div v-if="rolePickerOpen" class="fixed inset-0 z-10" @click="rolePickerOpen = false"></div>
-          <div v-if="rolePickerOpen" role="listbox" class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <div class="border-b border-gray-200 p-2 dark:border-gray-700">
-              <input
-                v-model="roleSearch"
-                type="search"
-                autocomplete="off"
-                autofocus
-                placeholder="Buscar cargo..."
-                class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                @keydown.escape.stop="rolePickerOpen = false"
-                @keydown.enter.prevent="filteredRoles.length === 1 && selectRole(filteredRoles[0])"
-              />
-            </div>
-            <div class="max-h-64 overflow-y-auto py-1">
-              <button
-                v-for="role in filteredRoles"
-                :key="role.id"
-                type="button"
-                role="option"
-                :aria-selected="selectedRoleName === role.name"
-                class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
-                :class="selectedRoleName === role.name ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300' : 'text-gray-800 dark:text-gray-100'"
-                @click="selectRole(role)"
-              >
-                <span class="truncate">{{ role.name }}</span>
-                <svg v-if="selectedRoleName === role.name" class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-              </button>
-              <p v-if="!filteredRoles.length" class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Nenhum cargo encontrado.</p>
+    <section class="ds-panel p-4">
+      <div class="grid gap-4 md:grid-cols-[minmax(16rem,24rem)_1fr] md:items-end">
+        <div>
+          <label class="ds-label">Cargo</label>
+          <div class="relative">
+            <button
+              type="button"
+              role="combobox"
+              :aria-expanded="rolePickerOpen"
+              class="ds-input flex w-full items-center justify-between gap-2 text-left"
+              @click="openRolePicker"
+            >
+              <span class="truncate font-semibold">{{ selectedRoleName || 'Selecione um cargo' }}</span>
+              <svg class="h-4 w-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+            </button>
+            <div v-if="rolePickerOpen" class="fixed inset-0 z-10" @click="rolePickerOpen = false"></div>
+            <div v-if="rolePickerOpen" role="listbox" class="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+              <div class="border-b border-gray-200 p-2 dark:border-gray-700">
+                <input
+                  v-model="roleSearch"
+                  type="search"
+                  autocomplete="off"
+                  autofocus
+                  placeholder="Buscar cargo..."
+                  class="ds-input"
+                  @keydown.escape.stop="rolePickerOpen = false"
+                  @keydown.enter.prevent="filteredRoles.length === 1 && selectRole(filteredRoles[0])"
+                />
+              </div>
+              <div class="max-h-64 overflow-y-auto py-1">
+                <button
+                  v-for="role in filteredRoles"
+                  :key="role.id"
+                  type="button"
+                  role="option"
+                  :aria-selected="selectedRoleName === role.name"
+                  class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                  :class="selectedRoleName === role.name ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300' : 'text-gray-800 dark:text-gray-100'"
+                  @click="selectRole(role)"
+                >
+                  <span class="truncate">{{ role.name }}</span>
+                  <svg v-if="selectedRoleName === role.name" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                </button>
+                <p v-if="!filteredRoles.length" class="px-3 py-3 text-sm text-gray-500 dark:text-gray-400">Nenhum cargo encontrado.</p>
+              </div>
             </div>
           </div>
         </div>
+        <p class="text-sm text-gray-500 dark:text-gray-400 md:pb-2">
+          <span class="font-semibold text-gray-900 dark:text-gray-100">{{ activeRuleCount }}</span>
+          {{ activeRuleCount === 1 ? 'regra ativa' : 'regras ativas' }} para este cargo
+        </p>
+      </div>
+    </section>
 
-        <div class="mt-4">
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Adicionar EPI</label>
-          <button
-            type="button"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-3 text-left text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-            @click="openSelector('rule')"
-          >
-            <span class="block text-xs font-semibold uppercase tracking-wider text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'EPI' }}</span>
-            <span class="mt-1 block truncate font-medium text-gray-900 dark:text-gray-100">{{ selectedRuleTarget ? readableTargetLabel(selectedRuleTarget) : 'Selecionar por blocos do catálogo' }}</span>
-          </button>
-          <label class="mt-3 mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Quantidade padrão</label>
-          <input v-model.number="newRuleQuantity" type="number" min="1" step="1" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
-          <button type="button" class="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
+    <section class="grid items-start gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
+      <aside class="ds-panel overflow-hidden">
+        <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Novo EPI obrigatório</h2>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Vincule um item ou bloco do catálogo ao cargo selecionado.</p>
+        </div>
+        <div class="space-y-4 p-4">
+          <div>
+            <label class="ds-label">EPI do catálogo</label>
+            <button
+              type="button"
+              class="ds-input min-h-16 w-full text-left transition-colors hover:border-primary-500"
+              @click="openSelector('rule')"
+            >
+              <span class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ selectedRuleTarget ? targetTypeLabels[selectedRuleTarget.targetType] : 'Selecionar' }}</span>
+              <span class="mt-1 block truncate font-semibold text-gray-900 dark:text-gray-100">{{ selectedRuleTarget ? readableTargetLabel(selectedRuleTarget) : 'Escolher no catálogo' }}</span>
+            </button>
+          </div>
+          <button type="button" class="min-h-10 w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-700 dark:disabled:bg-gray-700 dark:disabled:text-gray-300" :disabled="!selectedRoleName || !selectedRuleTarget" @click="onAddRule">Adicionar ao cargo</button>
         </div>
       </aside>
 
-      <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">EPIs obrigatorios de {{ selectedRoleName || 'cargo' }}</h3>
+      <div class="ds-panel overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">EPIs obrigatórios</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ selectedRoleName || 'Selecione um cargo' }}</p>
+          </div>
+          <span class="ds-chip tabular-nums">{{ rulesForRole.length }}</span>
         </div>
         <div v-if="rulesForRole.length" class="divide-y divide-gray-100 dark:divide-gray-700">
-          <article v-for="rule in rulesForRole" :key="rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_20rem_auto]" :class="{ 'opacity-60': !rule.active }">
-            <div>
-              <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                {{ targetTypeLabels[rule.targetType] }}
-              </span>
+          <article v-for="rule in rulesForRole" :key="rule.id" class="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(12rem,1fr)_8rem_11rem_auto] xl:items-end" :class="{ 'opacity-60': !rule.active }">
+            <div class="self-center">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ targetTypeLabels[rule.targetType] }}</p>
               <template v-if="targetVariationRow(rule)">
                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(rule).item.name }}</p>
                 <AttributeBadges class="mt-1" :item="targetVariationRow(rule).item" :variation="targetVariationRow(rule).variation" compact />
               </template>
               <p v-else class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ readableTargetLabel(rule) }}</p>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Quantidade</label>
-                <input
-                  :value="ruleQuantityValue(rule)"
-                  type="number"
-                  min="1"
-                  step="1"
-                  class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                  @input="setRuleQuantityValue(rule, $event.target.value)"
-                />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Periodicidade</label>
-                <div class="flex items-center gap-2">
+            <div>
+              <label class="ds-label">Quantidade</label>
+              <input
+                :value="ruleQuantityValue(rule)"
+                type="number"
+                min="1"
+                step="1"
+                class="ds-input"
+                @input="setRuleQuantityValue(rule, $event.target.value)"
+              />
+            </div>
+            <div>
+              <label class="ds-label">Periodicidade</label>
+              <div class="flex items-center gap-2">
                 <input
                   :value="ruleDayValue(rule)"
                   type="number"
                   min="1"
                   step="1"
-                  class="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  class="ds-input"
                   @input="setRuleDayValue(rule, $event.target.value)"
                 />
                 <span class="text-xs text-gray-500 dark:text-gray-400">dias</span>
-                </div>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="onUpdateRule(rule)">Atualizar</button>
-              <button type="button" class="rounded-full px-2 py-1 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
-              <button type="button" class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700" @click="onDeleteRule(rule)">Excluir</button>
+            <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+              <button type="button" class="min-h-9 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="onUpdateRule(rule)">Atualizar</button>
+              <button type="button" :aria-pressed="rule.active" class="min-h-9 rounded-lg px-3 py-1.5 text-xs font-semibold" :class="rule.active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'" @click="onToggleRule(rule)">{{ rule.active ? 'Ativo' : 'Inativo' }}</button>
+              <button type="button" class="min-h-9 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30" @click="onDeleteRule(rule)">Excluir</button>
             </div>
           </article>
         </div>
-        <div v-else class="p-8 text-sm text-gray-500 dark:text-gray-400">Nenhum EPI vinculado a este cargo.</div>
-      </div>
-    </section>
-
-    <section v-else class="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <aside class="epi-rule-panel rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pessoa</label>
-        <select v-model="selectedPersonId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
-          <option value="">Selecione uma pessoa</option>
-          <option v-for="person in activePeople" :key="person.id" :value="person.id">{{ person.name }}{{ person.role ? ` - ${person.role}` : '' }}</option>
-        </select>
-        <div class="mt-4 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-800/60">
-          <p class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo atual</p>
-          <p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">{{ selectedPerson?.role || '-' }}</p>
-        </div>
-      </aside>
-
-      <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div class="epi-rule-list-header border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Controle de EPI de {{ selectedPerson?.name || 'pessoa' }}</h3>
-        </div>
-        <div v-if="personEpiRecords.length" class="divide-y divide-gray-100 dark:divide-gray-700">
-          <article v-for="record in personEpiRecords" :key="record.rule.id" class="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_10rem_10rem_9rem_auto]">
-            <div>
-              <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                {{ targetTypeLabels[record.rule.targetType] }}
-              </span>
-              <template v-if="targetVariationRow(record.rule)">
-                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
-                <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
-              </template>
-              <p v-else class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
-              <p v-if="record.period" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Periodicidade: {{ record.period.days }} dias</p>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ record.movement ? `${record.movement.itemName} - ${record.movement.qty} ${record.movement.itemUnit}` : 'Nenhuma saida registrada' }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Entrega</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.movement?.date) }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">Vencimento</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.dueDate) }}</p>
-            </div>
-            <div class="flex items-center">
-              <span class="rounded-full px-2 py-1 text-xs font-semibold" :class="statusClass(record.status)">{{ record.status }}</span>
-            </div>
-            <div class="flex items-center justify-end">
-              <button type="button" class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700" @click="quickMovement(record)">Registrar saida</button>
-            </div>
-          </article>
-        </div>
-        <div v-else class="p-8 text-sm text-gray-500 dark:text-gray-400">
-          Nenhum EPI obrigatorio encontrado para o cargo desta pessoa.
+        <div v-else class="p-8 text-center">
+          <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">Nenhum EPI obrigatório</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Use o painel ao lado para criar a primeira regra deste cargo.</p>
         </div>
       </div>
     </section>
@@ -917,7 +758,7 @@ function quickMovement(record) {
             </div>
             <button
               type="button"
-              class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+              class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-700 dark:disabled:bg-gray-700 dark:disabled:text-gray-300"
               :disabled="!modalSelectedTarget"
               @click="confirmSelector"
             >Usar seleção</button>

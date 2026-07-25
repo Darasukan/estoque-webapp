@@ -25,17 +25,14 @@ const consumedPage = ref(1)
 
 const dashboardCopy = computed(() => {
   if (isAdmin?.value) return {
-    kicker: 'Visão administrativa',
     title: 'Prioridades do estoque',
     subtitle: 'Resolva rupturas e pendências antes de acompanhar os indicadores.',
   }
   if (canOperate?.value) return {
-    kicker: 'Operação diária',
     title: 'Registrar movimentação',
     subtitle: 'Registre entradas e saídas; consultas e relatórios ficam em segundo plano.',
   }
   return {
-    kicker: 'Consulta pública',
     title: 'Consultar materiais',
     subtitle: 'Consulte saldos e locais. Entre para registrar ou administrar o estoque.',
   }
@@ -367,7 +364,6 @@ watch(topConsumedAllItems, () => {
   <div class="ds-page-stack">
     <header class="ds-page-header dashboard-header">
       <div>
-        <p class="ds-page-kicker">{{ dashboardCopy.kicker }}</p>
         <h1 class="ds-page-title">{{ dashboardCopy.title }}</h1>
         <p class="ds-page-subtitle">{{ dashboardCopy.subtitle }}</p>
       </div>

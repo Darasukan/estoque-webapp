@@ -19,46 +19,53 @@
   --color-primary-900: #78350f;
   --color-primary-950: #451a03;
 
-  /* Superfícies — zinc neutro, canvas claro e painéis brancos. */
-  --ds-bg: #f4f4f5;
-  --ds-bg-wash: #fafafa;
-  --ds-panel: #ffffff;
-  --ds-panel-tint: #f4f4f5;
-  --ds-surface: #f4f4f5;
-  --ds-surface-strong: #e4e4e7;
-  --ds-surface-hover: #e9e9ec;
-  --ds-side-bg: #fafafa;
+  /* Superfícies — zinc operacional, com camadas visíveis no modo claro. */
+  --ds-bg: #e7e8ea;
+  --ds-bg-wash: #f0f1f2;
+  --ds-panel: #f8f8f7;
+  --ds-panel-tint: #eceeef;
+  --ds-surface: #edeef0;
+  --ds-surface-strong: #d9dbde;
+  --ds-surface-hover: #e1e3e5;
+  --ds-side-bg: #eceeef;
 
-  /* Rail de navegação. */
-  --ds-nav-bg: #ffffff;
-  --ds-nav-border: #e4e4e7;
+  /* Chrome escuro: rail e topbar enquadram a área de trabalho. */
+  --ds-nav-bg: #101013;
+  --ds-nav-border: rgba(255, 255, 255, 0.08);
+  --ds-nav-text: #fafafa;
+  --ds-nav-text-muted: #a1a1aa;
+  --ds-nav-text-subtle: #71717a;
+  --ds-nav-info: #0084d1;
+  --ds-nav-surface: rgba(255, 255, 255, 0.07);
+  --ds-nav-active-bg: #b45309;
+  --ds-nav-active-text: #ffffff;
   --ds-header-bg: transparent;
-  --ds-table-head: #fafafa;
+  --ds-table-head: #eceeef;
 
   /* Texto — quatro níveis. */
   --ds-text: #18181b;
   --ds-text-soft: #3f3f46;
-  --ds-text-muted: #71717a;
-  --ds-text-subtle: #a1a1aa;
+  --ds-text-muted: #606069;
+  --ds-text-subtle: #85858e;
 
   /* Bordas. */
-  --ds-border-subtle: rgba(24, 24, 27, 0.06);
-  --ds-border: #e4e4e7;
+  --ds-border-subtle: rgba(24, 24, 27, 0.1);
+  --ds-border: #d1d2d5;
 
   /* Controles. */
   --ds-control-bg: #ffffff;
-  --ds-control-border: #d4d4d8;
+  --ds-control-border: #c5c6ca;
 
   /* Ação e significado. */
   --ds-brand: #b45309;
   --ds-brand-hover: #92400e;
   --ds-primary-text: #ffffff;
-  --ds-active-bg: #fef3c7;
-  --ds-active-text: #78350f;
+  --ds-active-bg: #d09669;
+  --ds-active-text: #451a03;
   --ds-info: #2563eb;
-  --ds-danger: #dc2626;
+  --ds-danger: #b91c2b;
   --ds-warning: #d97706;
-  --ds-success: #16a34a;
+  --ds-success: #147a3d;
 
   /* Forma e profundidade. */
   --ds-radius-control: 6px;
@@ -82,6 +89,64 @@
   --color-gray-950: #09090b;
 }
 
+:root:not(.dark) {
+  /* Tailwind legado: tira branco puro e reforça estados semânticos. */
+  --color-white: #fafaf9;
+
+  /* Acentos claros: laranja industrial, sem amarelos lavados. */
+  --color-primary-50: #f1dfd0;
+  --color-primary-100: #e3bea0;
+  --color-primary-200: #d09669;
+
+  --color-amber-50: #f1dfd0;
+  --color-amber-100: #e3bea0;
+  --color-amber-200: #d09669;
+  --color-amber-300: #c4773b;
+  --color-amber-400: #b85d16;
+  --color-amber-500: #b45309;
+  --color-amber-600: #92400e;
+  --color-amber-700: #78350f;
+  --color-amber-800: #5f2a0b;
+  --color-amber-900: #451a03;
+  --color-amber-950: #2b1002;
+
+  --color-yellow-50: #f1dfd0;
+  --color-yellow-100: #e3bea0;
+  --color-yellow-200: #d09669;
+  --color-yellow-300: #c4773b;
+  --color-yellow-400: #b85d16;
+  --color-yellow-500: #b45309;
+  --color-yellow-600: #92400e;
+  --color-yellow-700: #78350f;
+  --color-yellow-800: #5f2a0b;
+  --color-yellow-900: #451a03;
+  --color-yellow-950: #2b1002;
+
+  --color-green-50: #e2f4e8;
+  --color-green-100: #c6e9d1;
+  --color-green-200: #91d3a6;
+  --color-green-300: #58b978;
+  --color-green-400: #2f9e5a;
+  --color-green-500: #198447;
+  --color-green-600: #146c3a;
+  --color-green-700: #125a32;
+  --color-green-800: #11482a;
+  --color-green-900: #0e3b23;
+  --color-green-950: #072718;
+
+  --color-red-50: #fde7e8;
+  --color-red-100: #facfd2;
+  --color-red-200: #f3a3a9;
+  --color-red-300: #e96f79;
+  --color-red-400: #dc4754;
+  --color-red-500: #c92d3a;
+  --color-red-600: #ae2230;
+  --color-red-700: #8f1d29;
+  --color-red-800: #741c25;
+  --color-red-900: #611b22;
+  --color-red-950: #350b10;
+}
+
 :root.dark {
   color-scheme: dark;
 
@@ -95,8 +160,6 @@
   --ds-surface-hover: #2e2e33;
   --ds-side-bg: #101013;
 
-  --ds-nav-bg: #101013;
-  --ds-nav-border: rgba(255, 255, 255, 0.08);
   --ds-table-head: #1a1a1e;
 
   --ds-text: #fafafa;
@@ -110,11 +173,11 @@
   --ds-control-bg: #1d1d21;
   --ds-control-border: rgba(255, 255, 255, 0.16);
 
-  --ds-brand: #f59e0b;
-  --ds-brand-hover: #fbbf24;
-  --ds-primary-text: #15191d;
-  --ds-active-bg: #4a3517;
-  --ds-active-text: #fde68a;
+  --ds-brand: #b45309;
+  --ds-brand-hover: #92400e;
+  --ds-primary-text: #ffffff;
+  --ds-active-bg: #b45309;
+  --ds-active-text: #ffffff;
   --ds-info: #60a5fa;
   --ds-danger: #f87171;
   --ds-warning: #fbbf24;

@@ -63,7 +63,8 @@ test('initial-password gate only permits the user own password update', () => {
   assert.equal(isOwnPasswordChangeRequest({
     baseUrl: '/api/items', method: 'PUT', path: '/items/1',
   }, 'user_admin'), false)
-  assert.match(passwordChangeError('123'), /8 caracteres/)
+  assert.match(passwordChangeError('123'), /4 caracteres/)
+  assert.equal(passwordChangeError('1234'), '')
   assert.match(passwordChangeError('admin123', true), /diferente/)
   assert.equal(passwordChangeError('nova-senha'), '')
 })

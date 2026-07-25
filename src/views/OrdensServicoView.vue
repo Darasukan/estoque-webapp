@@ -21,6 +21,7 @@ const props = defineProps({
   mode: { type: String, default: 'general' },
   embedded: { type: Boolean, default: false },
   createOnly: { type: Boolean, default: false },
+  popupOnly: { type: Boolean, default: false },
   prefillMotor: { type: Object, default: null },
   scopedMotorId: { type: String, default: '' },
   initialMotorId: { default: null },
@@ -28,7 +29,7 @@ const props = defineProps({
   initialStatus: { type: String, default: '' },
   focusOrderId: { type: String, default: '' },
 })
-const emit = defineEmits(['prefill-consumed', 'created', 'update:tab'])
+const emit = defineEmits(['prefill-consumed', 'created', 'updated', 'closed', 'update:tab'])
 const isAdmin = inject('isAdmin')
 const canOperate = inject('canOperate')
 const canManageOs = computed(() => Boolean(canOperate?.value ?? canOperate))
@@ -1931,6 +1932,7 @@ async function handleEditOS(id) {
     activeSubTab.value = 'ordens'
     expandedOrderId.value = id
     resetOsForm()
+    if (props.popupOnly) emit('updated', updatedOrder)
   } catch (e) { showError(e.message) }
 }
 
@@ -2303,6 +2305,7 @@ function cancelNewOsForm() {
   showNewForm.value = false
   resetOsForm()
   if (!props.createOnly) activeSubTab.value = 'ordens'
+  if (props.popupOnly) emit('closed')
 }
 
 function selectMatItem(item) {
@@ -2331,14 +2334,13 @@ function matBackToStep2() {
 </script>
 
 <template>
-  <div class="ds-page-stack">
+  <div class="ds-page-stack" :class="{ hidden: popupOnly }">
     <datalist id="os-people-options">
       <option v-for="p in activePeople" :key="p.id" :value="p.name" />
     </datalist>
     <!-- Header -->
     <div v-if="!embedded" class="ds-page-header">
       <div>
-        <p class="ds-page-kicker">Manutenção</p>
         <h1 class="ds-page-title">{{ pageTitle }}</h1>
         <p class="ds-page-subtitle">{{ pageSubtitle }}</p>
       </div>
@@ -2421,7 +2423,7 @@ function matBackToStep2() {
             :key="tab.id"
             type="button"
             class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-            :class="ordersStatusTab === tab.id ? 'bg-primary-600 text-[var(--ds-primary-text)]' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
+            :class="ordersStatusTab === tab.id ? 'bg-[var(--ds-brand)] text-[var(--ds-primary-text)] hover:bg-[var(--ds-brand-hover)]' : 'text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700'"
             @click="ordersStatusTab = tab.id"
           >
             {{ tab.label }}

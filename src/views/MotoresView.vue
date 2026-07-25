@@ -56,7 +56,7 @@ const motorPage = ref(1)
 const MOTOR_PAGE_SIZE = 8
 const motorSortKey = ref('tag')
 const motorSortDirection = ref('asc')
-const motorViewMode = ref('catalogo')
+const motorViewMode = ref('motores')
 const motorCatalogPath = ref([])
 const selectedMotorId = ref('')
 const showForm = ref(false)
@@ -851,22 +851,6 @@ function workOrderEndLabel(order) {
   return 'Em aberto'
 }
 
-function workOrderStartLabel(order) {
-  if (order.maintenanceStartDate && order.maintenanceStartTime) return `${formatDate(order.maintenanceStartDate)} ${order.maintenanceStartTime}`
-  if (order.maintenanceStartDate) return formatDate(order.maintenanceStartDate)
-  return '-'
-}
-
-function workOrderMaintenanceTypeLabel(order) {
-  if (order.maintenanceLocationType === 'externa') return 'Externa'
-  if (order.maintenanceLocationType === 'interna') return 'Interna'
-  return '-'
-}
-
-function workOrderItemVariationLabel(item) {
-  const parts = Object.entries(item.variationValues || {}).map(([key, value]) => `${key}: ${value}`)
-  return parts.length ? parts.join(' - ') : '-'
-}
 </script>
 
 <template>
@@ -1160,7 +1144,6 @@ function workOrderItemVariationLabel(item) {
   <div v-else class="ds-page-stack">
     <div class="ds-page-header">
       <div>
-        <p class="ds-page-kicker">Ativos físicos</p>
         <h1 class="ds-page-title">Motores</h1>
         <p class="ds-page-subtitle">Ficha técnica, localização atual e históricos de OS por motor.</p>
       </div>
@@ -1378,15 +1361,23 @@ function workOrderItemVariationLabel(item) {
           v-for="motor in paginatedMotors"
           :key="motor.id"
           class="ds-list-row text-left px-4 py-3 cursor-pointer"
-          :class="selectedMotor?.id === motor.id ? 'ds-list-row-active' : ''"
+          :class="selectedMotor?.id === motor.id ? 'motor-list-row-active' : ''"
           @click="selectMotor(motor)"
         >
           <div class="flex items-center justify-between gap-2">
-            <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">{{ motor.tag }}</span>
-            <StatusBadge domain="motor" :status="motor.status" :label="motorStatusLabel(motor.status)" />
+            <span
+              class="text-sm font-semibold"
+              :class="selectedMotor?.id === motor.id ? 'text-gray-950 dark:text-white' : 'text-gray-900 dark:text-gray-100'"
+            >{{ motor.tag }}</span>
+            <StatusBadge
+              domain="motor"
+              :status="motor.status"
+              :label="motorStatusLabel(motor.status)"
+              :class="selectedMotor?.id === motor.id ? 'ring-1 ring-black/20 dark:ring-white/30' : ''"
+            />
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ motor.name || motor.manufacturer || 'Sem descrição' }}</p>
-          <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate">{{ motor.destinationName || 'Sem local' }}</p>
+          <p class="truncate text-xs" :class="selectedMotor?.id === motor.id ? 'text-gray-800 dark:text-white/85' : 'text-gray-500 dark:text-gray-400'">{{ motor.name || motor.manufacturer || 'Sem descrição' }}</p>
+          <p class="truncate text-[11px]" :class="selectedMotor?.id === motor.id ? 'text-gray-700 dark:text-white/70' : 'text-gray-400 dark:text-gray-500'">{{ motor.destinationName || 'Sem local' }}</p>
         </button>
         <EmptyState
           v-if="!filteredMotors.length"
@@ -1583,7 +1574,7 @@ function workOrderItemVariationLabel(item) {
                     </div>
                     <div class="flex items-center gap-2">
                       <span class="text-xs text-gray-400">{{ workOrderDateLabel(wo) }}</span>
-                      <AppButton variant="secondary" size="xs" @click="showMotorOrders(wo)">Abrir a OS</AppButton>
+                      <AppButton variant="secondary" size="xs" @click="openWorkOrderPreview(wo)">Abrir a OS</AppButton>
                     </div>
                   </div>
                   <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ wo.title || wo.maintenanceNote || wo.note || 'OS sem observação' }}</p>
@@ -1700,114 +1691,17 @@ function workOrderItemVariationLabel(item) {
     </div>
   </AppDialog>
 
-  <AppDialog
+  <OrdensServicoView
     v-if="workOrderPreview"
-    visible
-    aria-label="Visualizador de ordem de serviço"
-    @close="workOrderPreview = null"
-  >
-    <div class="ds-panel w-full max-w-4xl overflow-hidden">
-      <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0">
-          <p class="ds-page-kicker">Visualizador de OS</p>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">OS #{{ workOrderPreview.number }}</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ workOrderPreview.title || '-' }}</p>
-          <div class="mt-2 flex flex-wrap items-center gap-2">
-            <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="workOrderPreview.maintenanceEndDate ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'">{{ workOrderStatusLabel(workOrderPreview) }}</span>
-          </div>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <AppButton variant="secondary" size="sm" @click="showMotorOrders(workOrderPreview); workOrderPreview = null">Abrir na OS de motor</AppButton>
-          <AppButton variant="ghost" size="sm" @click="workOrderPreview = null">Fechar</AppButton>
-        </div>
-      </div>
-      <div class="max-h-[72vh] overflow-auto p-5">
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div class="ds-surface p-3">
-            <p class="text-xs text-gray-400">Solicitação</p>
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ workOrderDateLabel(workOrderPreview) }}</p>
-          </div>
-          <div class="ds-surface p-3">
-            <p class="text-xs text-gray-400">Início</p>
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ workOrderStartLabel(workOrderPreview) }}</p>
-          </div>
-          <div class="ds-surface p-3">
-            <p class="text-xs text-gray-400">Término</p>
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ workOrderEndLabel(workOrderPreview) }}</p>
-          </div>
-          <div class="ds-surface p-3">
-            <p class="text-xs text-gray-400">Local/oficina</p>
-            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ workOrderLocationLabel(workOrderPreview) }}</p>
-          </div>
-        </div>
-
-        <div class="mt-5 grid gap-5 lg:grid-cols-[1fr_19rem]">
-          <div class="space-y-5">
-            <section class="space-y-2">
-              <h4 class="ds-section-heading">Observações</h4>
-              <div class="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
-                <div class="px-3 py-2">
-                  <p class="text-xs text-gray-400">Solicitação</p>
-                  <p class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{{ workOrderPreview.note || '-' }}</p>
-                </div>
-                <div class="px-3 py-2">
-                  <p class="text-xs text-gray-400">Execução</p>
-                  <p class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{{ workOrderPreview.maintenanceNote || '-' }}</p>
-                </div>
-                <div class="px-3 py-2">
-                  <p class="text-xs text-gray-400">Materiais adicionais</p>
-                  <p class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{{ workOrderPreview.maintenanceMaterials || '-' }}</p>
-                </div>
-                <div class="px-3 py-2">
-                  <p class="text-xs text-gray-400">Evento do motor</p>
-                  <p class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{{ workOrderPreview.motorEventNotes || '-' }}</p>
-                </div>
-              </div>
-            </section>
-
-            <section v-if="(workOrderPreview.items || []).length" class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:border-gray-700">Materiais vinculados</div>
-              <div class="divide-y divide-gray-100 dark:divide-gray-800">
-                <div v-for="mat in workOrderPreview.items" :key="mat.id" class="grid gap-1 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]">
-                  <div>
-                    <p class="font-medium text-gray-900 dark:text-gray-100">{{ mat.itemName }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ [mat.itemGroup, mat.itemCategory].filter(Boolean).join(' / ') || '-' }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Variação: {{ workOrderItemVariationLabel(mat) }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Movimento: {{ mat.movementId || '-' }} · Adicionado: {{ formatDateTime(mat.addedAt) }}</p>
-                  </div>
-                  <p class="font-semibold text-gray-900 dark:text-gray-100">{{ mat.qty }} {{ mat.itemUnit }}</p>
-                </div>
-              </div>
-            </section>
-            <p v-else class="rounded-lg border border-dashed border-gray-200 p-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Nenhum material vinculado.</p>
-          </div>
-
-          <aside class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:border-gray-700">Ficha completa</div>
-            <dl class="divide-y divide-gray-100 text-sm dark:divide-gray-800">
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Criada em</dt><dd class="text-gray-800 dark:text-gray-200">{{ formatDateTime(workOrderPreview.createdAt) }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Solicitante</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.requestedBy || '-' }}</dd></div>
-              <div v-if="!workOrderPreview.motorId" class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Equipamento</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.equipment || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Destino</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.destinationName || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Motor</dt><dd class="text-gray-800 dark:text-gray-200">{{ [workOrderPreview.motorTag, workOrderPreview.motorName].filter(Boolean).join(' - ') || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Status motor</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.motorStatus ? motorStatusLabel(workOrderPreview.motorStatus) : '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Origem</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.motorOriginDestinationName || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Execução</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderMaintenanceTypeLabel(workOrderPreview) }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Profissional</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.maintenanceProfessional || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Destino int.</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.maintenanceDestinationName || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Oficina ext.</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.maintenanceExternalLocation || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Pedido</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.maintenanceExternalOrderNumber || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Após OS</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.motorStatusAfterMaintenance ? motorStatusLabel(workOrderPreview.motorStatusAfterMaintenance) : '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Evento</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderMotorEventLabel(workOrderPreview) || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Data evento</dt><dd class="text-gray-800 dark:text-gray-200">{{ formatDate(workOrderPreview.motorEventDate) }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Executado</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.motorEventPerformedBy || '-' }}</dd></div>
-              <div class="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2"><dt class="text-gray-400">Destino ev.</dt><dd class="text-gray-800 dark:text-gray-200">{{ workOrderPreview.motorEventToDestination || '-' }}</dd></div>
-            </dl>
-          </aside>
-        </div>
-      </div>
-    </div>
-  </AppDialog>
+    :key="workOrderPreview.id"
+    mode="motor"
+    embedded
+    popup-only
+    :initial-motor-id="workOrderPreview.motorId"
+    :focus-order-id="workOrderPreview.id"
+    @closed="workOrderPreview = null"
+    @updated="workOrderPreview = null"
+  />
 
   <AppDialog
     v-if="selectedMotor && locationTrailOpen"

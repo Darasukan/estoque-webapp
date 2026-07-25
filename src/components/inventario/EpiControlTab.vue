@@ -311,6 +311,26 @@ function quickMovement(record) {
 
 <template>
   <section class="space-y-4">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="ds-page-header">
+        <div>
+          <h1 class="ds-page-title">Controle de EPIs</h1>
+          <p class="ds-page-subtitle">Entregas, trocas e vencimentos por pessoa.</p>
+        </div>
+      </div>
+      <div class="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+        <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700" @click="sheetOpen = true">
+          Ficha de EPI
+        </button>
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Buscar pessoa, cargo ou EPI..."
+          class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 md:w-80"
+        />
+      </div>
+    </header>
+
     <div class="grid gap-3 md:grid-cols-4">
       <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'attention'">
         <p class="ds-metric-label">Precisam trocar</p>
@@ -328,24 +348,6 @@ function quickMovement(record) {
         <p class="ds-metric-label">Vencidos</p>
         <p class="ds-metric-value text-red-500">{{ counts.expired }}</p>
       </button>
-    </div>
-
-    <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:flex-row md:items-center md:justify-between">
-      <div>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Controle de EPIs</h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Acompanhamento por pessoa a partir das saidas registradas no estoque.</p>
-      </div>
-      <div class="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
-        <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700" @click="sheetOpen = true">
-          Ficha de EPI
-        </button>
-        <input
-          v-model="search"
-          type="search"
-          placeholder="Buscar pessoa, cargo ou EPI..."
-          class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 md:w-80"
-        />
-      </div>
     </div>
 
     <div

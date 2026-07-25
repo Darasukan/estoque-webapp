@@ -329,7 +329,7 @@ async function saveEdit() {
                 :key="`${tag.key}:${tag.value}`"
                 class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
               >
-                <span class="font-medium opacity-60">{{ tag.key }}:</span>
+                <span class="font-medium">{{ tag.key }}:</span>
                 <span>{{ tag.value }}</span>
               </span>
               <span v-if="!variationTags.length" class="text-xs text-gray-400 dark:text-gray-500">Sem atributos específicos.</span>
