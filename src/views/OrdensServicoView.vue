@@ -11,6 +11,7 @@ import AppButton from '../components/ui/AppButton.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
+import MotorPicker from '../components/ui/MotorPicker.vue'
 import PersonPicker from '../components/ui/PersonPicker.vue'
 import SectionTabs from '../components/ui/SectionTabs.vue'
 import { formatPartialOrderDate, workOrderCreationDateError } from '../utils/workOrderForm.js'
@@ -921,7 +922,7 @@ function quickInputType(field) {
 
 function quickPlaceholder(field) {
   if (field.type === 'date') return 'dd/mm/aaaa'
-  if (field.type === 'time') return 'hh:mm'
+  if (field.type === 'time') return 'HH:mm'
   return field.placeholder
 }
 
@@ -1687,6 +1688,9 @@ watch(() => motorEventForm.value.eventType, (eventType) => {
 
 function validateOsForm() {
   if (!isMotorMode.value) syncQuickDestinationFromText(false)
+  osForm.value.requestTime = normalizeQuickTime(osForm.value.requestTime)
+  osForm.value.maintenanceStartTime = normalizeQuickTime(osForm.value.maintenanceStartTime)
+  osForm.value.maintenanceEndTime = normalizeQuickTime(osForm.value.maintenanceEndTime)
   const numberText = String(osForm.value.number || '').trim()
   if (numberText && (!Number.isInteger(Number(numberText)) || Number(numberText) <= 0)) { showError('Número da ordem inválido'); return false }
   if (!osForm.value.requestedBy.trim()) { showError('Solicitante é obrigatório'); return false }
@@ -1980,6 +1984,7 @@ function cancelEdit() {
   showNewForm.value = false
   activeSubTab.value = 'ordens'
   resetOsForm()
+  if (props.popupOnly) emit('closed')
 }
 
 async function handleDeleteOS(id) {
@@ -2270,6 +2275,12 @@ function toggleOrder(id) {
   expandedOrderId.value = expandedOrderId.value === id ? null : id
 }
 
+function closeOrderDetails() {
+  expandedOrderId.value = null
+  motorEventOrderId.value = null
+  if (props.popupOnly) emit('closed')
+}
+
 function revealOrder(order) {
   activeSubTab.value = 'ordens'
   searchQuery.value = ''
@@ -2389,13 +2400,10 @@ function matBackToStep2() {
             :placeholder="isMotorMode ? 'Buscar por OS, motor, solicitante, profissional ou oficina' : 'Buscar por OS, equipamento, solicitante, profissional ou oficina'"
           />
         </div>
-        <label v-if="isMotorMode">
-          <span class="ds-label">Motor</span>
-          <select v-model="motorFilterId" class="ds-input" :disabled="motorFilterLocked">
-            <option value="">Todos os motores</option>
-            <option v-for="opt in motorOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
-          </select>
-        </label>
+        <div v-if="isMotorMode">
+          <label class="ds-label">Motor</label>
+          <MotorPicker v-model="motorFilterId" :options="motorOptions" :disabled="motorFilterLocked" />
+        </div>
         <label>
           <span class="ds-label">De</span>
           <input v-model="historyDateFrom" type="date" class="ds-input" />
@@ -2644,8 +2652,8 @@ function matBackToStep2() {
                 v-model="osForm[field.key]"
                 :type="quickInputType(field)"
                 :list="field.list"
-                :inputmode="field.type === 'date' ? 'numeric' : undefined"
-                :maxlength="field.type === 'date' ? 10 : undefined"
+                :inputmode="['date', 'time'].includes(field.type) ? 'numeric' : undefined"
+                :maxlength="field.type === 'date' ? 10 : field.type === 'time' ? 5 : undefined"
                 :placeholder="quickPlaceholder(field)"
                 class="min-h-10 w-full border-0 px-3 py-2 text-sm outline-none focus:ring-2 dark:text-gray-100"
                 :class="isQuickFieldInvalid(field)
@@ -2676,7 +2684,7 @@ function matBackToStep2() {
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário *</label>
-              <input v-model="osForm.requestTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="osForm.requestTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.requestTime = normalizeQuickTime(osForm.requestTime)" />
             </div>
             <div class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
@@ -2780,7 +2788,7 @@ function matBackToStep2() {
               </div>
               <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário de início</label>
-                <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                <input v-model="osForm.maintenanceStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceStartTime = normalizeQuickTime(osForm.maintenanceStartTime)" />
               </div>
             </fieldset>
             <div class="md:col-span-4">
@@ -2798,7 +2806,7 @@ function matBackToStep2() {
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário início</label>
-              <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="osForm.maintenanceStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceStartTime = normalizeQuickTime(osForm.maintenanceStartTime)" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data término</label>
@@ -2806,7 +2814,7 @@ function matBackToStep2() {
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
-              <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="osForm.maintenanceEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceEndTime = normalizeQuickTime(osForm.maintenanceEndTime)" />
             </div>
             <div v-if="isMotorMode && osForm.maintenanceEndDate" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status do motor após a OS *</label>
@@ -2853,7 +2861,7 @@ function matBackToStep2() {
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário envio</label>
-              <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="osForm.maintenanceStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceStartTime = normalizeQuickTime(osForm.maintenanceStartTime)" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data retorno</label>
@@ -2861,7 +2869,7 @@ function matBackToStep2() {
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário retorno</label>
-              <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+              <input v-model="osForm.maintenanceEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceEndTime = normalizeQuickTime(osForm.maintenanceEndTime)" />
             </div>
             <div v-if="isMotorMode && osForm.maintenanceEndDate" class="md:col-span-2">
               <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status do motor após a OS *</label>
@@ -2979,7 +2987,7 @@ function matBackToStep2() {
             visible
             align="start"
             aria-label="Detalhes da ordem de serviço"
-            @close="expandedOrderId = null; motorEventOrderId = null"
+            @close="closeOrderDetails"
           >
             <div class="ds-panel max-h-[calc(100vh-2rem)] w-full max-w-6xl space-y-4 overflow-y-auto p-4 shadow-2xl sm:p-5">
               <div class="flex items-start justify-between gap-4 border-b border-gray-200 pb-4 dark:border-gray-700">
@@ -2991,7 +2999,7 @@ function matBackToStep2() {
                   type="button"
                   class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                   aria-label="Fechar"
-                  @click="expandedOrderId = null; motorEventOrderId = null"
+                  @click="closeOrderDetails"
                 >x</button>
               </div>
             <template v-if="editingOrderId === order.id">
@@ -3009,7 +3017,7 @@ function matBackToStep2() {
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário *</label>
-                      <input v-model="osForm.requestTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <input v-model="osForm.requestTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.requestTime = normalizeQuickTime(osForm.requestTime)" />
                     </div>
                     <div class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Solicitante *</label>
@@ -3097,7 +3105,7 @@ function matBackToStep2() {
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário início</label>
-                      <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <input v-model="osForm.maintenanceStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceStartTime = normalizeQuickTime(osForm.maintenanceStartTime)" />
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data término</label>
@@ -3105,7 +3113,7 @@ function matBackToStep2() {
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário término</label>
-                      <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <input v-model="osForm.maintenanceEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceEndTime = normalizeQuickTime(osForm.maintenanceEndTime)" />
                     </div>
                     <div v-if="isMotorMode && osForm.maintenanceEndDate" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status do motor após a OS *</label>
@@ -3153,7 +3161,7 @@ function matBackToStep2() {
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário envio</label>
-                      <input v-model="osForm.maintenanceStartTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <input v-model="osForm.maintenanceStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceStartTime = normalizeQuickTime(osForm.maintenanceStartTime)" />
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data retorno</label>
@@ -3161,7 +3169,7 @@ function matBackToStep2() {
                     </div>
                     <div>
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário retorno</label>
-                      <input v-model="osForm.maintenanceEndTime" type="time" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      <input v-model="osForm.maintenanceEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent" @blur="osForm.maintenanceEndTime = normalizeQuickTime(osForm.maintenanceEndTime)" />
                     </div>
                     <div v-if="isMotorMode && osForm.maintenanceEndDate" class="md:col-span-2">
                       <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status do motor após a OS *</label>

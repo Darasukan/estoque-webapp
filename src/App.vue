@@ -101,6 +101,7 @@ const requestedInventoryStatus = ref(savedUiState.inventoryStatus || 'all')
 const requestedInventorySearch = ref(savedUiState.inventorySearch || '')
 const requestedOrdersTab = ref(savedUiState.ordersTab || 'ordens')
 const requestedOrderFocusId = ref('')
+const workOrderPreview = ref(null)
 const movBrowsing = ref(true)
 const movSubTab = ref(savedUiState.movSubTab || 'entrada')
 const requestedMovSubTab = ref(savedUiState.movSubTab || 'entrada')
@@ -491,6 +492,10 @@ function runCreateAction(action) {
 }
 
 function closeTopPopup() {
+  if (workOrderPreview.value) {
+    workOrderPreview.value = null
+    return true
+  }
   if (globalSearchOpen.value) {
     closeGlobalSearch()
     return true
@@ -663,6 +668,13 @@ function navigateTab(target) {
   if (options.section === 'epis' && !isLoggedIn.value) {
     showLoginModal.value = true
     return
+  }
+  if (options.orderId) {
+    const order = workOrders.value.find(item => item.id === options.orderId)
+    if (order) {
+      workOrderPreview.value = order
+      return
+    }
   }
   if (tab === 'fechamentos') {
     requestedInventorySection.value = 'fechamentos'
@@ -1132,6 +1144,18 @@ function handleGlobalShortcutKeydown(event) {
         <MotoresView v-if="activeTab === 'motores'" />
       </main>
     </div>
+
+    <OrdensServicoView
+      v-if="workOrderPreview"
+      :key="workOrderPreview.id"
+      :mode="workOrderPreview.motorId ? 'motor' : 'general'"
+      embedded
+      popup-only
+      :initial-motor-id="workOrderPreview.motorId || ''"
+      :focus-order-id="workOrderPreview.id"
+      @closed="workOrderPreview = null"
+      @updated="workOrderPreview = null"
+    />
 
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />

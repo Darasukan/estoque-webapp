@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppDialog from '../ui/AppDialog.vue'
+import AppButton from '../ui/AppButton.vue'
+import EmptyState from '../ui/EmptyState.vue'
 
 const props = defineProps({
   summaryTotals: { type: Object, required: true },
@@ -128,11 +130,6 @@ const filteredHistoryRows = computed(() =>
   )
 )
 
-const historyTotals = computed(() => ({
-  moves: filteredHistoryRows.value.length,
-  qty: filteredHistoryRows.value.reduce((sum, row) => sum + Number(row.qty || 0), 0),
-}))
-
 const hasHistoryFilters = computed(() =>
   historySearch.value.trim() ||
   historyDateFrom.value ||
@@ -161,52 +158,73 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative max-w-lg">
-    <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-    </svg>
-    <input
-      :value="summarySearch"
-      type="text"
-      placeholder="Buscar destino ou material..."
-      class="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 focus:border-transparent focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-      @input="emit('update:summarySearch', $event.target.value)"
-    />
-  </div>
+  <section class="ds-panel overflow-hidden">
+    <header class="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--ds-border)] px-5 py-4">
+      <div>
+        <h2 class="text-lg font-semibold tracking-tight text-[var(--ds-text)]">Saídas por destino</h2>
+        <p class="mt-0.5 text-xs text-[var(--ds-text-muted)]">Consulte o que foi enviado e quem retirou em cada local.</p>
+      </div>
+      <div class="flex items-center divide-x divide-[var(--ds-border-subtle)] rounded-lg border border-[var(--ds-border)] bg-[var(--ds-surface)]">
+        <div class="px-4 py-2">
+          <strong class="block text-lg font-semibold tabular-nums text-[var(--ds-text)]">{{ summaryTotals.destinations }}</strong>
+          <span class="block text-[11px] text-[var(--ds-text-muted)]">destinos</span>
+        </div>
+        <div class="px-4 py-2">
+          <strong class="block text-lg font-semibold tabular-nums text-[var(--ds-text)]">{{ summaryTotals.saidas }}</strong>
+          <span class="block text-[11px] text-[var(--ds-text-muted)]">saídas</span>
+        </div>
+      </div>
+    </header>
 
-  <div v-if="destinationSummaries.length === 0" class="py-12 text-center text-gray-400 dark:text-gray-500">
-    <svg class="mx-auto mb-3 h-12 w-12 opacity-50" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.5-13.5h-7A2.25 2.25 0 0 0 6.25 6v12A2.25 2.25 0 0 0 8.5 20.25h7A2.25 2.25 0 0 0 17.75 18V6a2.25 2.25 0 0 0-2.25-2.25Z" />
-    </svg>
-    <p class="text-sm">Nenhum destino cadastrado.</p>
-  </div>
+    <div class="border-b border-[var(--ds-border)] bg-[var(--ds-surface)] p-4">
+      <div class="relative max-w-xl">
+        <svg aria-hidden="true" class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ds-text-muted)]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.2-5.2m0 0A7.5 7.5 0 1 0 5.2 5.2a7.5 7.5 0 0 0 10.6 10.6Z" />
+        </svg>
+        <input
+          :value="summarySearch"
+          type="search"
+          placeholder="Buscar destino ou material..."
+          class="ds-input !pl-9"
+          @input="emit('update:summarySearch', $event.target.value)"
+        />
+      </div>
+    </div>
 
-  <div v-else-if="filteredDestinationSummaries.length === 0" class="py-12 text-center text-sm text-gray-400 dark:text-gray-500">
-    Nenhuma saida encontrada por destino.
-  </div>
-
-  <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-    <button
-      v-for="dest in filteredDestinationSummaries"
-      :key="dest.id"
-      type="button"
-      class="group rounded-lg border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-primary-500 dark:hover:bg-gray-700/40"
-      :class="dest.isChild ? 'border-l-4 border-l-primary-200 dark:border-l-primary-800' : ''"
-      @click="openHistory(dest)"
-    >
-      <div class="flex items-start justify-between gap-3">
+    <div v-if="filteredDestinationSummaries.length" class="grid gap-3 p-4 md:grid-cols-2">
+      <button
+        v-for="dest in filteredDestinationSummaries"
+        :key="dest.id"
+        type="button"
+        class="group flex min-h-[84px] items-center justify-between gap-4 rounded-lg border border-[var(--ds-border)] bg-[var(--ds-panel)] px-4 py-3 text-left transition-[background-color,border-color] hover:border-[var(--ds-control-border)] hover:bg-[var(--ds-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ds-brand)]"
+        @click="openHistory(dest)"
+      >
         <div class="min-w-0">
-          <p class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ dest.fullName }}</p>
-          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            {{ dest.lastDate ? 'Ultima saida: ' + formatDate(dest.lastDate) : 'Sem saida registrada' }}
+          <p class="truncate text-sm font-semibold text-[var(--ds-text)]">{{ dest.fullName }}</p>
+          <p class="mt-1 text-xs text-[var(--ds-text-muted)]">
+            {{ dest.saidas.length }} saída{{ dest.saidas.length === 1 ? '' : 's' }}
+            <span aria-hidden="true"> · </span>
+            {{ dest.materials.length }} {{ dest.materials.length === 1 ? 'material' : 'materiais' }}
+          </p>
+          <p class="mt-0.5 text-[11px] text-[var(--ds-text-subtle)]">
+            {{ dest.lastDate ? `Última saída em ${formatDate(dest.lastDate)}` : 'Sem saída registrada' }}
           </p>
         </div>
-        <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-300 transition-colors group-hover:text-primary-500 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-        </svg>
-      </div>
-    </button>
-  </div>
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--ds-border)] text-[var(--ds-text-muted)] transition-colors group-hover:bg-[var(--ds-panel)] group-hover:text-[var(--ds-text)]" aria-hidden="true">→</span>
+      </button>
+    </div>
+
+    <EmptyState
+      v-else-if="destinationSummaries.length"
+      title="Nenhuma saída encontrada."
+      text="Ajuste a busca para localizar outro destino ou material."
+    />
+    <EmptyState
+      v-else
+      title="Nenhum destino cadastrado."
+      text="Os destinos com movimentações aparecerão neste relatório."
+    />
+  </section>
 
   <AppDialog
     v-if="historyDestination"
@@ -214,135 +232,140 @@ onBeforeUnmount(() => {
     aria-label="Histórico de saídas por destino"
     @close="closeHistory"
   >
-      <section class="flex h-[92vh] w-[96vw] max-w-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+      <section class="ds-panel flex h-[88vh] w-[96vw] max-w-7xl flex-col overflow-hidden">
+        <header class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--ds-border)] px-5 py-4">
           <div class="min-w-0">
-            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Historico por destino</p>
-            <h3 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{{ historyDestination.fullName }}</h3>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {{ historyTotals.moves }} saida{{ historyTotals.moves === 1 ? '' : 's' }} no filtro atual
-              <span v-if="historyTotals.qty"> - {{ historyTotals.qty }} materiais</span>
-            </p>
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ds-text-muted)]">Histórico de saídas</p>
+            <h3 class="mt-1 truncate text-xl font-semibold tracking-tight text-[var(--ds-text)]">{{ historyDestination.fullName }}</h3>
+            <p class="mt-0.5 text-xs text-[var(--ds-text-muted)]">Movimentações enviadas para este destino.</p>
           </div>
-          <button
-            type="button"
-            class="rounded-lg px-3 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-            @click="closeHistory"
-          >
-            Fechar
-          </button>
+          <div class="flex items-center gap-3">
+            <div class="hidden items-center divide-x divide-[var(--ds-border-subtle)] rounded-lg border border-[var(--ds-border)] bg-[var(--ds-surface)] sm:flex">
+              <div class="px-4 py-2">
+                <strong class="block text-lg font-semibold tabular-nums text-[var(--ds-text)]">{{ filteredHistoryRows.length }}</strong>
+                <span class="block text-[11px] text-[var(--ds-text-muted)]">saídas exibidas</span>
+              </div>
+              <div class="px-4 py-2">
+                <strong class="block text-lg font-semibold tabular-nums text-[var(--ds-text)]">{{ historyDestination.materials.length }}</strong>
+                <span class="block text-[11px] text-[var(--ds-text-muted)]">materiais</span>
+              </div>
+            </div>
+            <AppButton variant="ghost" size="sm" @click="closeHistory">Fechar</AppButton>
+          </div>
         </header>
 
-        <div class="border-b border-gray-200 p-4 dark:border-gray-700">
-          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1.5fr)_10rem_10rem_minmax(11rem,1fr)_minmax(11rem,1fr)_minmax(11rem,1fr)_auto] xl:items-end">
+        <div class="border-b border-[var(--ds-border)] bg-[var(--ds-surface)] p-4">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(16rem,1.5fr)_9rem_9rem_repeat(3,minmax(9rem,1fr))_auto] xl:items-end">
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Buscar</span>
+              <span class="ds-label">Buscar</span>
               <input
                 v-model="historySearch"
                 type="search"
-                placeholder="Item, pessoa, doc..."
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                placeholder="Item, pessoa ou documento..."
+                class="ds-input"
               />
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">De</span>
+              <span class="ds-label">De</span>
               <input
                 v-model="historyDateFrom"
                 type="date"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                class="ds-input"
               />
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ate</span>
+              <span class="ds-label">Até</span>
               <input
                 v-model="historyDateTo"
                 type="date"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                class="ds-input"
               />
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Grupo</span>
+              <span class="ds-label">Grupo</span>
               <select
                 v-model="historyGroup"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                class="ds-input"
               >
                 <option value="">Todos</option>
                 <option v-for="option in historyGroupOptions" :key="option" :value="option">{{ option }}</option>
               </select>
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Categoria</span>
+              <span class="ds-label">Categoria</span>
               <select
                 v-model="historyCategory"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                class="ds-input"
               >
                 <option value="">Todas</option>
                 <option v-for="option in historyCategoryOptions" :key="option" :value="option">{{ option }}</option>
               </select>
             </label>
             <label class="block">
-              <span class="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Item</span>
+              <span class="ds-label">Item</span>
               <select
                 v-model="historyItem"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                class="ds-input"
               >
                 <option value="">Todos</option>
                 <option v-for="option in historyItemOptions" :key="option" :value="option">{{ option }}</option>
               </select>
             </label>
-            <button
-              type="button"
-              class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            <AppButton
+              variant="ghost"
+              size="sm"
               :disabled="!hasHistoryFilters"
               @click="resetHistoryFilters"
             >
               Limpar
-            </button>
+            </AppButton>
           </div>
         </div>
 
         <div class="min-h-0 flex-1 overflow-auto">
-          <table v-if="filteredHistoryRows.length" class="w-full min-w-[68rem] text-sm">
-            <thead class="sticky top-0 border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+          <table v-if="filteredHistoryRows.length" class="ds-table min-w-[68rem]">
+            <thead>
               <tr>
-                <th class="px-4 py-3 text-left font-semibold">Data</th>
-                <th class="px-4 py-3 text-left font-semibold">Item / variacao</th>
-                <th class="px-4 py-3 text-center font-semibold">Qtd.</th>
-                <th class="px-4 py-3 text-left font-semibold">Retirado por</th>
-                <th class="px-4 py-3 text-left font-semibold">Doc / obs</th>
-                <th class="px-4 py-3 text-left font-semibold">Operador</th>
+                <th>Data</th>
+                <th>Item / variação</th>
+                <th class="text-center">Qtd.</th>
+                <th>Retirado por</th>
+                <th>Documento / observação</th>
+                <th>Operador</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-              <tr v-for="movement in filteredHistoryRows" :key="movement.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
-                <td class="whitespace-nowrap px-4 py-3">
-                  <p class="font-medium text-gray-900 dark:text-gray-100">{{ formatDate(movement.date) }}</p>
+            <tbody>
+              <tr v-for="movement in filteredHistoryRows" :key="movement.id">
+                <td class="whitespace-nowrap">
+                  <p class="font-medium text-[var(--ds-text)]">{{ formatDate(movement.date) }}</p>
                 </td>
-                <td class="px-4 py-3">
-                  <p class="font-semibold text-gray-900 dark:text-gray-100">{{ movement.itemName }}</p>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ [movement.itemGroup, movement.itemCategory, movement.itemSubcategory].filter(Boolean).join(' > ') }}</p>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ movementAttributesText(movement) || 'Sem atributos' }}</p>
+                <td>
+                  <p class="font-semibold text-[var(--ds-text)]">{{ movement.itemName }}</p>
+                  <p class="mt-0.5 text-xs text-[var(--ds-text-muted)]">{{ [movement.itemGroup, movement.itemCategory, movement.itemSubcategory].filter(Boolean).join(' › ') }}</p>
+                  <p class="mt-0.5 text-xs text-[var(--ds-text-muted)]">{{ movementAttributesText(movement) || 'Sem atributos' }}</p>
                 </td>
-                <td class="whitespace-nowrap px-4 py-3 text-center font-semibold text-red-600 dark:text-red-400">
+                <td class="whitespace-nowrap text-center font-semibold tabular-nums text-[var(--ds-danger)]">
                   -{{ movement.qty }} {{ movement.itemUnit }}
                 </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                <td>
                   {{ movement.requestedBy || '-' }}
                 </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                <td>
                   <p>{{ movement.docRef || '-' }}</p>
-                  <p v-if="movement.note" class="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">{{ movement.note }}</p>
+                  <p v-if="movement.note" class="mt-0.5 text-xs text-[var(--ds-text-muted)]">{{ movement.note }}</p>
                 </td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                <td>
                   {{ movement.operatorName || '-' }}
                 </td>
               </tr>
             </tbody>
           </table>
 
-          <div v-else class="p-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Nenhuma saida encontrada para os filtros selecionados.
-          </div>
+          <EmptyState
+            v-else
+            title="Nenhuma saída encontrada."
+            text="Ajuste ou limpe os filtros para consultar outras movimentações."
+          />
         </div>
       </section>
   </AppDialog>
