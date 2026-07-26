@@ -1176,7 +1176,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 
     <!-- ===== 3. OVERVIEW (no group selected) ===== -->
     <template v-else>
-      <div class="flex items-center justify-between mb-4 gap-4">
+      <div class="flex min-h-10 items-center justify-between mb-6 gap-4">
         <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">Catálogo</h2>
         <div v-if="showSeedTools && isAdmin" class="flex items-center gap-2 ml-auto">
           <!-- Seed -->
