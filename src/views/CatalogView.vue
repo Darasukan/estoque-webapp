@@ -1002,7 +1002,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         <button
           v-for="cat in searchedCategories"
           :key="cat"
-          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
           @click="setActiveCategory(cat)"
         >
           <div class="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-3 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
@@ -1020,7 +1020,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         <button
           v-for="item in searchedGroupDirectItems"
           :key="item.id"
-          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
           @click="openItem(item)"
         >
           <div class="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-3 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
@@ -1044,7 +1044,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           <button
             v-for="item in searchedGroupItems"
             :key="item.id"
-            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
             @click="openItem(item)"
           >
             <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate mb-1">{{ item.name }}</p>
@@ -1078,7 +1078,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           <button
             v-for="item in searchedCategoryDirectItems"
             :key="item.id"
-            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
             @click="openItem(item)"
           >
             <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-2 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
@@ -1093,7 +1093,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           <button
             v-for="sub in searchedSubcategories"
             :key="sub"
-            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
             @click="setActiveSubcategory(sub)"
           >
             <div class="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-2 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">
@@ -1117,7 +1117,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
           <button
             v-for="item in searchedResults"
             :key="item.id"
-            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+            class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
             @click="openItem(item)"
           >
             <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate mb-1">{{ item.name }}</p>
@@ -1153,7 +1153,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         <button
           v-for="item in searchedResults"
           :key="item.id"
-          class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+          class="group text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
           @click="openItem(item)"
         >
           <div class="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center mb-2 group-hover:bg-primary-50 dark:group-hover:bg-primary-900/30 transition-colors">
@@ -1223,7 +1223,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         <button
           v-for="g in searchedGroups"
           :key="g"
-          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer"
+          class="group text-left p-5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-colors duration-100 cursor-pointer"
           @click="setActiveGroup(g)"
         >
           <div class="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center mb-3 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/50 transition-colors">

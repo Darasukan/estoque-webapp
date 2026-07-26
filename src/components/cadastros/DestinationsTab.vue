@@ -857,7 +857,7 @@ async function removeMaterialFromDestination(variation) {
         </div>
         <button
           v-else
-          class="flex min-h-10 w-full items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-md transition-colors md:min-h-0"
+          class="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-md bg-primary-600 px-3 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors duration-100 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800 md:h-9 md:min-h-0"
           @click="startAddDest(null)"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -1012,7 +1012,7 @@ async function removeMaterialFromDestination(variation) {
               <div
                 v-for="child in visibleChildren"
                 :key="child.id"
-                class="group/card relative rounded-xl border bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+                class="group/card relative rounded-xl border bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100"
                 :class="[
                   selectedMaterialDestId === child.id ? 'border-primary-500 dark:border-primary-500 ring-1 ring-primary-500/30' : 'border-gray-200 dark:border-gray-700',
                   !child.active ? 'opacity-60' : ''
@@ -1379,7 +1379,7 @@ async function removeMaterialFromDestination(variation) {
               v-for="group in materialGroups"
               :key="group"
               type="button"
-              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100"
               @click="selectMaterialGroup(group)"
             >
               <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ group }}</p>
@@ -1394,7 +1394,7 @@ async function removeMaterialFromDestination(variation) {
               v-for="category in materialCategories"
               :key="category"
               type="button"
-              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100"
               @click="selectMaterialCategory(category)"
             >
               <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ category }}</p>
@@ -1409,7 +1409,7 @@ async function removeMaterialFromDestination(variation) {
               v-for="subcategory in materialSubcategories"
               :key="subcategory"
               type="button"
-              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100"
               @click="selectMaterialSubcategory(subcategory)"
             >
               <p class="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{{ subcategory }}</p>
@@ -1424,7 +1424,7 @@ async function removeMaterialFromDestination(variation) {
               v-for="item in materialItems"
               :key="item.id"
               type="button"
-              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all"
+              class="group/block relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-left hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100"
               @click="selectMaterialItem(item.id)"
             >
               <p class="text-sm font-bold text-gray-800 dark:text-gray-100 line-clamp-2">{{ item.name }}</p>

@@ -404,7 +404,7 @@ const {
                 @dragover.stop="!searchQ && onDragOver('category', cIdx, $event)"
                 @drop.stop="!searchQ && onDrop('category', cIdx, $event)"
                 @dragend.stop="onDragEnd"
-                class="group/card relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-all border-t-4"
+                class="group/card relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-sm transition-colors duration-100 border-t-4"
                 :class="[
                   isDragTarget('category', cIdx) ? '!border-t-primary-500' : 'border-t-transparent',
                   isDragFrom('category', cIdx) ? 'opacity-40' : ''
