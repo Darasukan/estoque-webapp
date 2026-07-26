@@ -2,6 +2,7 @@
 import { ref, computed, provide, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
+import RailFooter from './components/ui/RailFooter.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
 import AppButton from './components/ui/AppButton.vue'
@@ -118,10 +119,8 @@ const globalSearchRecentIds = ref(loadStoredList(GLOBAL_SEARCH_RECENTS_KEY))
 const syncFailures = ref([])
 const syncing = ref(false)
 const globalCreateRootRef = ref(null)
-const accountMenuRootRef = ref(null)
 const shortcutHelpOpen = ref(false)
 const shortcutPrefix = ref('')
-const accountMenuOpen = ref(false)
 const passwordModalOpen = ref(false)
 const ownPassword = ref('')
 const ownPasswordConfirm = ref('')
@@ -407,7 +406,6 @@ function onLoginClose() {
 }
 
 function openPasswordModal() {
-  accountMenuOpen.value = false
   ownPassword.value = ''
   ownPasswordConfirm.value = ''
   passwordModalOpen.value = true
@@ -435,7 +433,6 @@ async function submitOwnPassword() {
 }
 
 function logoutFromMenu() {
-  accountMenuOpen.value = false
   logout()
   activeTab.value = 'catalogo'
 }
@@ -512,10 +509,6 @@ function closeTopPopup() {
     closePasswordModal()
     return true
   }
-  if (accountMenuOpen.value) {
-    accountMenuOpen.value = false
-    return true
-  }
   if (mobileSidebarOpen.value) {
     closeMobileSidebar()
     return true
@@ -536,9 +529,6 @@ function handleGlobalPointerDown(event) {
   if (!(target instanceof Node)) return
   if (globalCreateOpen.value && !globalCreateRootRef.value?.contains(target)) {
     globalCreateOpen.value = false
-  }
-  if (accountMenuOpen.value && !accountMenuRootRef.value?.contains(target)) {
-    accountMenuOpen.value = false
   }
 }
 
@@ -900,70 +890,22 @@ function handleGlobalShortcutKeydown(event) {
         </template>
       </nav>
 
-      <div class="ds-rail-footer">
-        <div v-if="isLoggedIn" ref="accountMenuRootRef" class="relative min-w-0 flex-1">
-          <AppButton
-            variant="ghost"
-            size="sm"
-            class="w-full !justify-start"
-            title="Conta"
-            :aria-expanded="accountMenuOpen"
-            @click="accountMenuOpen = !accountMenuOpen"
-          >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
-            </svg>
-            <span class="truncate">{{ user.name }}</span>
-          </AppButton>
-          <div
-            v-if="accountMenuOpen"
-            class="ds-menu absolute bottom-full left-0 mb-2 w-44 p-1"
-          >
-            <button
-              type="button"
-              class="ds-menu-item text-sm"
-              @click="openPasswordModal"
-            >
-              Trocar senha
-            </button>
-            <button
-              type="button"
-              class="ds-menu-item ds-menu-item-danger text-sm"
-              @click="logoutFromMenu"
-            >
-              Sair
-            </button>
-          </div>
-        </div>
-        <AppButton
-          v-else
-          variant="ghost"
-          size="sm"
-          class="flex-1 !justify-start"
-          title="Entrar"
-          @click="showLoginModal = true"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-          </svg>
-          <span>Entrar</span>
-        </AppButton>
-        <AppButton
-          variant="ghost"
-          size="icon"
-          class="!w-9 !min-w-9 !h-9"
-          title="Alternar tema claro/escuro"
-          @click="toggleTheme"
-        >
-          <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-          </svg>
-          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-          </svg>
-        </AppButton>
-      </div>
     </aside>
+
+    <RailFooter
+      class="ds-fixed-rail-footer"
+      :class="{
+        'sidebar-footer-open': railOpen || anySidebar,
+        'sidebar-filter-active': anySidebar,
+      }"
+      :is-logged-in="isLoggedIn"
+      :user-name="user?.name || ''"
+      :is-dark="isDark"
+      @login="showLoginModal = true"
+      @change-password="openPasswordModal"
+      @logout="logoutFromMenu"
+      @toggle-theme="toggleTheme"
+    />
 
     <button
       v-if="railOpen"

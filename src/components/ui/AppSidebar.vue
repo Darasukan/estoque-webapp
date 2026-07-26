@@ -21,7 +21,7 @@ function toggleSection(key) {
 
 <template>
   <aside
-    class="catalog-sidebar fixed top-0 left-0 h-full z-40 w-60 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="catalog-sidebar ds-filter-rail fixed top-0 left-0 h-full z-40 w-60 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
   >
     <!-- Header -->
     <div class="border-b border-gray-200 dark:border-gray-700">
@@ -45,7 +45,7 @@ function toggleSection(key) {
     <!-- ===== NAVIGATION MODE (no group selected) ===== -->
     <template v-if="!activeGroup">
       <button
-        class="w-full text-left px-3 py-2 text-sm font-medium transition-colors truncate border-b border-gray-200 dark:border-gray-700 bg-primary-50 dark:bg-gray-700 text-primary-700 dark:text-primary-400 border-r-2 border-r-primary-700 dark:border-r-primary-400 cursor-pointer"
+        class="ds-filter-rail-active w-full truncate border-b border-gray-200 px-3 py-2 text-left text-sm font-medium transition-colors dark:border-gray-700 cursor-pointer"
         @click="$emit('select-group', null)"
       >
         Todos os Grupos
@@ -61,7 +61,7 @@ function toggleSection(key) {
             :value="search"
             type="text"
             placeholder="Buscar..."
-            class="sidebar-search-input w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            class="ds-filter-rail-input sidebar-search-input w-full rounded-lg border py-1.5 pl-8 pr-7 text-xs transition-colors focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
             @input="$emit('update:search', $event.target.value)"
             @keydown.enter="$emit('search-submit')"
           />
@@ -116,7 +116,7 @@ function toggleSection(key) {
             :value="search"
             type="text"
             placeholder="Buscar item, atributo..."
-            class="sidebar-search-input w-full pl-8 pr-7 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+            class="ds-filter-rail-input sidebar-search-input w-full rounded-lg border py-1.5 pl-8 pr-7 text-xs transition-colors focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
             @input="$emit('update:search', $event.target.value)"
             @keydown.enter="$emit('search-submit')"
           />

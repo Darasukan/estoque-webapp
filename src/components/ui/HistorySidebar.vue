@@ -55,7 +55,7 @@ function toggleSection(facet) {
 
 <template>
   <aside
-    class="history-filter-sidebar fixed top-0 left-0 h-full z-40 w-60 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="history-filter-sidebar ds-filter-rail fixed top-0 left-0 h-full z-40 w-60 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
   >
     <div class="border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between gap-2 p-3">
@@ -98,7 +98,7 @@ function toggleSection(facet) {
               :value="search"
               type="text"
               placeholder="Buscar material, responsável, local, doc ou operador..."
-              class="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700/60 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              class="ds-filter-rail-input w-full rounded-lg border py-1.5 pl-8 pr-7 text-xs transition-colors focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
               @input="$emit('update:search', $event.target.value)"
             />
             <button v-if="search" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer" @click="$emit('update:search', '')">
@@ -130,7 +130,7 @@ function toggleSection(facet) {
               <input
                 :value="dateFrom"
                 type="date"
-                class="w-full px-1.5 py-1 text-[11px] border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+                class="ds-filter-rail-input w-full rounded border px-1.5 py-1 text-[11px] transition-colors focus:outline-none focus:border-primary-500"
                 @input="$emit('update:dateFrom', $event.target.value)"
               />
             </div>
@@ -139,7 +139,7 @@ function toggleSection(facet) {
               <input
                 :value="dateTo"
                 type="date"
-                class="w-full px-1.5 py-1 text-[11px] border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
+                class="ds-filter-rail-input w-full rounded border px-1.5 py-1 text-[11px] transition-colors focus:outline-none focus:border-primary-500"
                 @input="$emit('update:dateTo', $event.target.value)"
               />
             </div>
