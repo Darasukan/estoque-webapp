@@ -4,8 +4,10 @@ import { useItems } from '../../composables/useItems.js'
 import { personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
+import { movementPersonMatches, targetMatchesCatalogRow } from '../../utils/epiSheet.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
 import AppDialog from '../ui/AppDialog.vue'
+import EpiSheetDialog from './EpiSheetDialog.vue'
 
 const emit = defineEmits(['quick-movement'])
 defineProps({ canOperate: { type: Boolean, default: false } })
@@ -24,6 +26,7 @@ const filterMenuPosition = ref({ top: 0, left: 0 })
 const currentPage = ref(1)
 const pageSize = ref(20)
 const historyRecord = ref(null)
+const sheetOpen = ref(false)
 
 const targetTypeLabels = {
   grupo: 'Grupo',
@@ -78,22 +81,6 @@ function targetMatchesMovement(target, movement) {
   if (target.targetType === 'item') return movement.itemId === target.targetKey
   if (target.targetType === 'variacao') return movement.variationId === target.targetKey
   return false
-}
-
-function targetMatchesCatalogRow(target, item, variation) {
-  if (!target || !item || !variation) return false
-  if (target.targetType === 'grupo') return item.group === target.targetKey
-  if (target.targetType === 'categoria') return `${item.group || ''}|${item.category || ''}` === target.targetKey
-  if (target.targetType === 'subcategoria') return `${item.group || ''}|${item.category || ''}|${item.subcategory || ''}` === target.targetKey
-  if (target.targetType === 'item') return item.id === target.targetKey
-  if (target.targetType === 'variacao') return variation.id === target.targetKey
-  return false
-}
-
-function movementPersonMatches(movement, person) {
-  if (!person || movement.type !== 'saida') return false
-  if (movement.requestedByPersonId) return movement.requestedByPersonId === person.id
-  return normalize(movement.requestedBy) === normalize(person.name)
 }
 
 function periodForRule(rule) {
@@ -315,6 +302,8 @@ function quickMovement(record) {
     targetLabel: record.rule.targetLabel,
     requestedBy: record.person.name,
     requestedByPersonId: record.person.id,
+    destination: 'EPI',
+    returnTo: { tab: 'inventario', section: 'epis' },
     nonce: `epi:${record.person.id}:${record.rule.id}:${Date.now()}`,
   })
 }
@@ -322,6 +311,26 @@ function quickMovement(record) {
 
 <template>
   <section class="space-y-4">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="ds-page-header">
+        <div>
+          <h1 class="ds-page-title">Controle de EPIs</h1>
+          <p class="ds-page-subtitle">Entregas, trocas e vencimentos por pessoa.</p>
+        </div>
+      </div>
+      <div class="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+        <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700" @click="sheetOpen = true">
+          Ficha de EPI
+        </button>
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Buscar pessoa, cargo ou EPI..."
+          class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 md:w-80"
+        />
+      </div>
+    </header>
+
     <div class="grid gap-3 md:grid-cols-4">
       <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'attention'">
         <p class="ds-metric-label">Precisam trocar</p>
@@ -339,19 +348,6 @@ function quickMovement(record) {
         <p class="ds-metric-label">Vencidos</p>
         <p class="ds-metric-value text-red-500">{{ counts.expired }}</p>
       </button>
-    </div>
-
-    <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:flex-row md:items-center md:justify-between">
-      <div>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Controle de EPIs</h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Acompanhamento por pessoa a partir das saidas registradas no estoque.</p>
-      </div>
-      <input
-        v-model="search"
-        type="search"
-        placeholder="Buscar pessoa, cargo ou EPI..."
-        class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 md:w-80"
-      />
     </div>
 
     <div
@@ -577,5 +573,7 @@ function quickMovement(record) {
         </div>
       </section>
     </AppDialog>
+
+    <EpiSheetDialog v-if="sheetOpen" :can-operate="canOperate" @close="sheetOpen = false" />
   </section>
 </template>

@@ -254,24 +254,28 @@ const {
       <!-- Add group footer -->
       <div class="border-t border-gray-200 dark:border-gray-700 p-2">
         <div v-if="addingGroup">
-          <div class="flex items-center gap-1">
+          <div class="grid grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-1">
             <input
               v-model="newGroupName"
               placeholder="Nome do grupo"
-              class="flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-primary-400 dark:border-primary-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none"
+              class="h-9 min-w-0 rounded-md border border-primary-400 bg-white px-2 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-400 dark:border-primary-500 dark:bg-gray-700 dark:text-gray-100"
               @keydown="onAddGroupKeydown"
               autofocus
             />
-            <button class="p-1 text-green-500 hover:text-green-600 flex-shrink-0" @click="saveAddGroup">
+            <button type="button" class="flex h-8 w-8 items-center justify-center rounded-md text-green-500 transition-colors hover:bg-green-500/10 hover:text-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500" title="Salvar grupo" aria-label="Salvar grupo" @click="saveAddGroup">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
             </button>
-            <button class="p-1 text-gray-400 hover:text-gray-500 flex-shrink-0" @click="cancelAddGroup">
+            <button type="button" class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-500/10 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:hover:text-gray-200" title="Cancelar" aria-label="Cancelar" @click="cancelAddGroup">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
         <div v-else>
-          <button class="hierarchy-add-group-button" @click="startAddGroup">
+          <button
+            type="button"
+            class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-primary-600 px-3 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+            @click="startAddGroup"
+          >
             <span aria-hidden="true">+</span> Novo
           </button>
         </div>

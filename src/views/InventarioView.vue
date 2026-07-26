@@ -8,6 +8,7 @@ import { useDestinations } from '../composables/useDestinations.js'
 import { useToast } from '../composables/useToast.js'
 import FechamentosView from './FechamentosView.vue'
 import VariationSheet from '../components/ui/VariationSheet.vue'
+import AppButton from '../components/ui/AppButton.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
 import EpiControlTab from '../components/inventario/EpiControlTab.vue'
 import { normalizeSearchText, searchTokens } from '../utils/globalSearch.js'
@@ -526,9 +527,21 @@ const facetActive = computed(() =>
   Object.keys(filterAttrValues.value).length > 0
 )
 
+const rowsForStatusCounts = computed(() => {
+  let rows = allRows.value
+  if (searchNorm.value) rows = rows.filter(row => rowMatchesSearch(row, searchNorm.value))
+  if (filterGroup.value) rows = rows.filter(row => row.item.group === filterGroup.value)
+  if (filterCategory.value) rows = rows.filter(row => row.item.category === filterCategory.value)
+  if (filterSubcategory.value) rows = rows.filter(row => itemSubgroup(row.item) === filterSubcategory.value)
+  rows = applyAttrFilters(rows)
+  if (locationHeaderSearchNorm.value) rows = rows.filter(row => normalizeSearchText(inventoryLocation(row)).includes(locationHeaderSearchNorm.value))
+  if (destinationsHeaderSearchNorm.value) rows = rows.filter(row => normalizeSearchText(inventoryDestinationsText(row)).includes(destinationsHeaderSearchNorm.value))
+  return rows
+})
+
 const counts = computed(() => {
   const c = { zero: 0, critical: 0, alert: 0, alerts: 0, all: 0 }
-  for (const r of allRows.value) {
+  for (const r of rowsForStatusCounts.value) {
     if (r.status !== 'ok') { c[r.status]++; c.alerts++ }
     c.all++
   }
@@ -892,10 +905,13 @@ function exportCSV() {
   <div class="space-y-4">
 
     <!-- Header -->
-    <div class="ds-page-header">
+    <div v-if="inventorySection !== 'epis'" class="ds-page-header">
       <div>
-        <h1 class="ds-page-title">Controle de estoque</h1>
-        <p class="ds-page-subtitle">
+        <h1 class="ds-page-title">{{ inventorySection === 'fechamentos' ? 'Fechamentos mensais' : 'Controle de estoque' }}</h1>
+        <p v-if="inventorySection === 'fechamentos'" class="ds-page-subtitle">
+          Salve uma foto oficial do estoque no fim do mês selecionado, calculada a partir das movimentações.
+        </p>
+        <p v-else class="ds-page-subtitle">
           <template v-if="filterStatus === 'all'">
             Todas as variações cadastradas
             <span v-if="counts.all" class="ml-1 font-medium">({{ counts.all }})</span>
@@ -908,7 +924,7 @@ function exportCSV() {
       </div>
     </div>
 
-    <div class="ds-segmented">
+    <div v-if="inventorySection !== 'epis'" class="ds-segmented">
       <button
         type="button"
         class="ds-segmented-item"
@@ -916,15 +932,6 @@ function exportCSV() {
         @click="inventorySection = 'estoque'"
       >
         Estoque
-      </button>
-      <button
-        v-if="canAccessEpiControl"
-        type="button"
-        class="ds-segmented-item"
-        :class="inventorySection === 'epis' ? 'ds-segmented-item-active' : ''"
-        @click="inventorySection = 'epis'"
-      >
-        Controle de EPIs
       </button>
       <button
         v-if="canAccessClosings"
@@ -938,91 +945,91 @@ function exportCSV() {
     </div>
 
     <template v-if="inventorySection === 'estoque'">
-    <!-- Filter tabs + CSV export -->
-    <div class="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <div class="ds-scroll-x flex w-full items-center gap-1 overflow-x-auto sm:w-auto">
-        <button
-          v-for="tab in FILTER_TABS"
-          :key="tab.id"
-          class="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors"
-          :class="filterStatus === tab.id
-            ? 'text-primary-700 dark:text-primary-400'
-            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-          @click="filterStatus = tab.id"
-        >
-          {{ tab.label }}
-          <span
-            v-if="tab.countKey && counts[tab.countKey]"
-            class="text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
-            :class="FILTER_COUNT_CLASS[tab.countKey]"
-          >{{ counts[tab.countKey] }}</span>
-          <span
-            v-if="filterStatus === tab.id"
-            class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 dark:bg-primary-400 rounded-full"
-          ></span>
-        </button>
-      </div>
-
-      <!-- Monthly report export -->
-      <div class="flex w-full flex-wrap items-center gap-2 pb-2 sm:w-auto sm:flex-nowrap sm:pb-1">
-        <div class="relative">
+    <!-- Status filters + CSV export -->
+    <div class="ds-panel">
+      <div class="flex flex-col gap-3 p-3 xl:flex-row xl:items-center xl:justify-between">
+        <div class="ds-scroll-x flex w-full items-center gap-1 overflow-x-auto sm:w-auto">
           <button
-            type="button"
-            class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
-            @click="columnMenuOpen = !columnMenuOpen"
+            v-for="tab in FILTER_TABS"
+            :key="tab.id"
+            class="relative flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition-colors"
+            :class="filterStatus === tab.id
+              ? 'text-primary-700 dark:text-primary-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            @click="filterStatus = tab.id"
           >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5" />
-            </svg>
-            Mais detalhes
+            {{ tab.label }}
+            <span
+              v-if="tab.countKey && counts[tab.countKey]"
+              class="rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums"
+              :class="FILTER_COUNT_CLASS[tab.countKey]"
+            >{{ counts[tab.countKey] }}</span>
+            <span
+              v-if="filterStatus === tab.id"
+              class="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary-600 dark:bg-primary-400"
+            ></span>
           </button>
-          <div
-            v-if="columnMenuOpen"
-            class="absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
-          >
-            <button
-              v-for="column in columnOptions"
-              :key="column.key"
-              type="button"
-              class="w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-              @click="toggleColumn(column.key)"
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative">
+            <AppButton variant="ghost" size="sm" :aria-expanded="columnMenuOpen" @click="columnMenuOpen = !columnMenuOpen">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 9.75h16.5M3.75 14.25h16.5M3.75 18.75h16.5" />
+              </svg>
+              Mais detalhes
+            </AppButton>
+            <div
+              v-if="columnMenuOpen"
+              class="absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
             >
-              <span
-                class="flex h-4 w-4 items-center justify-center rounded border"
-                :class="isColumnVisible(column.key)
-                  ? 'border-primary-500 bg-primary-600 text-[var(--ds-primary-text)]'
-                  : 'border-gray-300 dark:border-gray-600'"
+              <button
+                v-for="column in columnOptions"
+                :key="column.key"
+                type="button"
+                class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                @click="toggleColumn(column.key)"
               >
-                <svg v-if="isColumnVisible(column.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
+                <span
+                  class="flex h-4 w-4 items-center justify-center rounded border"
+                  :class="isColumnVisible(column.key)
+                    ? 'border-primary-500 bg-primary-600 text-[var(--ds-primary-text)]'
+                    : 'border-gray-300 dark:border-gray-600'"
+                >
+                  <svg v-if="isColumnVisible(column.key)" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                </span>
+                {{ column.label }}
+              </button>
+            </div>
+          </div>
+          <span class="hidden h-6 w-px bg-gray-200 dark:bg-gray-700 xl:block"></span>
+          <select v-model="csvSelectedMonth" class="ds-input w-auto min-w-32">
+            <option v-for="m in CSV_MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
+          </select>
+          <select v-model="csvSelectedYear" class="ds-input w-auto min-w-24">
+            <option v-for="y in csvYears" :key="y" :value="y">{{ y }}</option>
+          </select>
+          <div class="relative">
+            <AppButton variant="primary" size="sm" aria-describedby="csv-export-help" @click="exportCSV">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Exportar CSV
+              <span class="group/help relative ml-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/40 bg-white/10 text-[11px] font-bold">
+                <span aria-hidden="true">?</span>
+                <span
+                  id="csv-export-help"
+                  role="tooltip"
+                  class="pointer-events-none absolute right-0 top-full z-30 mt-2 w-72 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-normal leading-relaxed text-gray-700 opacity-0 shadow-xl transition-opacity group-hover/help:opacity-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                >
+                  O CSV inclui os {{ sortedFilteredRows.length }} registros que correspondem aos filtros atuais, não apenas a página visível.
+                </span>
               </span>
-              {{ column.label }}
-            </button>
+            </AppButton>
           </div>
         </div>
-        <select
-          v-model="csvSelectedMonth"
-          class="shrink-0 px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
-        >
-          <option v-for="m in CSV_MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
-        </select>
-        <select
-          v-model="csvSelectedYear"
-          class="shrink-0 px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-primary-500 transition-colors"
-        >
-          <option v-for="y in csvYears" :key="y" :value="y">{{ y }}</option>
-        </select>
-        <button
-          class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 cursor-pointer"
-          title="Exportar relatório mensal de estoque em CSV"
-          @click="exportCSV"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-          </svg>
-          Relatório CSV
-        </button>
       </div>
     </div>
 
@@ -1363,7 +1370,7 @@ function exportCSV() {
                         v-if="row.variation.values && row.variation.values[attr]"
                         class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
                       >
-                        <span class="font-medium opacity-60">{{ attr }}:</span>
+                        <span class="font-medium">{{ attr }}:</span>
                         <span>{{ row.variation.values[attr] }}</span>
                       </span>
                     </template>
@@ -1373,7 +1380,7 @@ function exportCSV() {
                         v-if="val"
                         class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800"
                       >
-                        <span class="font-medium opacity-60">{{ key }}:</span>
+                        <span class="font-medium">{{ key }}:</span>
                         <span>{{ val }}</span>
                       </span>
                     </template>
@@ -1653,7 +1660,7 @@ function exportCSV() {
                   v-if="historyRow.variation.values && historyRow.variation.values[attr]"
                   class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-2 py-0.5 text-[11px]"
                 >
-                  <span class="font-medium opacity-60">{{ attr }}:</span>
+                  <span class="font-medium">{{ attr }}:</span>
                   <span>{{ historyRow.variation.values[attr] }}</span>
                 </span>
               </template>
@@ -1662,7 +1669,7 @@ function exportCSV() {
                   v-if="val"
                   class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-100 dark:border-amber-800"
                 >
-                  <span class="font-medium opacity-60">{{ key }}:</span>
+                  <span class="font-medium">{{ key }}:</span>
                   <span>{{ val }}</span>
                 </span>
               </template>

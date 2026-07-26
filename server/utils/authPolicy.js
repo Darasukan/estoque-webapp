@@ -6,7 +6,7 @@ export function isOwnPasswordChangeRequest(req, userId) {
 
 export function passwordChangeError(pin, sameAsCurrent = false) {
   const value = String(pin || '').trim()
-  if (value.length < 8) return 'Senha deve ter ao menos 8 caracteres.'
+  if (value.length < 4) return 'Senha deve ter ao menos 4 caracteres.'
   if (sameAsCurrent) return 'A nova senha deve ser diferente da senha atual.'
   return ''
 }

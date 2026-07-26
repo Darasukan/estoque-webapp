@@ -15,6 +15,7 @@ import {
 } from '../utils/variationForm.js'
 import VariationSheet from '../components/ui/VariationSheet.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
+import AppButton from '../components/ui/AppButton.vue'
 import AiCatalogDialog from '../components/catalog/AiCatalogDialog.vue'
 
 const isAdmin = inject('isAdmin')
@@ -734,8 +735,8 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
 </script>
 
 <template>
-  <div>
-    <div v-if="isAdmin && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2">
+  <div class="relative">
+    <div v-if="isAdmin && !viewingItem" class="mb-4 flex flex-wrap justify-end gap-2 lg:absolute lg:right-0 lg:top-0 lg:mb-0">
       <button
         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
         @click="startAiCatalogSearch"
@@ -745,24 +746,26 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         </svg>
         Pesquisar com IA
       </button>
-      <button
-        class="inline-flex items-center gap-1.5 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/30"
+      <AppButton
+        variant="primary"
+        size="md"
         @click="startAiCatalog"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.456-2.456L14.25 6l1.035-.259a3.375 3.375 0 0 0 2.456-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
         </svg>
         Catalogar com IA
-      </button>
-      <button
-        class="inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-4 py-2 text-sm font-medium text-[var(--ds-primary-text)] transition-colors hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500"
+      </AppButton>
+      <AppButton
+        variant="primary"
+        size="md"
         @click="startDirectVariation"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
         Criar Variação
-      </button>
+      </AppButton>
     </div>
 
     <!-- ===== 1. ITEM DETAIL (variations table) ===== -->
@@ -893,10 +896,10 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
                     <span
                       v-for="attr in viewingItem.attributes"
                       :key="attr"
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      class="ds-attribute-tag inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs"
                       :title="attr"
                     >
-                      <span class="text-gray-400 dark:text-gray-500 text-[10px]">{{ attr }}:</span>
+                      <span class="text-[10px] font-medium text-[var(--ds-text)]">{{ attr }}:</span>
                       {{ v.values[attr] || '—' }}
                     </span>
                   </div>
@@ -1216,7 +1219,7 @@ defineExpose({ triggerSearchDrill, openItemById, openVariationById })
         </div>
       </div>
 
-      <div v-if="searchedGroups.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div v-if="searchedGroups.length" class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         <button
           v-for="g in searchedGroups"
           :key="g"

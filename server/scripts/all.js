@@ -1,8 +1,17 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const devPort = process.env.DEV_PORT || '3001'
 const prodPort = process.env.PROD_PORT || '3000'
+
+if (!existsSync('.env.prod')) {
+  const prodEnv = readFileSync('.env.example', 'utf8')
+    .replace(/^DB_PATH=.*$/m, 'DB_PATH=./server/estoque-prod.db')
+    .replace(/^PHOTO_UPLOAD_DIR=.*$/m, 'PHOTO_UPLOAD_DIR=./server/photo-uploads-prod')
+  writeFileSync('.env.prod', prodEnv)
+  console.log('Criado .env.prod a partir de .env.example com dados separados de DEV')
+}
 
 if (devPort === prodPort) {
   console.error('DEV_PORT e PROD_PORT precisam ser diferentes.')
@@ -17,6 +26,8 @@ const targets = [
 let stopping = false
 let restarting = false
 let children = []
+const interactive = Boolean(process.stdin.isTTY)
+let logsVisible = !interactive
 
 function kill(child) {
   if (child.exitCode !== null || !child.pid) return
@@ -32,7 +43,13 @@ function start() {
   children = targets.map(({ label, script, port }) => {
     const child = spawn(process.execPath, [script], {
       env: { ...process.env, PORT: port },
-      stdio: ['ignore', 'inherit', 'inherit'],
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    child.stdout.on('data', chunk => {
+      if (logsVisible) process.stdout.write(chunk)
+    })
+    child.stderr.on('data', chunk => {
+      if (logsVisible) process.stderr.write(chunk)
     })
     child.on('error', error => console.error(`${label}: ${error.message}`))
     child.on('exit', code => {
@@ -45,7 +62,7 @@ function start() {
 function stop(code = 0) {
   if (stopping) return
   stopping = true
-  input.close()
+  input?.close()
   for (const child of children) kill(child)
   process.exitCode = code
 }
@@ -69,14 +86,27 @@ async function restart() {
   start()
 }
 
-const input = createInterface({ input: process.stdin, output: process.stdout })
-input.on('line', command => {
-  if (['r', 'restart'].includes(command.trim().toLowerCase())) restart()
-  else console.log('Comando disponivel: r ou restart')
+const input = interactive
+  ? createInterface({ input: process.stdin, output: process.stdout })
+  : null
+input?.on('line', command => {
+  switch (command.trim().toLowerCase()) {
+    case 'r':
+      restart()
+      break
+    case 'l':
+      logsVisible = !logsVisible
+      console.log(`\nLogs ${logsVisible ? 'ativados' : 'ocultos'}.`)
+      break
+    default:
+      console.log('Atalhos: R + Enter reinicia | L + Enter ativa/oculta logs')
+  }
 })
 
 process.on('SIGINT', () => stop())
 process.on('SIGTERM', () => stop())
 
 start()
-console.log('Digite r ou restart e pressione Enter para reiniciar os dois servidores.')
+console.log(interactive
+  ? 'Atalhos: R + Enter reinicia | L + Enter ativa/oculta logs | Ctrl+C encerra'
+  : 'Logs ativos (terminal não interativo).')

@@ -33,7 +33,21 @@ test('migração versionada cria backup antes de alterar um banco existente', { 
   const dbPath = join(tempDir, 'legacy.db')
   const backupDir = join(tempDir, 'backups')
   const legacyDb = new Database(dbPath)
-  legacyDb.exec("CREATE TABLE legacy_marker (value TEXT); INSERT INTO legacy_marker VALUES ('preservado');")
+  legacyDb.exec(`
+    CREATE TABLE legacy_marker (value TEXT);
+    INSERT INTO legacy_marker VALUES ('preservado');
+    CREATE TABLE epi_role_rules (
+      id TEXT PRIMARY KEY,
+      role_name TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_key TEXT NOT NULL,
+      target_label TEXT DEFAULT '',
+      days INTEGER NOT NULL DEFAULT 30,
+      active INTEGER NOT NULL DEFAULT 1
+    );
+    INSERT INTO epi_role_rules (id, role_name, target_type, target_key, target_label, days, active)
+    VALUES ('legacy_rule', 'Operador', 'item', 'item_1', 'Mascara', 30, 1);
+  `)
   legacyDb.pragma('user_version = 0')
   legacyDb.close()
 
@@ -81,5 +95,7 @@ test('migração versionada cria backup antes de alterar um banco existente', { 
   assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'photo_batches'").get())
   assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'photo_batch_photos'").get())
   assert.ok(migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'variation_photos'").get())
+  assert.ok(migratedDb.prepare('PRAGMA table_info(epi_role_rules)').all().some(column => column.name === 'quantity'))
+  assert.equal(migratedDb.prepare("SELECT quantity FROM epi_role_rules WHERE id = 'legacy_rule'").pluck().get(), 1)
   migratedDb.close()
 })

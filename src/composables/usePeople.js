@@ -39,7 +39,7 @@ export function usePeople() {
     sortByName(people.value.filter(p => p.active && (p.status || 'ativo') === 'ativo'))
   )
 
-  async function addPerson(name, role = '', status = 'ativo') {
+  async function addPerson(name, role = '', status = 'ativo', registration = '') {
     const trimmed = formatPersonName(name)
     if (!trimmed) return { ok: false, error: 'Nome obrigatório.' }
     if (people.value.some(p => p.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -48,6 +48,7 @@ export function usePeople() {
     const created = await api.createPerson({
       name: trimmed,
       role: formatRoleName(role),
+      registration: String(registration || '').trim(),
       status,
       active: status === 'ativo',
     })

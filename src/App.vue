@@ -2,6 +2,7 @@
 import { ref, computed, provide, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import AppSidebar from './components/ui/AppSidebar.vue'
 import HistorySidebar from './components/ui/HistorySidebar.vue'
+import RailFooter from './components/ui/RailFooter.vue'
 import ToastContainer from './components/ui/ToastContainer.vue'
 import LoginModal from './components/ui/LoginModal.vue'
 import AppButton from './components/ui/AppButton.vue'
@@ -32,6 +33,7 @@ const InventarioView = defineAsyncComponent(() => import('./views/InventarioView
 const MovimentacoesView = defineAsyncComponent(() => import('./views/MovimentacoesView.vue'))
 const OrdensServicoView = defineAsyncComponent(() => import('./views/OrdensServicoView.vue'))
 const MotoresView = defineAsyncComponent(() => import('./views/MotoresView.vue'))
+const EpisTab = defineAsyncComponent(() => import('./components/cadastros/EpisTab.vue'))
 
 const { isDark, toggleTheme } = useTheme()
 const { items, variations, uniqueGroups, activeGroup, setActiveGroup, facets, hasActiveFilters, toggleFilter, clearFilters, loadData: loadItems } = useItems()
@@ -83,13 +85,14 @@ function loadStoredList(key) {
 }
 
 const savedUiState = loadUiState()
-const savedActiveTab = ['dashboard', 'catalogo', 'inventario', 'movimentacoes', 'ordens', 'motores', 'cadastros'].includes(savedUiState.activeTab)
+const savedActiveTab = ['dashboard', 'catalogo', 'inventario', 'movimentacoes', 'ordens', 'motores', 'cadastros', 'epis-admin'].includes(savedUiState.activeTab)
   ? savedUiState.activeTab
   : 'dashboard'
 const showLoginModal = ref(false)
 const mobileSidebarOpen = ref(false)
 const mobileSidebarTrigger = ref(null)
 const railOpen = ref(false)
+const expandedNavigationGroup = ref('')
 const catalogSidebarDismissed = ref(true)
 const catalogSearch = ref(savedUiState.catalogSearch || '')
 const catalogRef = ref(null)
@@ -99,6 +102,7 @@ const requestedInventoryStatus = ref(savedUiState.inventoryStatus || 'all')
 const requestedInventorySearch = ref(savedUiState.inventorySearch || '')
 const requestedOrdersTab = ref(savedUiState.ordersTab || 'ordens')
 const requestedOrderFocusId = ref('')
+const workOrderPreview = ref(null)
 const movBrowsing = ref(true)
 const movSubTab = ref(savedUiState.movSubTab || 'entrada')
 const requestedMovSubTab = ref(savedUiState.movSubTab || 'entrada')
@@ -115,10 +119,8 @@ const globalSearchRecentIds = ref(loadStoredList(GLOBAL_SEARCH_RECENTS_KEY))
 const syncFailures = ref([])
 const syncing = ref(false)
 const globalCreateRootRef = ref(null)
-const accountMenuRootRef = ref(null)
 const shortcutHelpOpen = ref(false)
 const shortcutPrefix = ref('')
-const accountMenuOpen = ref(false)
 const passwordModalOpen = ref(false)
 const ownPassword = ref('')
 const ownPasswordConfirm = ref('')
@@ -154,6 +156,18 @@ const navigationGroups = [
       { id: 'inventario', label: 'Controle de estoque' },
     ],
   },
+  {
+    id: 'epis',
+    label: 'EPIs',
+    defaultTab: 'inventario',
+    target: { tab: 'inventario', section: 'epis', requiresAuth: true },
+    requiresAuth: true,
+    icon: 'M9 12.75 11.25 15 15 9.75m5.25-3.735A11.96 11.96 0 0 1 12 3c-2.755 0-5.3.93-7.33 2.494-.54.416-.83 1.075-.745 1.752.516 4.135 2.56 7.75 5.535 10.303L12 19.5l2.54-1.951c2.976-2.554 5.02-6.168 5.535-10.303a1.823 1.823 0 0 0-.745-1.752Z',
+    tabs: [
+      { id: 'epi-control', label: 'Controle de EPIs', target: { tab: 'inventario', section: 'epis', requiresAuth: true } },
+      { id: 'epis-admin', label: 'Editar EPIs', target: { tab: 'epis-admin', requiresAdmin: true }, requiresAdmin: true },
+    ],
+  },
   { id: 'movimentacoes', label: 'Entradas e saídas', defaultTab: 'movimentacoes', icon: 'M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5', tabs: [{ id: 'movimentacoes', label: 'Entradas e saídas' }] },
   {
     id: 'manutencao',
@@ -167,10 +181,12 @@ const navigationGroups = [
   },
   { id: 'administracao', label: 'Administração', defaultTab: 'cadastros', icon: 'M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75', tabs: [{ id: 'cadastros', label: 'Administração' }], requiresAdmin: true },
 ]
-const activeNavigationGroup = computed(() =>
-  navigationGroups.find(group => group.tabs.some(tab => tab.id === activeTab.value))?.id || 'inicio'
-)
+const activeNavigationGroup = computed(() => {
+  if (activeTab.value === 'inventario' && requestedInventorySection.value === 'epis') return 'epis'
+  return navigationGroups.find(group => group.tabs.some(tab => tab.id === activeTab.value))?.id || 'inicio'
+})
 const activeTabLabel = computed(() => {
+  if (activeNavigationGroup.value === 'epis') return activeTab.value === 'epis-admin' ? 'Editar EPIs' : 'Controle de EPIs'
   for (const group of navigationGroups) {
     const tab = group.tabs.find(t => t.id === activeTab.value)
     if (tab) return group.tabs.length > 1 ? `${group.label} · ${tab.label}` : tab.label
@@ -201,7 +217,11 @@ function canAccessTarget(target = {}) {
   return true
 }
 
-const visibleNavigationGroups = computed(() => navigationGroups.filter(canAccessTarget))
+const visibleNavigationGroups = computed(() =>
+  navigationGroups
+    .filter(canAccessTarget)
+    .map(group => ({ ...group, tabs: group.tabs.filter(canAccessTarget) }))
+)
 
 const visibleNavigationShortcuts = computed(() =>
   navigationShortcuts.filter(shortcut => canAccessTarget(shortcut.target))
@@ -303,7 +323,7 @@ onMounted(async () => {
   loadHealthStatus()
   healthTimer = window.setInterval(loadHealthStatus, 15_000)
   await checkSession()
-  if (activeTab.value === 'cadastros' && !isAdmin.value) activeTab.value = 'catalogo'
+  if (['cadastros', 'epis-admin'].includes(activeTab.value) && !isAdmin.value) activeTab.value = 'catalogo'
   await loadAllData()
   if (savedUiState.catalogGroup) activeGroup.value = savedUiState.catalogGroup
   window.addEventListener('app:data-invalidated', loadAllData)
@@ -322,7 +342,7 @@ onUnmounted(() => {
 // Reload data after login
 watch(user, (newUser, oldUser) => {
   if (newUser && !oldUser) loadAllData()
-  if (!isAdmin.value && activeTab.value === 'cadastros') activeTab.value = 'catalogo'
+  if (!isAdmin.value && ['cadastros', 'epis-admin'].includes(activeTab.value)) activeTab.value = 'catalogo'
 })
 
 watch(activeTab, value => {
@@ -386,7 +406,6 @@ function onLoginClose() {
 }
 
 function openPasswordModal() {
-  accountMenuOpen.value = false
   ownPassword.value = ''
   ownPasswordConfirm.value = ''
   passwordModalOpen.value = true
@@ -414,7 +433,6 @@ async function submitOwnPassword() {
 }
 
 function logoutFromMenu() {
-  accountMenuOpen.value = false
   logout()
   activeTab.value = 'catalogo'
 }
@@ -471,6 +489,10 @@ function runCreateAction(action) {
 }
 
 function closeTopPopup() {
+  if (workOrderPreview.value) {
+    workOrderPreview.value = null
+    return true
+  }
   if (globalSearchOpen.value) {
     closeGlobalSearch()
     return true
@@ -485,10 +507,6 @@ function closeTopPopup() {
   }
   if (passwordModalOpen.value) {
     closePasswordModal()
-    return true
-  }
-  if (accountMenuOpen.value) {
-    accountMenuOpen.value = false
     return true
   }
   if (mobileSidebarOpen.value) {
@@ -511,9 +529,6 @@ function handleGlobalPointerDown(event) {
   if (!(target instanceof Node)) return
   if (globalCreateOpen.value && !globalCreateRootRef.value?.contains(target)) {
     globalCreateOpen.value = false
-  }
-  if (accountMenuOpen.value && !accountMenuRootRef.value?.contains(target)) {
-    accountMenuOpen.value = false
   }
 }
 
@@ -584,6 +599,11 @@ function openContextQuickMovement(payload) {
   openMovementTab(payload.type || 'saida', payload)
 }
 
+function handleMovementComplete(target) {
+  requestedMovementPrefill.value = null
+  navigateTab(target)
+}
+
 function selectMainTab(tabId) {
   if (tabId === 'cadastros' && !isAdmin.value) {
     if (!isLoggedIn.value) showLoginModal.value = true
@@ -602,25 +622,49 @@ function selectNavigationGroup(group) {
     else error('A administração é restrita a administradores.')
     return
   }
-  const currentTabBelongsToGroup = group.tabs.some(tab => tab.id === activeTab.value)
-  selectMainTab(currentTabBelongsToGroup ? activeTab.value : group.defaultTab)
+  const hasSubItems = group.tabs.length > 1
+  if (hasSubItems) {
+    expandedNavigationGroup.value = expandedNavigationGroup.value === group.id ? '' : group.id
+    return
+  }
+  if (group.target) {
+    navigateTab(group.target)
+    return
+  }
+  navigateTab(group.defaultTab)
+}
+
+function isNavigationTabActive(group, tab) {
+  if (activeNavigationGroup.value !== group.id) return false
+  const target = tab.target || { tab: tab.id }
+  if (activeTab.value !== target.tab) return false
+  if (target.section) return requestedInventorySection.value === target.section
+  return true
 }
 
 function navigateTab(target) {
-  const tab = typeof target === 'string' ? target : target?.tab
+  const options = typeof target === 'string' ? {} : (target || {})
+  const tab = typeof target === 'string' ? target : options.tab
   if (!tab) return
-  if (!canAccessTarget(typeof target === 'string' ? {} : target)) {
+  if (!canAccessTarget(options)) {
     if (!isLoggedIn.value) showLoginModal.value = true
     else error('Seu perfil não tem permissão para esta ação.')
     return
   }
-  if ((tab === 'fechamentos' || target?.section === 'fechamentos') && !isLoggedIn.value) {
+  if ((tab === 'fechamentos' || options.section === 'fechamentos') && !isLoggedIn.value) {
     showLoginModal.value = true
     return
   }
-  if (target?.section === 'epis' && !isLoggedIn.value) {
+  if (options.section === 'epis' && !isLoggedIn.value) {
     showLoginModal.value = true
     return
+  }
+  if (options.orderId) {
+    const order = workOrders.value.find(item => item.id === options.orderId)
+    if (order) {
+      workOrderPreview.value = order
+      return
+    }
   }
   if (tab === 'fechamentos') {
     requestedInventorySection.value = 'fechamentos'
@@ -629,9 +673,9 @@ function navigateTab(target) {
     return
   }
   if (tab === 'inventario') {
-    const section = target?.section || 'estoque'
-    const status = target?.status ?? 'all'
-    const search = target?.search || ''
+    const section = options.section || 'estoque'
+    const status = options.status ?? 'all'
+    const search = options.search || ''
     requestedInventorySection.value = ''
     requestedInventoryStatus.value = '__pending__'
     requestedInventorySearch.value = ''
@@ -643,28 +687,28 @@ function navigateTab(target) {
     })
     return
   }
-  if (tab === 'movimentacoes' && target?.subTab) {
-    const search = target?.search || ''
-    if (['entrada', 'saida'].includes(target.subTab)) {
-      openMovementTab(target.subTab)
+  if (tab === 'movimentacoes' && options.subTab) {
+    const search = options.search || ''
+    if (['entrada', 'saida'].includes(options.subTab)) {
+      openMovementTab(options.subTab)
       return
     }
     requestedMovSubTab.value = ''
     requestedMovSearch.value = ''
     activeTab.value = 'movimentacoes'
     nextTick(() => {
-      requestedMovSubTab.value = target.subTab
+      requestedMovSubTab.value = options.subTab
       requestedMovSearch.value = search
     })
     return
   }
-  if (tab === 'cadastros' && target?.subTab) {
+  if (tab === 'cadastros' && options.subTab) {
     if (!isAdmin.value) {
       if (!isLoggedIn.value) showLoginModal.value = true
       else error('A administração é restrita a administradores.')
       return
     }
-    requestedCadastrosTab.value = target.subTab
+    requestedCadastrosTab.value = options.subTab
     activeTab.value = 'cadastros'
     return
   }
@@ -673,8 +717,8 @@ function navigateTab(target) {
     requestedOrderFocusId.value = ''
     activeTab.value = 'ordens'
     nextTick(() => {
-      requestedOrdersTab.value = target?.subTab || 'ordens'
-      requestedOrderFocusId.value = target?.orderId || ''
+      requestedOrdersTab.value = options.subTab || 'ordens'
+      requestedOrderFocusId.value = options.orderId || ''
     })
     return
   }
@@ -798,7 +842,7 @@ function handleGlobalShortcutKeydown(event) {
         <span
           v-if="environmentBadge"
           class="rounded px-1.5 py-0.5 text-[10px] font-bold leading-none"
-          :class="environmentBadge.env === 'PROD' ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-sky-500/15 text-sky-600 dark:text-sky-400'"
+          :class="environmentBadge.env === 'PROD' ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'ds-environment-badge-dev'"
         >
           {{ environmentBadge.env }}
         </span>
@@ -811,21 +855,34 @@ function handleGlobalShortcutKeydown(event) {
             class="ds-rail-item"
             :class="activeNavigationGroup === group.id ? 'ds-rail-item-active' : ''"
             :title="group.requiresAdmin && !isAdmin ? 'Acesso restrito a administradores' : group.label"
+            :aria-expanded="group.tabs.length > 1 ? expandedNavigationGroup === group.id : undefined"
             @click="selectNavigationGroup(group)"
           >
             <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" :d="group.icon" />
             </svg>
             {{ group.label }}
+            <svg
+              v-if="group.tabs.length > 1"
+              class="ml-auto transition-transform duration-150 motion-reduce:transition-none"
+              :class="expandedNavigationGroup === group.id ? 'rotate-90' : ''"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6" />
+            </svg>
           </button>
-          <div v-if="activeNavigationGroup === group.id && group.tabs.length > 1" class="ds-rail-sub">
+          <div v-if="expandedNavigationGroup === group.id && group.tabs.length > 1" class="ds-rail-sub">
             <button
               v-for="tab in group.tabs"
               :key="tab.id"
               type="button"
               class="ds-rail-item"
-              :class="activeTab === tab.id ? 'ds-rail-item-active' : ''"
-              @click="selectMainTab(tab.id)"
+              :class="isNavigationTabActive(group, tab) ? 'ds-rail-item-active' : ''"
+              @click="navigateTab(tab.target || tab.id)"
             >
               {{ tab.label }}
             </button>
@@ -833,70 +890,22 @@ function handleGlobalShortcutKeydown(event) {
         </template>
       </nav>
 
-      <div class="ds-rail-footer">
-        <div v-if="isLoggedIn" ref="accountMenuRootRef" class="relative min-w-0 flex-1">
-          <AppButton
-            variant="ghost"
-            size="sm"
-            class="w-full !justify-start"
-            title="Conta"
-            :aria-expanded="accountMenuOpen"
-            @click="accountMenuOpen = !accountMenuOpen"
-          >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
-            </svg>
-            <span class="truncate">{{ user.name }}</span>
-          </AppButton>
-          <div
-            v-if="accountMenuOpen"
-            class="ds-menu absolute bottom-full left-0 mb-2 w-44 p-1"
-          >
-            <button
-              type="button"
-              class="ds-menu-item text-sm"
-              @click="openPasswordModal"
-            >
-              Trocar senha
-            </button>
-            <button
-              type="button"
-              class="ds-menu-item ds-menu-item-danger text-sm"
-              @click="logoutFromMenu"
-            >
-              Sair
-            </button>
-          </div>
-        </div>
-        <AppButton
-          v-else
-          variant="ghost"
-          size="sm"
-          class="flex-1 !justify-start"
-          title="Entrar"
-          @click="showLoginModal = true"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-          </svg>
-          <span>Entrar</span>
-        </AppButton>
-        <AppButton
-          variant="ghost"
-          size="icon"
-          class="!w-9 !min-w-9 !h-9"
-          title="Alternar tema claro/escuro"
-          @click="toggleTheme"
-        >
-          <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-          </svg>
-          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-          </svg>
-        </AppButton>
-      </div>
     </aside>
+
+    <RailFooter
+      class="ds-fixed-rail-footer"
+      :class="{
+        'sidebar-footer-open': railOpen || anySidebar,
+        'sidebar-filter-active': anySidebar,
+      }"
+      :is-logged-in="isLoggedIn"
+      :user-name="user?.name || ''"
+      :is-dark="isDark"
+      @login="showLoginModal = true"
+      @change-password="openPasswordModal"
+      @logout="logoutFromMenu"
+      @toggle-theme="toggleTheme"
+    />
 
     <button
       v-if="railOpen"
@@ -1037,6 +1046,8 @@ function handleGlobalShortcutKeydown(event) {
           @quick-movement="openContextQuickMovement"
         />
 
+        <EpisTab v-if="activeTab === 'epis-admin' && isAdmin" />
+
         <!-- Inventário tab -->
         <InventarioView
           v-if="activeTab === 'inventario'"
@@ -1059,6 +1070,7 @@ function handleGlobalShortcutKeydown(event) {
           :prefill-movement="requestedMovementPrefill"
           @update:browsing="v => movBrowsing = v"
           @update:sub-tab="v => { movSubTab = v; requestedMovSubTab = v }"
+          @movement-complete="handleMovementComplete"
         />
 
         <!-- Ordens de Serviço tab -->
@@ -1074,6 +1086,18 @@ function handleGlobalShortcutKeydown(event) {
         <MotoresView v-if="activeTab === 'motores'" />
       </main>
     </div>
+
+    <OrdensServicoView
+      v-if="workOrderPreview"
+      :key="workOrderPreview.id"
+      :mode="workOrderPreview.motorId ? 'motor' : 'general'"
+      embedded
+      popup-only
+      :initial-motor-id="workOrderPreview.motorId || ''"
+      :focus-order-id="workOrderPreview.id"
+      @closed="workOrderPreview = null"
+      @updated="workOrderPreview = null"
+    />
 
     <!-- Login modal -->
     <LoginModal :show="showLoginModal" @close="showLoginModal = false" />

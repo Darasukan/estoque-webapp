@@ -45,7 +45,7 @@
   .ds-button-warning,
   .ds-button-success {
     border-color: color-mix(in srgb, currentColor 24%, transparent);
-    background: color-mix(in srgb, currentColor 10%, var(--ds-panel));
+    background: color-mix(in srgb, currentColor 14%, var(--ds-panel));
   }
 
   .ds-button-danger { color: var(--ds-danger); }
@@ -55,7 +55,32 @@
   .ds-button-danger:hover,
   .ds-button-warning:hover,
   .ds-button-success:hover {
-    background: color-mix(in srgb, currentColor 16%, var(--ds-panel));
+    background: color-mix(in srgb, currentColor 22%, var(--ds-panel));
+  }
+
+  .ds-rail .ds-button-ghost,
+  .ds-filter-rail .ds-button-ghost,
+  .ds-topbar .ds-button-ghost {
+    color: var(--ds-nav-text-muted);
+  }
+
+  .ds-rail .ds-button-ghost:hover,
+  .ds-filter-rail .ds-button-ghost:hover,
+  .ds-topbar .ds-button-ghost:hover {
+    background: var(--ds-nav-surface);
+    color: var(--ds-nav-text);
+  }
+
+  .ds-topbar .ds-button-secondary {
+    border-color: var(--ds-nav-border);
+    background: var(--ds-nav-surface);
+    color: var(--ds-nav-text);
+    box-shadow: none;
+  }
+
+  .ds-topbar .ds-button-secondary:hover {
+    border-color: color-mix(in srgb, var(--ds-nav-text) 28%, transparent);
+    background: color-mix(in srgb, var(--ds-nav-text) 14%, transparent);
   }
 
   .ds-button-danger-solid {

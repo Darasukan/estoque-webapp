@@ -370,9 +370,10 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
 
   const person = await jsonRequest(url, '/api/people', {
     token,
-    body: { name: 'Pessoa Teste', role: 'Operador Teste' },
+    body: { name: 'Pessoa Teste', role: 'Operador Teste', registration: 'MAT-123' },
   })
   assert.equal(person.response.status, 200)
+  assert.equal(person.data.registration, 'MAT-123')
 
   const renamedRole = await jsonRequest(url, `/api/roles/${role.data.id}`, {
     method: 'PUT',
@@ -401,6 +402,73 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
     body: { itemId: item.data.id, values: { medida: '10mm' }, stock: 2 },
   })
   assert.equal(variation.response.status, 200)
+
+  const epiDestination = await jsonRequest(url, '/api/destinations', {
+    token,
+    body: { name: 'EPI', description: 'Entregas de EPI', active: true },
+  })
+  assert.equal(epiDestination.response.status, 200)
+  const epiItem = await jsonRequest(url, '/api/items', {
+    token,
+    body: { name: 'Mascara de teste', group: 'EPI', unit: 'UN' },
+  })
+  assert.equal(epiItem.response.status, 200)
+  const epiVariation = await jsonRequest(url, '/api/items/variations', {
+    token,
+    body: { itemId: epiItem.data.id, values: { Tamanho: 'M', CA: '1234' }, stock: 6 },
+  })
+  assert.equal(epiVariation.response.status, 200)
+  const epiRule = await jsonRequest(url, '/api/epis/role-rules', {
+    token,
+    body: {
+      roleName: 'Operador Atualizado',
+      targetType: 'item',
+      targetKey: epiItem.data.id,
+      targetLabel: 'Mascara de teste',
+      days: 30,
+      quantity: 4,
+    },
+  })
+  assert.equal(epiRule.response.status, 200)
+  assert.equal(epiRule.data.quantity, 4)
+  const epiRules = await jsonRequest(url, '/api/epis/role-rules')
+  assert.equal(epiRules.data.find(row => row.id === epiRule.data.id).quantity, 4)
+
+  const epiLine = {
+    itemId: epiItem.data.id,
+    variationId: epiVariation.data.id,
+    itemName: epiItem.data.name,
+    itemGroup: epiItem.data.group,
+    itemUnit: epiItem.data.unit,
+    variationValues: epiVariation.data.values,
+  }
+  const epiFields = {
+    requestedBy: 'Pessoa Teste',
+    requestedByPersonId: person.data.id,
+    destination: 'EPI',
+    destinationId: epiDestination.data.id,
+  }
+  const insufficientEpiBatch = await jsonRequest(url, '/api/movements/batch', {
+    token: operatorToken,
+    body: { type: 'saida', items: [{ ...epiLine, qty: 4 }, { ...epiLine, qty: 3 }], fields: epiFields },
+  })
+  assert.equal(insufficientEpiBatch.response.status, 400)
+  const epiStockAfterFailure = await jsonRequest(url, '/api/items/variations')
+  assert.equal(epiStockAfterFailure.data.find(row => row.id === epiVariation.data.id).stock, 6)
+
+  const epiBatchBody = {
+    requestId: 'epi_sheet_test_001',
+    type: 'saida',
+    items: [{ ...epiLine, qty: 4 }],
+    fields: epiFields,
+  }
+  const epiBatch = await jsonRequest(url, '/api/movements/batch', { token: operatorToken, body: epiBatchBody })
+  assert.equal(epiBatch.response.status, 200)
+  assert.equal(epiBatch.data.movements[0].stockAfter, 2)
+  const repeatedEpiBatch = await jsonRequest(url, '/api/movements/batch', { token: operatorToken, body: epiBatchBody })
+  assert.deepEqual(repeatedEpiBatch.data, epiBatch.data)
+  const epiStockAfterRepeat = await jsonRequest(url, '/api/items/variations')
+  assert.equal(epiStockAfterRepeat.data.find(row => row.id === epiVariation.data.id).stock, 2)
 
   const directPhotoBytes = Buffer.from([0xff, 0xd8, 0x02, 0xff, 0xd9])
   const visitorCannotUploadVariationPhoto = await fetch(`${url}/api/photo-batches/variation/${variation.data.id}/image`, {

@@ -248,14 +248,6 @@ async function handleExportDetails() {
 
 <template>
   <div class="ds-page-stack">
-    <header class="ds-page-header">
-      <div>
-        <p class="ds-page-kicker">Estoque</p>
-        <h1 class="ds-page-title">Fechamentos mensais</h1>
-        <p class="ds-page-subtitle">Salve uma foto oficial do estoque no fim do mês selecionado, calculada a partir das movimentações.</p>
-      </div>
-    </header>
-
     <section class="ds-toolbar">
       <div class="grid grid-cols-1 md:grid-cols-[160px_120px_minmax(220px,1fr)_auto] gap-3 w-full items-end">
         <label>

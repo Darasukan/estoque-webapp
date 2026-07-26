@@ -44,11 +44,11 @@ const rows = computed(() => {
     <span
       v-for="row in rows"
       :key="`${row.key}:${row.value}`"
-      class="inline-flex min-w-0 max-w-full items-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+      class="ds-attribute-tag ds-attribute-badge inline-flex min-w-0 max-w-full items-center overflow-hidden rounded-md border"
       :class="compact ? 'text-[11px]' : 'text-xs'"
     >
-      <span class="bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">{{ row.key }}</span>
-      <span class="truncate px-1.5 py-0.5">{{ row.value }}</span>
+      <span class="ds-attribute-key px-1.5 py-0.5 font-semibold">{{ row.key }}</span>
+      <span class="truncate px-1.5 py-0.5 text-[var(--ds-text)]">{{ row.value }}</span>
     </span>
   </div>
   <span v-else class="text-xs text-gray-400 dark:text-gray-500">Sem atributos</span>

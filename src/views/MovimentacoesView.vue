@@ -50,7 +50,7 @@ const { activeSuppliers, ensureSupplier } = useSuppliers()
 const { workOrders } = useWorkOrders()
 const { success, error } = useToast()
 
-const emit = defineEmits(['update:browsing', 'update:subTab'])
+const emit = defineEmits(['update:browsing', 'update:subTab', 'movement-complete'])
 
 function focusRef(target) {
   const el = Array.isArray(target?.value) ? target.value[0] : target?.value
@@ -226,6 +226,20 @@ function applyRequestedByPrefill(prefill, tab) {
   form.value.requestedByPersonId = person?.id || prefill.requestedByPersonId || ''
 }
 
+function applyDestinationPrefill(prefill, tab) {
+  if (tab !== 'saida' || (!prefill.destination && !prefill.destinationId)) return
+  const destination = activeDestinations.value.find(row =>
+    (prefill.destinationId && row.id === prefill.destinationId) ||
+    normalizeText(getDestFullName(row.id)) === normalizeText(prefill.destination) ||
+    normalizeText(row.name) === normalizeText(prefill.destination)
+  )
+  if (!destination) return
+  const fullName = getDestFullName(destination.id)
+  movementDestinationId.value = destination.id
+  destSelectVal.value = fullName
+  form.value.destination = fullName
+}
+
 function hierarchyFromPrefillTarget(prefill) {
   if (!prefill?.targetType || !prefill?.targetKey) return null
   if (prefill.targetType === 'grupo') return { group: prefill.targetKey, category: null, subcategory: null }
@@ -257,6 +271,7 @@ function applyTargetPrefill(prefill, tab) {
   setActiveSubcategory(target.subcategory)
   itemSearch.value = ''
   applyRequestedByPrefill(prefill, tab)
+  applyDestinationPrefill(prefill, tab)
   if (target.item) {
     selectedItem.value = target.item
     step.value = 2
@@ -275,7 +290,10 @@ function applyMovementPrefill(prefill) {
   if (!prefill || !canOperate.value) return
   const tab = ['entrada', 'saida'].includes(prefill.type) ? prefill.type : 'entrada'
   const prefillKey = prefill.nonce || `${tab}:${prefill.itemId}:${prefill.variationId}:${prefill.targetType || ''}:${prefill.targetKey || ''}`
-  if (appliedPrefillKey.value === prefillKey) return
+  if (appliedPrefillKey.value === prefillKey) {
+    applyDestinationPrefill(prefill, tab)
+    return
+  }
   const item = items.value.find(i => i.id === prefill.itemId)
   const variation = variations.value.find(v => v.id === prefill.variationId)
   if (!item || !variation) {
@@ -294,6 +312,7 @@ function applyMovementPrefill(prefill) {
   selectedVariation.value = variation
   step.value = 3
   applyRequestedByPrefill(prefill, tab)
+  applyDestinationPrefill(prefill, tab)
   setViewingItem(item.id)
   nextTick(() => {
     suppressFlowReset.value = false
@@ -320,7 +339,7 @@ watch(() => props.initialSubTab, tab => {
 })
 
 watch(
-  [() => props.prefillMovement, () => items.value.length, () => variations.value.length],
+  [() => props.prefillMovement, () => items.value.length, () => variations.value.length, () => activeDestinations.value.length],
   ([prefill]) => applyMovementPrefill(prefill),
   { immediate: true }
 )
@@ -1188,7 +1207,9 @@ async function confirmCurrentMovement() {
     for (const movement of created) notifyStockAlert(movement)
 
     successWithHistoryAction(`${activeSubTab.value === 'entrada' ? 'Entrada' : 'Saida'} registrada com sucesso.`)
+    const returnTo = props.prefillMovement?.returnTo
     resetCurrentItem()
+    if (returnTo) emit('movement-complete', returnTo)
   } catch (e) {
     error(e.message)
   } finally {
@@ -2606,7 +2627,7 @@ defineExpose({
             <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">Adicionar saidas em sequencia</h2>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[9rem_minmax(0,1fr)]">
             <div class="lg:col-span-2">
               <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar item ou variação</label>
               <div class="relative">
@@ -2899,14 +2920,14 @@ defineExpose({
                           :key="key"
                           class="ds-attribute-tag inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px]"
                         >
-                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                          <span class="font-medium">{{ key }}:</span>{{ val }}
                         </span>
                         <span
                           v-for="(val, key) in m.variationExtras"
                           :key="'x'+key"
                           class="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
                         >
-                          <span class="opacity-60">{{ key }}:</span>{{ val }}
+                          <span class="font-medium">{{ key }}:</span>{{ val }}
                         </span>
                       </div>
                     </td>
