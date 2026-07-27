@@ -158,13 +158,13 @@ const {
   <div class="flex gap-0 min-h-[520px] rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
 
     <!-- LEFT: Groups list -->
-    <div class="hierarchy-group-sidebar w-56 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div class="hierarchy-group-sidebar w-64 flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
       <div class="px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">
           <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Grupos</p>
           <button
             v-if="uniqueGroups.length && !searchQ"
-            class="rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/90 transition-colors hover:bg-white/20 hover:text-white"
+            class="ds-chip cursor-pointer hover:border-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
             title="Organizar grupos em ordem alfabetica"
             @click="organizeGroupsAlphabetically"
           >
@@ -172,11 +172,11 @@ const {
           </button>
         </div>
         <div class="relative">
-          <svg class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 dark:text-gray-600 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" /></svg>
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ds-text-subtle)]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0Z" /></svg>
           <input
             v-model="groupSearch"
             placeholder="Filtrar..."
-            class="w-full pl-6 pr-2 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-700/60 border border-transparent focus:border-gray-300 dark:focus:border-gray-600 text-gray-600 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none transition-colors"
+            class="ds-input !min-h-10 !pl-9 !pr-3 !text-xs"
           />
         </div>
       </div>

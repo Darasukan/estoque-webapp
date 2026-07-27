@@ -106,13 +106,13 @@ async function onDelete(supplier) {
 </script>
 
 <template>
-  <div class="max-w-4xl">
-    <div class="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+  <div class="w-full">
+    <div class="ds-toolbar mb-4 justify-between">
       <input
         v-model="search"
         type="search"
         placeholder="Buscar fornecedor..."
-        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:max-w-sm"
+        class="ds-input sm:max-w-sm"
       />
       <button
         v-if="!adding"
@@ -155,8 +155,8 @@ async function onDelete(supplier) {
       </div>
     </div>
 
-    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-      <table v-if="filteredSuppliers.length" class="w-full min-w-[40rem] text-sm">
+    <div class="ds-table-wrap overflow-x-auto">
+      <table v-if="filteredSuppliers.length" class="ds-table min-w-[40rem]">
         <thead>
           <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
             <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Nome</th>

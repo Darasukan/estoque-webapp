@@ -196,6 +196,14 @@
     text-transform: uppercase;
   }
 
+  .ds-table :is(th, td).text-center {
+    text-align: center;
+  }
+
+  .ds-table :is(th, td).text-right {
+    text-align: right;
+  }
+
   .ds-table td {
     min-height: 2.75rem;
     padding: 0.625rem 1rem;

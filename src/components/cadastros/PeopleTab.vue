@@ -281,7 +281,7 @@ function personStatusClass(person) {
       <p v-if="csvImportSummary" class="mb-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">{{ csvImportSummary }}</p>
 
       <template v-if="peopleSection === 'funcionarios'">
-      <div class="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+      <div class="ds-toolbar mb-4 justify-between">
         <nav class="ds-segmented inline-flex" aria-label="Seções de pessoas">
           <button
             type="button"
@@ -384,7 +384,7 @@ function personStatusClass(person) {
       </div>
 
       <!-- People table -->
-      <div class="mb-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+      <div class="ds-toolbar mb-3 flex-col !items-stretch">
         <div>
           <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Buscar e filtrar</p>
           <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredPeople.length }} de {{ people.length }} pessoas</p>
@@ -394,7 +394,7 @@ function personStatusClass(person) {
             v-model="personSearch"
             type="search"
             placeholder="Buscar por nome, matrícula ou cargo..."
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-600"
+            class="ds-input"
           />
           <div class="flex min-h-10 flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
             <button
@@ -421,7 +421,7 @@ function personStatusClass(person) {
           </select>
         </div>
       </div>
-      <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      <div class="ds-table-wrap overflow-x-auto">
         <div v-if="selectedPersonIds.length" class="flex flex-col gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs dark:border-red-900/40 dark:bg-red-950/20 sm:flex-row sm:items-center sm:justify-between">
           <span class="font-semibold text-red-700 dark:text-red-300">{{ selectedPersonIds.length }} pessoa(s) selecionada(s)</span>
           <button
@@ -433,7 +433,7 @@ function personStatusClass(person) {
             {{ bulkDeleting ? 'Removendo...' : 'Excluir selecionadas' }}
           </button>
         </div>
-        <table v-if="filteredPeople.length" class="w-full min-w-[40rem] text-sm">
+        <table v-if="filteredPeople.length" class="ds-table min-w-[40rem]">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
               <th class="w-10 px-3 py-2.5 text-center">

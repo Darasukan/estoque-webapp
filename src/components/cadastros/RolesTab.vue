@@ -176,7 +176,7 @@ function normalizeSearch(value) {
 
 <template>
   <div class="w-full">
-    <div class="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+    <div class="ds-toolbar mb-4 justify-between">
       <div class="flex flex-wrap gap-2">
         <slot name="toolbar-start"></slot>
       </div>
@@ -234,7 +234,7 @@ function normalizeSearch(value) {
       </div>
     </div>
 
-    <div class="mb-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+    <div class="ds-toolbar mb-3 flex-col !items-stretch">
       <div>
         <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Buscar e filtrar</p>
         <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredRoles.length }} de {{ roles.length }} cargos</p>
@@ -244,11 +244,11 @@ function normalizeSearch(value) {
           v-model="roleSearch"
           type="search"
           placeholder="Buscar por cargo ou descrição..."
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-600"
+          class="ds-input"
         />
         <select
           v-model="roleStatusFilter"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          class="ds-input"
         >
           <option v-for="option in roleStatusOptions" :key="option.id" :value="option.id">
             {{ option.label }} ({{ option.count }})
@@ -256,7 +256,7 @@ function normalizeSearch(value) {
         </select>
         <select
           v-model.number="pageSize"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          class="ds-input"
         >
           <option :value="10">10</option>
           <option :value="20">20</option>
@@ -265,7 +265,7 @@ function normalizeSearch(value) {
       </div>
     </div>
 
-    <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+    <div class="ds-table-wrap overflow-hidden">
       <div v-if="selectedRoleIds.length" class="flex flex-col gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs dark:border-red-900/40 dark:bg-red-950/20 sm:flex-row sm:items-center sm:justify-between">
         <span class="font-semibold text-red-700 dark:text-red-300">{{ selectedRoleIds.length }} cargo(s) selecionado(s)</span>
         <button
@@ -278,7 +278,7 @@ function normalizeSearch(value) {
         </button>
       </div>
 
-      <table v-if="filteredRoles.length" class="w-full text-sm">
+      <table v-if="filteredRoles.length" class="ds-table">
         <thead>
           <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
             <th class="w-10 px-3 py-2.5 text-center">

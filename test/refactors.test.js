@@ -4,7 +4,7 @@ import { nextTick, ref } from 'vue'
 
 import { buildGlobalSearchResults, filterDestinations, findExactDestination, matchesSearchTokens, normalizeSearchText, searchTokens } from '../src/utils/globalSearch.js'
 import { failedSourceNames } from '../src/utils/sync.js'
-import { destinationDescendants, destinationMoveError } from '../src/composables/useDestinations.js'
+import { destinationDescendants, destinationMoveError, sortDestinationsByOrder } from '../src/composables/useDestinations.js'
 import { buildMotorDestinationTree, motorMatchesIdentity, motorMatchesSearch, motorOpenEventLabel } from '../src/composables/useMotors.js'
 import { stockAlertTransition } from '../src/composables/useItems.js'
 import { useMovementHistory } from '../src/composables/useMovementHistory.js'
@@ -18,6 +18,15 @@ import {
   variationFormForEdit,
   variationFormForItem,
 } from '../src/utils/variationForm.js'
+
+test('destination order preserves manual positions and sorts new entries', () => {
+  const destinations = [
+    { id: 'a', name: 'Alfa' },
+    { id: 'b', name: 'Beta' },
+    { id: 'c', name: 'Charlie' },
+  ]
+  assert.deepEqual(sortDestinationsByOrder(destinations, ['b', 'a']).map(d => d.id), ['b', 'a', 'c'])
+})
 
 test('movement history paginates and restores saved filters', async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')

@@ -84,8 +84,8 @@ async function onDeleteUser(u) {
 <template>
 <!-- ===== Operadores ===== -->
   <div>
-    <div class="max-w-4xl">
-      <div class="mb-4 flex items-center justify-start rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+    <div class="w-full">
+      <div class="ds-toolbar mb-4 justify-start">
         <button
           v-if="isAdmin && !addingUser"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"

@@ -83,8 +83,8 @@ async function onDeleteLocal(l) {
 <template>
 <!-- ===== Locais ===== -->
   <div>
-    <div class="max-w-2xl">
-      <div class="mb-4 flex items-center justify-start rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+    <div class="w-full">
+      <div class="ds-toolbar mb-4 justify-start">
         <button
           v-if="!addingLocal"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 text-[var(--ds-primary-text)] rounded-lg transition-colors"
@@ -141,7 +141,7 @@ async function onDeleteLocal(l) {
       </div>
 
       <!-- Locais hierarchical list -->
-      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="ds-list-panel">
         <template v-if="topLevelLocais.length">
           <div v-for="parent in topLevelLocais" :key="parent.id">
             <!-- Parent row -->
