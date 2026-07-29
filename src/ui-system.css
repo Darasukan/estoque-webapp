@@ -320,8 +320,51 @@
   .ds-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
     border-radius: var(--ds-radius-control);
   }
+
+  /* ----- Acordeões: corpo que expande/recolhe suave ----- */
+  /* Uso: wrapper .ds-collapse (+ .ds-collapse-open) com UM filho direto. */
+  .ds-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows 200ms cubic-bezier(0.23, 1, 0.32, 1), visibility 200ms;
+  }
+
+  .ds-collapse-open {
+    grid-template-rows: 1fr;
+    visibility: visible;
+  }
+
+  .ds-collapse > * {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* ----- Dropdowns/popovers: entrada suave (saída instantânea) ----- */
+  .ds-pop {
+    transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
+  /* Popover que abre para cima (ex.: menu da conta na rail) */
+  .ds-pop-up {
+    @starting-style {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  /* ----- Feedback tátil de clique ----- */
+  .ds-button:active {
+    transform: scale(0.97);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ds-button { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease; }
+  .ds-button:active { transform: none; }
+  .ds-collapse, .ds-pop { transition: none; }
 }

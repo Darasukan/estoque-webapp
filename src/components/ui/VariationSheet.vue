@@ -399,18 +399,24 @@ async function saveEdit() {
           >
             Ajustar
           </button>
-          <div v-if="canAdjust && adjustOpen" class="flex items-center gap-2">
-            <input
-              v-model="adjustValue"
-              type="number"
-              step="1"
-              placeholder="+/-"
-              class="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-              @keydown.enter.prevent="submitAdjust"
-              @keydown.escape.prevent="adjustOpen = false"
-            />
-            <button type="button" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700" @click="submitAdjust">Salvar</button>
-            <button type="button" class="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700" @click="adjustOpen = false">Cancelar</button>
+          <div
+            v-if="canAdjust"
+            class="ds-collapse"
+            :class="{ 'ds-collapse-open': adjustOpen }"
+          >
+            <div class="flex items-center gap-2">
+              <input
+                v-model="adjustValue"
+                type="number"
+                step="1"
+                placeholder="+/-"
+                class="w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                @keydown.enter.prevent="submitAdjust"
+                @keydown.escape.prevent="adjustOpen = false"
+              />
+              <button type="button" class="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700" @click="submitAdjust">Salvar</button>
+              <button type="button" class="rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700" @click="adjustOpen = false">Cancelar</button>
+            </div>
           </div>
         </section>
 
@@ -622,24 +628,26 @@ async function saveEdit() {
                   Definir
                 </button>
               </div>
-              <div v-if="initialStockOpen" class="mt-3 flex flex-wrap items-end gap-2">
-                <label class="min-w-36 flex-1">
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Novo estoque inicial</span>
-                  <input
-                    v-model.number="initialStockValue"
-                    type="number"
-                    min="0"
-                    step="1"
-                    class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                </label>
-                <button
-                  type="button"
-                  class="min-h-10 rounded-lg px-3 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                  @click="initialStockOpen = false"
-                >
-                  Cancelar
-                </button>
+              <div class="ds-collapse" :class="{ 'ds-collapse-open': initialStockOpen }">
+                <div class="mt-3 flex flex-wrap items-end gap-2">
+                  <label class="min-w-36 flex-1">
+                    <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">Novo estoque inicial</span>
+                    <input
+                      v-model.number="initialStockValue"
+                      type="number"
+                      min="0"
+                      step="1"
+                      class="min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    class="min-h-10 rounded-lg px-3 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                    @click="initialStockOpen = false"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             </div>
           </div>

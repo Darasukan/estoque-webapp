@@ -3716,17 +3716,21 @@ function matBackToStep2() {
 
       <div v-else class="space-y-2">
         <div
-          v-for="dest in visibleReport"
+          v-for="(dest, reportIndex) in visibleReport"
           :key="dest.destinationName"
           class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
         >
-          <div
-            class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+            :aria-expanded="expandedReportDest === dest.destinationName"
+            :aria-controls="`os-report-${reportIndex}`"
             @click="expandedReportDest = expandedReportDest === dest.destinationName ? null : dest.destinationName"
           >
             <svg
-              class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0"
+              class="w-4 h-4 text-gray-400 transition-transform motion-reduce:transition-none flex-shrink-0"
               :class="expandedReportDest === dest.destinationName ? 'rotate-90' : ''"
+              aria-hidden="true"
               fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
             ><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
 
@@ -3734,9 +3738,14 @@ function matBackToStep2() {
             <span class="text-xs text-gray-400 dark:text-gray-500">
               {{ dest.orders.length }} OS - {{ (dest.osMaterialTotals || []).length }} materiais em OS
             </span>
-          </div>
+          </button>
 
-          <div v-if="expandedReportDest === dest.destinationName" class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-4">
+          <div
+            :id="`os-report-${reportIndex}`"
+            class="ds-collapse"
+            :class="{ 'ds-collapse-open': expandedReportDest === dest.destinationName }"
+          >
+          <div class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-4">
             <div v-if="(dest.osMaterialTotals || []).length">
               <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">{{ isMotorMode ? 'Resumo por oficina/local da OS' : 'Resumo por destino de OS' }}</h4>
               <div class="overflow-x-auto">
@@ -3789,6 +3798,7 @@ function matBackToStep2() {
             </div>
 
             <p v-if="!(dest.osMaterialTotals || []).length" class="text-sm text-gray-400 italic">Nenhum material de OS registrado para este destino</p>
+          </div>
           </div>
         </div>
       </div>

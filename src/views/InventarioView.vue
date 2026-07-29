@@ -1100,9 +1100,15 @@ function exportCSV() {
           </ul>
           <!-- Se não há categorias, mostra attr filters direto -->
           <template v-if="!facetCategories.length">
-            <template v-for="key in facetAttrKeys" :key="key">
+            <template v-for="(key, attrIndex) in facetAttrKeys" :key="key">
               <div v-if="(facetAttrValueMap[key] || []).length > 1 || filterAttrValues[key]" class="mt-1">
-                <button class="w-full flex items-center justify-between gap-1 mb-1 group" @click="toggleAttr(key)">
+                <button
+                  type="button"
+                  class="w-full flex items-center justify-between gap-1 mb-1 group"
+                  :aria-expanded="!isAttrCollapsed(key)"
+                  :aria-controls="`inventory-group-attribute-${attrIndex}`"
+                  @click="toggleAttr(key)"
+                >
                   <span class="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 transition-colors"
                     :class="filterAttrValues[key] ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'">
                     {{ key }}
@@ -1110,13 +1116,19 @@ function exportCSV() {
                   </span>
                   <svg class="w-3 h-3 flex-shrink-0 transition-transform text-gray-400 dark:text-gray-500" :class="isAttrCollapsed(key) ? '' : 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7" /></svg>
                 </button>
-                <ul v-if="!isAttrCollapsed(key)" class="space-y-0.5">
+                <div
+                  :id="`inventory-group-attribute-${attrIndex}`"
+                  class="ds-collapse"
+                  :class="{ 'ds-collapse-open': !isAttrCollapsed(key) }"
+                >
+                <ul class="space-y-0.5">
                   <li v-for="val in (facetAttrValueMap[key] || [])" :key="val">
                     <button class="w-full text-left px-2 py-1 rounded-md text-xs transition-colors truncate"
                       :class="filterAttrValues[key] === val ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                       @click="setAttrValue(key, val)">{{ val }}</button>
                   </li>
                 </ul>
+                </div>
               </div>
             </template>
           </template>
@@ -1142,9 +1154,15 @@ function exportCSV() {
           </ul>
           <!-- Se não há subcategorias, mostra attr filters direto -->
           <template v-if="!facetSubcategories.length">
-            <template v-for="key in facetAttrKeys" :key="key">
+            <template v-for="(key, attrIndex) in facetAttrKeys" :key="key">
               <div v-if="(facetAttrValueMap[key] || []).length > 1 || filterAttrValues[key]" class="mt-1">
-                <button class="w-full flex items-center justify-between gap-1 mb-1 group" @click="toggleAttr(key)">
+                <button
+                  type="button"
+                  class="w-full flex items-center justify-between gap-1 mb-1 group"
+                  :aria-expanded="!isAttrCollapsed(key)"
+                  :aria-controls="`inventory-category-attribute-${attrIndex}`"
+                  @click="toggleAttr(key)"
+                >
                   <span class="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 transition-colors"
                     :class="filterAttrValues[key] ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'">
                     {{ key }}
@@ -1152,13 +1170,19 @@ function exportCSV() {
                   </span>
                   <svg class="w-3 h-3 flex-shrink-0 transition-transform text-gray-400 dark:text-gray-500" :class="isAttrCollapsed(key) ? '' : 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7" /></svg>
                 </button>
-                <ul v-if="!isAttrCollapsed(key)" class="space-y-0.5">
+                <div
+                  :id="`inventory-category-attribute-${attrIndex}`"
+                  class="ds-collapse"
+                  :class="{ 'ds-collapse-open': !isAttrCollapsed(key) }"
+                >
+                <ul class="space-y-0.5">
                   <li v-for="val in (facetAttrValueMap[key] || [])" :key="val">
                     <button class="w-full text-left px-2 py-1 rounded-md text-xs transition-colors truncate"
                       :class="filterAttrValues[key] === val ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                       @click="setAttrValue(key, val)">{{ val }}</button>
                   </li>
                 </ul>
+                </div>
               </div>
             </template>
           </template>
@@ -1182,9 +1206,15 @@ function exportCSV() {
             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             Limpar filtros
           </button>
-          <template v-for="key in facetAttrKeys" :key="key">
+          <template v-for="(key, attrIndex) in facetAttrKeys" :key="key">
             <div v-if="(facetAttrValueMap[key] || []).length > 1 || filterAttrValues[key]" class="mt-1">
-              <button class="w-full flex items-center justify-between gap-1 mb-1 group" @click="toggleAttr(key)">
+              <button
+                type="button"
+                class="w-full flex items-center justify-between gap-1 mb-1 group"
+                :aria-expanded="!isAttrCollapsed(key)"
+                :aria-controls="`inventory-subcategory-attribute-${attrIndex}`"
+                @click="toggleAttr(key)"
+              >
                 <span class="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 transition-colors"
                   :class="filterAttrValues[key] ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300'">
                   {{ key }}
@@ -1192,13 +1222,19 @@ function exportCSV() {
                 </span>
                 <svg class="w-3 h-3 flex-shrink-0 transition-transform text-gray-400 dark:text-gray-500" :class="isAttrCollapsed(key) ? '' : 'rotate-180'" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7" /></svg>
               </button>
-              <ul v-if="!isAttrCollapsed(key)" class="space-y-0.5">
+              <div
+                :id="`inventory-subcategory-attribute-${attrIndex}`"
+                class="ds-collapse"
+                :class="{ 'ds-collapse-open': !isAttrCollapsed(key) }"
+              >
+                <ul class="space-y-0.5">
                 <li v-for="val in (facetAttrValueMap[key] || [])" :key="val">
                   <button class="w-full text-left px-2 py-1 rounded-md text-xs transition-colors truncate"
                     :class="filterAttrValues[key] === val ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
                     @click="setAttrValue(key, val)">{{ val }}</button>
                 </li>
               </ul>
+              </div>
             </div>
           </template>
         </template>

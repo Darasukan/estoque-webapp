@@ -50,6 +50,15 @@ Assinatura do produto: ficha de circulacao que conecta material, saldo, local ou
 - Fechamento mensal: sempre passa por previa com periodo, movimentos, alertas e indicacao de substituicao.
 - Ficha de circulacao: saldo, local, destinos, ultima movimentacao e OS relacionadas; cada OS abre diretamente no modulo de manutencao.
 
+## Movimento
+
+- Acordeoes: wrapper `.ds-collapse` + `.ds-collapse-open` com UM filho direto; grid `0fr/1fr`, 200 ms, `visibility` junto para sair da arvore de acessibilidade quando fechado. Nunca `v-if` no corpo do acordeao.
+- Dropdowns/popovers: classe `.ds-pop` no elemento (entrada 150 ms via `@starting-style`, saida instantanea); variante `.ds-pop-up` quando abre para cima.
+- Modais: entrada animada no proprio `AppDialog` (fade + subida leve, backdrop 160 ms); saida instantanea por design.
+- Toasts: entrada 180 ms, saida 120 ms, apenas `opacity` e `transform`; reordenacao usa 180 ms.
+- Botoes: `:active` com `scale(0.97)`.
+- Curva padrao `cubic-bezier(0.23, 1, 0.32, 1)`; tudo desligado em `prefers-reduced-motion`.
+
 ## Referencias
 
 Referencias externas servem apenas para criterios de acabamento: bordas silenciosas, superficies proximas e estados ativos de contraste forte. A interface final continua industrial e nao copia identidades de outros produtos.

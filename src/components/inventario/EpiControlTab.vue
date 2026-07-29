@@ -617,18 +617,18 @@ async function submitBulkDelivery() {
                 </p>
               </td>
               <td class="px-3 py-2 text-right">
-                <div class="flex flex-wrap justify-end gap-2">
+                <div class="flex flex-nowrap justify-end gap-1.5 whitespace-nowrap">
                   <button
                     v-if="canOperate && ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status)"
                     type="button"
-                    class="inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors"
+                    class="inline-flex h-9 items-center gap-1 rounded-md border px-2.5 text-xs font-semibold transition-colors"
                     :class="selectedRecordKeys.includes(recordKey(record))
                       ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
                       : 'border-gray-200 text-gray-600 hover:border-primary-400 hover:text-primary-700 dark:border-gray-700 dark:text-gray-300 dark:hover:text-primary-300'"
                     :aria-pressed="selectedRecordKeys.includes(recordKey(record))"
                     @click="toggleRecord(record)"
                   >
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                       <circle cx="12" cy="12" r="9" />
                       <path v-if="selectedRecordKeys.includes(recordKey(record))" stroke-linecap="round" stroke-linejoin="round" d="m8.5 12 2.25 2.25L15.5 9.5" />
                     </svg>
@@ -636,7 +636,7 @@ async function submitBulkDelivery() {
                   </button>
                   <button
                     type="button"
-                    class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
+                    class="inline-flex h-9 items-center rounded-md border border-gray-200 px-2.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
                     @click="openHistory(record)"
                   >
                     Histórico
@@ -644,7 +644,7 @@ async function submitBulkDelivery() {
                   <button
                     v-if="canOperate"
                     type="button"
-                    class="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 cursor-pointer"
+                    class="inline-flex h-9 items-center rounded-md bg-primary-600 px-2.5 text-xs font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700 cursor-pointer"
                     @click="quickMovement(record)"
                   >
                     Registrar saida

@@ -45,3 +45,33 @@ onUnmounted(() => dialogRef.value?.close())
     </dialog>
   </Teleport>
 </template>
+
+<style scoped>
+/* Entrada suave do diálogo e do backdrop (saída instantânea) */
+dialog[open] {
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+  }
+}
+dialog[open]::backdrop {
+  transition: opacity 160ms ease;
+  @starting-style {
+    opacity: 0;
+  }
+}
+dialog[open] > div {
+  transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1), transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog[open]::backdrop,
+  dialog[open] > div {
+    transition: none;
+  }
+}
+</style>

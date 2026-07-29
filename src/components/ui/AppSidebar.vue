@@ -21,7 +21,7 @@ function toggleSection(key) {
 
 <template>
   <aside
-    class="catalog-sidebar ds-filter-rail fixed top-0 left-0 h-full z-40 w-60 border-r border-gray-200 dark:border-gray-700 shadow-lg transition-all duration-300 flex flex-col"
+    class="catalog-sidebar ds-filter-rail fixed top-0 left-0 h-full z-40 w-60 border-r border-gray-200 dark:border-gray-700 shadow-lg flex flex-col"
   >
     <!-- Header -->
     <div class="border-b border-gray-200 dark:border-gray-700">
@@ -147,10 +147,13 @@ function toggleSection(key) {
         <div v-for="facet in facets" :key="facet.key" class="border-b border-gray-100 dark:border-gray-700/50">
           <!-- Section header -->
           <button
+            type="button"
             class="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors cursor-pointer"
             :class="!expandedSections[facet.key]
               ? 'text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            :aria-expanded="Boolean(expandedSections[facet.key])"
+            :aria-controls="`catalog-facet-${facet.key}`"
             @click="toggleSection(facet.key)"
           >
             <span>{{ facet.label }}</span>
@@ -164,7 +167,12 @@ function toggleSection(key) {
           </button>
 
           <!-- Checkbox options -->
-          <div v-if="expandedSections[facet.key]" class="px-3 pb-2.5 space-y-0.5">
+          <div
+            :id="`catalog-facet-${facet.key}`"
+            class="ds-collapse"
+            :class="{ 'ds-collapse-open': expandedSections[facet.key] }"
+          >
+            <div class="px-3 pb-2.5 space-y-0.5">
             <label
               v-for="opt in facet.options"
               :key="opt.value"
@@ -198,6 +206,7 @@ function toggleSection(key) {
                 ({{ opt.count }})
               </span>
             </label>
+            </div>
           </div>
         </div>
 
