@@ -54,11 +54,7 @@ const paginatedRoles = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filteredRoles.value.slice(start, start + pageSize.value)
 })
-const pageRoleIds = computed(() => paginatedRoles.value.map(role => role.id))
 const selectedRoles = computed(() => roles.value.filter(role => selectedRoleIds.value.includes(role.id)))
-const allPageRolesSelected = computed(() =>
-  pageRoleIds.value.length > 0 && pageRoleIds.value.every(id => selectedRoleIds.value.includes(id))
-)
 
 watch([roleStatusFilter, roleSearch, pageSize], () => {
   currentPage.value = 1
@@ -161,8 +157,10 @@ async function deleteAllRolesDev() {
   }
 }
 
-function togglePageSelection() {
-  selectedRoleIds.value = allPageRolesSelected.value ? [] : pageRoleIds.value
+function toggleRoleSelection(roleId) {
+  selectedRoleIds.value = selectedRoleIds.value.includes(roleId)
+    ? selectedRoleIds.value.filter(id => id !== roleId)
+    : [...selectedRoleIds.value, roleId]
 }
 
 function normalizeSearch(value) {
@@ -239,24 +237,31 @@ function normalizeSearch(value) {
         <p class="text-xs font-semibold text-gray-700 dark:text-gray-200">Buscar e filtrar</p>
         <p class="text-xs text-gray-400 dark:text-gray-500">{{ filteredRoles.length }} de {{ roles.length }} cargos</p>
       </div>
-      <div class="grid gap-2 sm:grid-cols-[1fr_13rem_6rem]">
+      <div class="grid gap-2 sm:grid-cols-[1fr_auto_6rem]">
         <input
           v-model="roleSearch"
           type="search"
           placeholder="Buscar por cargo ou descrição..."
           class="ds-input"
         />
-        <select
-          v-model="roleStatusFilter"
-          class="ds-input"
-        >
-          <option v-for="option in roleStatusOptions" :key="option.id" :value="option.id">
-            {{ option.label }} ({{ option.count }})
-          </option>
-        </select>
+        <div class="flex min-h-10 flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
+          <button
+            v-for="option in roleStatusOptions"
+            :key="option.id"
+            type="button"
+            class="rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+            :class="roleStatusFilter === option.id
+              ? 'bg-primary-600 text-[var(--ds-primary-text)]'
+              : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100'"
+            :aria-pressed="roleStatusFilter === option.id"
+            @click="roleStatusFilter = option.id"
+          >
+            {{ option.label }} <span class="tabular-nums opacity-70">({{ option.count }})</span>
+          </button>
+        </div>
         <select
           v-model.number="pageSize"
-          class="ds-input"
+          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
         >
           <option :value="10">10</option>
           <option :value="20">20</option>
@@ -281,19 +286,10 @@ function normalizeSearch(value) {
       <table v-if="filteredRoles.length" class="ds-table">
         <thead>
           <tr class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
-            <th class="w-10 px-3 py-2.5 text-center">
-              <input
-                type="checkbox"
-                class="ds-table-checkbox"
-                :checked="allPageRolesSelected"
-                title="Selecionar cargos desta pagina"
-                @change="togglePageSelection"
-              />
-            </th>
             <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Cargo</th>
             <th class="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Descrição</th>
             <th class="w-24 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
-            <th class="w-20 px-4 py-2.5"></th>
+            <th class="w-32 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -301,17 +297,11 @@ function normalizeSearch(value) {
             v-for="r in paginatedRoles"
             :key="r.id"
             class="border-b border-gray-100 transition-colors hover:bg-gray-50 dark:border-gray-700/50 dark:hover:bg-gray-700/30"
-            :class="{ 'opacity-50': !r.active }"
+            :class="{
+              'opacity-50': !r.active,
+              'bg-primary-50/50 dark:bg-primary-900/10': selectedRoleIds.includes(r.id),
+            }"
           >
-            <td class="w-10 px-3 py-3 text-center">
-              <input
-                v-model="selectedRoleIds"
-                type="checkbox"
-                class="ds-table-checkbox"
-                :value="r.id"
-                :aria-label="`Selecionar ${r.name}`"
-              />
-            </td>
             <template v-if="editingRoleId === r.id">
               <td class="px-4 py-2">
                 <input v-model="editRoleName" class="w-full rounded border border-primary-400 bg-white px-2 py-1 text-sm text-gray-800 focus:outline-none dark:border-primary-500 dark:bg-gray-700 dark:text-gray-100" @keydown.enter="confirmEditRole" @keydown.escape="cancelEditRole" autofocus />
@@ -344,6 +334,22 @@ function normalizeSearch(value) {
               </td>
               <td class="px-4 py-3">
                 <div class="flex items-center justify-center gap-0.5">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 px-2 text-xs font-semibold transition-colors"
+                    :class="selectedRoleIds.includes(r.id)
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-primary-700 dark:hover:bg-gray-700 dark:hover:text-primary-300'"
+                    :aria-label="`${selectedRoleIds.includes(r.id) ? 'Remover' : 'Selecionar'} ${r.name}`"
+                    :aria-pressed="selectedRoleIds.includes(r.id)"
+                    :title="selectedRoleIds.includes(r.id) ? 'Remover da seleção' : 'Selecionar cargo'"
+                    @click="toggleRoleSelection(r.id)"
+                  >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="9" />
+                      <path v-if="selectedRoleIds.includes(r.id)" stroke-linecap="round" stroke-linejoin="round" d="m8.5 12 2.25 2.25L15.5 9.5" />
+                    </svg>
+                  </button>
                   <button class="p-1 text-gray-400 transition-colors hover:text-amber-500 dark:hover:text-amber-400" title="Editar" @click="startEditRole(r)">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                   </button>

@@ -96,6 +96,10 @@ function _sameStructureName(a, b) {
   return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
 }
 
+function _sameAttributeName(a, b) {
+  return String(a || '').trim().localeCompare(String(b || '').trim(), 'pt-BR', { sensitivity: 'base' }) === 0
+}
+
 function _itemHasVariations(itemId) {
   return variationIndex.value.byItem.has(itemId)
 }
@@ -558,33 +562,44 @@ export function useItems() {
 
   async function renameAttribute(itemId, oldName, newName) {
     const item = items.value.find(i => i.id === itemId)
-    if (!item) return
+    if (!item) return { ok: false, error: 'Modelo não encontrado.' }
+    const cleanName = String(newName || '').trim()
+    if (!cleanName) return { ok: false, error: 'Informe o nome do atributo.' }
+    if (item.attributes.some(name => name !== oldName && _sameAttributeName(name, cleanName))) {
+      return { ok: false, error: `O atributo "${cleanName}" já existe neste modelo.` }
+    }
     const idx = item.attributes.indexOf(oldName)
-    if (idx < 0) return
-    item.attributes[idx] = newName
+    if (idx < 0) return { ok: false, error: 'Atributo não encontrado.' }
+    item.attributes[idx] = cleanName
     const affectedVars = []
     for (const v of variations.value) {
       if (v.itemId === itemId && oldName in v.values) {
-        v.values[newName] = v.values[oldName]
+        v.values[cleanName] = v.values[oldName]
         delete v.values[oldName]
         affectedVars.push(v)
       }
     }
     await api.updateItem(itemId, { ...item })
     await Promise.all(affectedVars.map(v => api.updateVariation(v.id, { ...v })))
+    return { ok: true, affectedVariations: affectedVars.length }
   }
 
   async function addAttribute(itemId, attrName) {
     const item = items.value.find(i => i.id === itemId)
-    if (!item) return
-    if (item.attributes.includes(attrName)) return
-    item.attributes.push(attrName)
+    if (!item) return { ok: false, error: 'Modelo não encontrado.' }
+    const cleanName = String(attrName || '').trim()
+    if (!cleanName) return { ok: false, error: 'Informe o nome do atributo.' }
+    if (item.attributes.some(name => _sameAttributeName(name, cleanName))) {
+      return { ok: false, error: `O atributo "${cleanName}" já existe neste modelo.` }
+    }
+    item.attributes.push(cleanName)
     await api.updateItem(itemId, { ...item })
+    return { ok: true }
   }
 
   async function removeAttribute(itemId, attrName) {
     const item = items.value.find(i => i.id === itemId)
-    if (!item) return
+    if (!item) return { ok: false, error: 'Modelo não encontrado.' }
     item.attributes = item.attributes.filter(a => a !== attrName)
     const affectedVars = []
     for (const v of variations.value) {
@@ -595,6 +610,7 @@ export function useItems() {
     }
     await api.updateItem(itemId, { ...item })
     await Promise.all(affectedVars.map(v => api.updateVariation(v.id, { ...v })))
+    return { ok: true, affectedVariations: affectedVars.length }
   }
 
   // ===== Reorder =====

@@ -9,6 +9,7 @@ import { useWorkOrders } from '../composables/useWorkOrders.js'
 import { useToast } from '../composables/useToast.js'
 import { useMovementHistory } from '../composables/useMovementHistory.js'
 import { useDestinationSummary } from '../composables/useDestinationSummary.js'
+import { getRecentMovementDefaults } from '../services/api.js'
 import DestinationSummaryPanel from '../components/movements/DestinationSummaryPanel.vue'
 import PhotoMovementTab from '../components/movements/PhotoMovementTab.vue'
 import DestinationTreePicker from '../components/ui/DestinationTreePicker.vue'
@@ -18,6 +19,7 @@ import AppDialog from '../components/ui/AppDialog.vue'
 import AppModal from '../components/ui/AppModal.vue'
 import SectionTabs from '../components/ui/SectionTabs.vue'
 import { normalizeSearchText as normalizeText, searchTokens, matchesSearchTokens } from '../utils/globalSearch.js'
+import { formatRecentDateTime } from '../utils/recentDateTime.js'
 
 const isAdmin = inject('isAdmin')
 const canOperate = inject('canOperate')
@@ -578,7 +580,71 @@ function selectVariation(v) {
   selectedVariation.value = v
   movementFormAttempted.value = false
   step.value = 3
+  applyRememberedDefaults(v.id, activeSubTab.value, 'form')
   nextTick(() => focusRef(qtyInputEl))
+}
+
+function destinationFromRemembered(name) {
+  const normalized = normalizeText(name)
+  return activeDestinations.value.find(destination =>
+    normalizeText(getDestFullName(destination.id)) === normalized ||
+    normalizeText(destination.name) === normalized
+  ) || null
+}
+
+async function applyRememberedDefaults(variationId, type, target) {
+  try {
+    const remembered = await getRecentMovementDefaults(variationId, type)
+    if (target === 'entry') {
+      if (!quickEntrySupplier.value) quickEntrySupplier.value = remembered.supplier || ''
+      if (quickEntryUnitCost.value === '' && remembered.unitCost !== null && remembered.unitCost !== undefined) {
+        quickEntryUnitCost.value = String(remembered.unitCost)
+      }
+      return
+    }
+    if (target === 'exit') {
+      const person = activePeople.value.find(row =>
+        (remembered.requestedByPersonId && row.id === remembered.requestedByPersonId) ||
+        normalizeText(row.name) === normalizeText(remembered.requestedBy)
+      )
+      if (!quickExitRequestedBy.value && person) {
+        quickExitRequestedBy.value = person.name
+        quickExitRequestedByPersonId.value = person.id
+      }
+      const destination = destinationFromRemembered(remembered.destination)
+      if (!quickExitDestinationId.value && destination) {
+        quickExitDestinationId.value = destination.id
+        quickExitDestinationName.value = getDestFullName(destination.id)
+        quickExitDestinationOther.value = false
+      }
+      return
+    }
+    if (type === 'entrada') {
+      if (!form.value.supplier) form.value.supplier = remembered.supplier || ''
+      if (form.value.unitCost === '' && remembered.unitCost !== null && remembered.unitCost !== undefined) {
+        form.value.unitCost = String(remembered.unitCost)
+      }
+      return
+    }
+    const person = activePeople.value.find(row =>
+      (remembered.requestedByPersonId && row.id === remembered.requestedByPersonId) ||
+      normalizeText(row.name) === normalizeText(remembered.requestedBy)
+    )
+    if (!form.value.requestedBy && person) {
+      form.value.requestedBy = person.name
+      form.value.requestedByPersonId = person.id
+      personSelectVal.value = person.name
+    }
+    const destination = destinationFromRemembered(remembered.destination)
+    if (!movementDestinationId.value && destination) {
+      const fullName = getDestFullName(destination.id)
+      movementDestinationId.value = destination.id
+      destSelectVal.value = fullName
+      form.value.destination = fullName
+    }
+  } catch {
+    // Lembrar valores é uma conveniência; a movimentação continua normalmente se não houver histórico.
+  }
 }
 
 function backToStep2() {
@@ -857,6 +923,7 @@ function selectQuickEntryResult(result) {
   quickEntrySearch.value = ''
   quickEntryQty.value = '1'
   quickEntryAttempted.value = false
+  applyRememberedDefaults(result.variation.id, 'entrada', 'entry')
 }
 
 function handleQuickEntrySearchEnter() {
@@ -1027,6 +1094,7 @@ function selectQuickExitResult(result) {
   quickExitSearch.value = ''
   quickExitQty.value = '1'
   quickExitAttempted.value = false
+  applyRememberedDefaults(result.variation.id, 'saida', 'exit')
 }
 
 function handleQuickExitSearchEnter() {
@@ -1265,6 +1333,10 @@ function formatDate(iso) {
   const d = new Date(iso)
   const pad = n => String(n).padStart(2, '0')
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function movementDateLabel(iso) {
+  return formatRecentDateTime(iso) || formatDate(iso)
 }
 
 const {
@@ -2907,7 +2979,7 @@ defineExpose({
                         </svg>
                         {{ m.type === 'entrada' ? 'Entrada' : 'Saída' }}
                       </span>
-                      <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ formatDate(m.date) }}</p>
+                      <p class="text-[11px] text-gray-400 dark:text-gray-500" :title="formatDate(m.date)">{{ movementDateLabel(m.date) }}</p>
                     </td>
 
                     <!-- Item + variation -->

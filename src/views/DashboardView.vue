@@ -8,6 +8,7 @@ import { useClosings } from '../composables/useClosings.js'
 import { useDestinations } from '../composables/useDestinations.js'
 import AppButton from '../components/ui/AppButton.vue'
 import StatusBadge from '../components/ui/StatusBadge.vue'
+import { periodClosing, previousMonthPeriod } from '../utils/closingAutomation.js'
 
 const emit = defineEmits(['go'])
 const isAdmin = inject('isAdmin')
@@ -226,6 +227,8 @@ const topDestinations = computed(() =>
 )
 
 const lastClosing = computed(() => closings.value[0] || null)
+const previousPeriod = previousMonthPeriod()
+const previousMonthClosing = computed(() => periodClosing(closings.value, previousPeriod))
 
 const shortcutActions = [
   {
@@ -325,11 +328,11 @@ const priorityActions = computed(() => {
       tone: 'text-primary-600 dark:text-primary-400',
     })
   }
-  if (!lastClosing.value) {
+  if (!previousMonthClosing.value) {
     list.push({
       id: 'sem-fechamento',
-      label: 'Nenhum fechamento registrado',
-      description: 'Abrir rotina de fechamento mensal.',
+      label: `Fechamento ${String(previousPeriod.month).padStart(2, '0')}/${previousPeriod.year} pendente`,
+      description: 'A prévia já será preparada ao abrir a rotina.',
       target: { tab: 'inventario', section: 'fechamentos', requiresAdmin: true },
       tone: 'text-amber-600 dark:text-amber-400',
     })

@@ -15,7 +15,7 @@ export const DB_PATH = process.env.DB_PATH
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
 
-const CURRENT_SCHEMA_VERSION = 4
+const CURRENT_SCHEMA_VERSION = 5
 const databaseExisted = existsSync(DB_PATH)
 const db = new Database(DB_PATH)
 const previousSchemaVersion = db.pragma('user_version', { simple: true })

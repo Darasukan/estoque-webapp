@@ -671,7 +671,7 @@ test('API sobe, protege escrita e executa o fluxo critico de estoque', { timeout
   assert.equal(inspectionAfterDelete.prepare('SELECT id FROM movements WHERE id = ?').get(movement.data.id), undefined)
   assert.equal(inspectionAfterDelete.prepare('SELECT COUNT(*) AS count FROM movement_batch_requests WHERE request_id = ?').get(batchBody.requestId).count, 1)
   assert.equal(inspectionAfterDelete.prepare('SELECT source_photo_id FROM variation_photos WHERE variation_id = ?').pluck().get('var_photo_api'), latestPhotoId)
-  assert.equal(inspectionAfterDelete.pragma('user_version', { simple: true }), 4)
+  assert.equal(inspectionAfterDelete.pragma('user_version', { simple: true }), 5)
   inspectionAfterDelete.close()
 
   const deletedVariation = await jsonRequest(url, `/api/items/variations/${variation.data.id}`, {

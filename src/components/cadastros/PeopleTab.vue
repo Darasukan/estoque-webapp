@@ -73,11 +73,7 @@ const paginatedPeople = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filteredPeople.value.slice(start, start + pageSize.value)
 })
-const pagePersonIds = computed(() => paginatedPeople.value.map(person => person.id))
 const selectedPeople = computed(() => people.value.filter(person => selectedPersonIds.value.includes(person.id)))
-const allPagePeopleSelected = computed(() =>
-  pagePersonIds.value.length > 0 && pagePersonIds.value.every(id => selectedPersonIds.value.includes(id))
-)
 
 watch([personStatusFilter, personSearch, pageSize], () => {
   currentPage.value = 1
@@ -213,8 +209,10 @@ async function deleteSelectedPeople() {
   }
 }
 
-function togglePageSelection() {
-  selectedPersonIds.value = allPagePeopleSelected.value ? [] : pagePersonIds.value
+function togglePersonSelection(personId) {
+  selectedPersonIds.value = selectedPersonIds.value.includes(personId)
+    ? selectedPersonIds.value.filter(id => id !== personId)
+    : [...selectedPersonIds.value, personId]
 }
 
 function isPersonStatusFilterSelected(id) {
@@ -436,20 +434,11 @@ function personStatusClass(person) {
         <table v-if="filteredPeople.length" class="ds-table min-w-[40rem]">
           <thead>
             <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-              <th class="w-10 px-3 py-2.5 text-center">
-                <input
-                  type="checkbox"
-                  class="ds-table-checkbox"
-                  :checked="allPagePeopleSelected"
-                  title="Selecionar pessoas desta página"
-                  @change="togglePageSelection"
-                />
-              </th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Nome</th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Matrícula</th>
               <th class="text-left px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Cargo</th>
               <th class="text-center px-4 py-2.5 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-24">Status</th>
-              <th class="px-4 py-2.5 w-20"></th>
+              <th class="px-4 py-2.5 text-center font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider w-36">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -457,17 +446,11 @@ function personStatusClass(person) {
               v-for="p in paginatedPeople"
               :key="p.id"
               class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
-              :class="{ 'opacity-50': !p.active }"
+              :class="{
+                'opacity-50': !p.active,
+                'bg-primary-50/50 dark:bg-primary-900/10': selectedPersonIds.includes(p.id),
+              }"
             >
-              <td class="w-10 px-3 py-3 text-center">
-                <input
-                  v-model="selectedPersonIds"
-                  type="checkbox"
-                  class="ds-table-checkbox"
-                  :value="p.id"
-                  :aria-label="`Selecionar ${p.name}`"
-                />
-              </td>
               <!-- Editing row -->
               <template v-if="editingPersonId === p.id">
                 <td class="px-4 py-2">
@@ -513,6 +496,22 @@ function personStatusClass(person) {
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center justify-center gap-0.5">
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 px-2 text-xs font-semibold transition-colors"
+                      :class="selectedPersonIds.includes(p.id)
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-primary-700 dark:hover:bg-gray-700 dark:hover:text-primary-300'"
+                      :aria-label="`${selectedPersonIds.includes(p.id) ? 'Remover' : 'Selecionar'} ${p.name}`"
+                      :aria-pressed="selectedPersonIds.includes(p.id)"
+                      :title="selectedPersonIds.includes(p.id) ? 'Remover da seleção' : 'Selecionar pessoa'"
+                      @click="togglePersonSelection(p.id)"
+                    >
+                      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9" />
+                        <path v-if="selectedPersonIds.includes(p.id)" stroke-linecap="round" stroke-linejoin="round" d="m8.5 12 2.25 2.25L15.5 9.5" />
+                      </svg>
+                    </button>
                     <button class="p-1 text-gray-400 hover:text-amber-500 dark:hover:text-amber-400 transition-colors" title="Editar" @click="startEditPerson(p)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
                     </button>

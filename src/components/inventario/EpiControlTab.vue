@@ -1,12 +1,14 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { useItems } from '../../composables/useItems.js'
 import { personStatusLabel, usePeople } from '../../composables/usePeople.js'
 import { useMovements } from '../../composables/useMovements.js'
 import { useEpis } from '../../composables/useEpis.js'
+import { useToast } from '../../composables/useToast.js'
 import { movementPersonMatches, targetMatchesCatalogRow } from '../../utils/epiSheet.js'
 import AttributeBadges from '../ui/AttributeBadges.vue'
 import AppDialog from '../ui/AppDialog.vue'
+import AppButton from '../ui/AppButton.vue'
 import EpiSheetDialog from './EpiSheetDialog.vue'
 
 const emit = defineEmits(['quick-movement'])
@@ -14,19 +16,25 @@ defineProps({ canOperate: { type: Boolean, default: false } })
 
 const { items, variations } = useItems()
 const { people } = usePeople()
-const { movements } = useMovements()
+const { movements, addMovementBatch, editMovement } = useMovements()
 const { activeRoleRules, activePeriodicities } = useEpis()
+const { success, error } = useToast()
+const isAdmin = inject('isAdmin')
 
 const search = ref('')
-const statusFilter = ref('all')
+const statusFilters = ref([])
 const personStatusFilter = ref('ativo')
-const statusFilterOpen = ref(false)
-const personStatusFilterOpen = ref(false)
-const filterMenuPosition = ref({ top: 0, left: 0 })
 const currentPage = ref(1)
 const pageSize = ref(20)
 const historyRecord = ref(null)
+const editingHistoryMovement = ref(null)
+const historyEditForm = ref({ qty: '', date: '', docRef: '', note: '' })
+const historyEditSaving = ref(false)
 const sheetOpen = ref(false)
+const bulkOpen = ref(false)
+const bulkSubmitting = ref(false)
+const selectedRecordKeys = ref([])
+const bulkChoices = ref({})
 
 const targetTypeLabels = {
   grupo: 'Grupo',
@@ -44,6 +52,10 @@ const statusConfig = {
   'Em dia': {
     label: 'Em dia',
     pill: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  },
+  'Programar troca': {
+    label: 'Troca em 8–30 dias',
+    pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   },
   'Vence em breve': {
     label: 'Vence em breve',
@@ -114,6 +126,7 @@ function epiStatus(record) {
   const daysLeft = Math.ceil((due - today) / 86400000)
   if (daysLeft < 0) return 'Vencido'
   if (daysLeft <= 7) return 'Vence em breve'
+  if (daysLeft <= 30) return 'Programar troca'
   return 'Em dia'
 }
 
@@ -139,11 +152,15 @@ function readableTargetLabel(rule) {
 }
 
 function resolveQuickTarget(rule) {
+  const matches = targetRows(rule)
+  return matches.length === 1 ? matches[0] : null
+}
+
+function targetRows(rule) {
   const target = targetFromRule(rule)
-  const matches = variations.value
+  return variations.value
     .map(variation => ({ variation, item: itemById.value.get(variation.itemId) }))
     .filter(row => row.item && targetMatchesCatalogRow(target, row.item, row.variation))
-  return matches.length === 1 ? matches[0] : null
 }
 
 function targetVariationRow(rule) {
@@ -182,8 +199,9 @@ const records = computed(() => {
 const counts = computed(() => ({
   all: records.value.length,
   ok: records.value.filter(record => record.status === 'Em dia').length,
-  attention: records.value.filter(record => ['Pendente', 'Vence em breve', 'Vencido'].includes(record.status)).length,
+  attention: records.value.filter(record => ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status)).length,
   pending: records.value.filter(record => record.status === 'Pendente').length,
+  upcoming: records.value.filter(record => record.status === 'Programar troca').length,
   soon: records.value.filter(record => record.status === 'Vence em breve').length,
   expired: records.value.filter(record => record.status === 'Vencido').length,
 }))
@@ -193,28 +211,43 @@ const filterTabs = computed(() => [
   { id: 'attention', label: 'Precisam trocar', count: counts.value.attention },
   { id: 'ok', label: 'Em dia', count: counts.value.ok },
   { id: 'pending', label: 'Pendentes', count: counts.value.pending },
+  { id: 'upcoming', label: 'Troca em 8–30 dias', count: counts.value.upcoming },
   { id: 'soon', label: 'Vence em breve', count: counts.value.soon },
   { id: 'expired', label: 'Vencidos', count: counts.value.expired },
 ])
 
-const currentStatusFilterLabel = computed(() =>
-  filterTabs.value.find(tab => tab.id === statusFilter.value)?.label || 'Todos'
-)
+const statusesByFilter = {
+  attention: ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'],
+  ok: ['Em dia'],
+  pending: ['Pendente'],
+  upcoming: ['Programar troca'],
+  soon: ['Vence em breve'],
+  expired: ['Vencido'],
+}
 
-const currentPersonStatusFilterLabel = computed(() =>
-  personStatusTabs.find(tab => tab.id === personStatusFilter.value)?.label || 'Ativas'
-)
+function toggleStatusFilter(filterId) {
+  if (filterId === 'all') {
+    statusFilters.value = []
+    return
+  }
+  statusFilters.value = statusFilters.value.includes(filterId)
+    ? statusFilters.value.filter(id => id !== filterId)
+    : [...statusFilters.value, filterId]
+}
+
+function statusFilterActive(filterId) {
+  return filterId === 'all'
+    ? statusFilters.value.length === 0
+    : statusFilters.value.includes(filterId)
+}
 
 const filteredRecords = computed(() => {
   const q = normalize(search.value)
+  const selectedStatuses = new Set(
+    statusFilters.value.flatMap(filterId => statusesByFilter[filterId] || [])
+  )
   return records.value.filter(record => {
-    const statusOk =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'attention' && ['Pendente', 'Vence em breve', 'Vencido'].includes(record.status)) ||
-      (statusFilter.value === 'ok' && record.status === 'Em dia') ||
-      (statusFilter.value === 'pending' && record.status === 'Pendente') ||
-      (statusFilter.value === 'soon' && record.status === 'Vence em breve') ||
-      (statusFilter.value === 'expired' && record.status === 'Vencido')
+    const statusOk = selectedStatuses.size === 0 || selectedStatuses.has(record.status)
     if (!statusOk) return false
     if (!q) return true
     return [
@@ -255,41 +288,72 @@ function movementAttributesText(movement) {
 
 function openHistory(record) {
   historyRecord.value = record
+  editingHistoryMovement.value = null
+}
+
+function closeHistory() {
+  historyRecord.value = null
+  editingHistoryMovement.value = null
+}
+
+function toLocalDateTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function startHistoryEdit(movement) {
+  editingHistoryMovement.value = movement
+  historyEditForm.value = {
+    qty: movement.qty,
+    date: toLocalDateTime(movement.date),
+    docRef: movement.docRef || '',
+    note: movement.note || '',
+  }
+}
+
+function cancelHistoryEdit() {
+  editingHistoryMovement.value = null
+}
+
+async function saveHistoryEdit() {
+  const movement = editingHistoryMovement.value
+  if (!movement || historyEditSaving.value) return
+  const qty = Number(historyEditForm.value.qty)
+  const date = new Date(historyEditForm.value.date)
+  if (!(qty > 0)) {
+    error('Informe uma quantidade maior que zero.')
+    return
+  }
+  if (Number.isNaN(date.getTime())) {
+    error('Informe uma data válida.')
+    return
+  }
+  historyEditSaving.value = true
+  const variation = variations.value.find(row => row.id === movement.variationId)
+  const result = await editMovement(movement.id, {
+    qty,
+    date: date.toISOString(),
+    docRef: historyEditForm.value.docRef.trim(),
+    note: historyEditForm.value.note.trim(),
+  }, variation)
+  historyEditSaving.value = false
+  if (!result.ok) {
+    error(result.error || 'Não foi possível editar esta retirada.')
+    return
+  }
+  editingHistoryMovement.value = null
+  success('Retirada de EPI atualizada.')
 }
 
 watch([filteredRecords, pageSize], () => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
 
-watch([search, statusFilter, personStatusFilter], () => {
+watch([search, statusFilters, personStatusFilter], () => {
   currentPage.value = 1
 })
-
-function setPersonStatusFilter(id) {
-  personStatusFilter.value = id
-  personStatusFilterOpen.value = false
-}
-
-function setStatusFilter(id) {
-  statusFilter.value = id
-  statusFilterOpen.value = false
-}
-
-function openFilterMenu(kind, event) {
-  const rect = event.currentTarget.getBoundingClientRect()
-  const width = kind === 'person' ? 176 : 192
-  filterMenuPosition.value = {
-    top: rect.bottom + 6,
-    left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-  }
-  personStatusFilterOpen.value = kind === 'person' ? !personStatusFilterOpen.value : false
-  statusFilterOpen.value = kind === 'status' ? !statusFilterOpen.value : false
-}
-
-const filterMenuStyle = computed(() => ({
-  top: `${filterMenuPosition.value.top}px`,
-  left: `${filterMenuPosition.value.left}px`,
-}))
 
 function quickMovement(record) {
   const exact = resolveQuickTarget(record.rule)
@@ -307,6 +371,120 @@ function quickMovement(record) {
     nonce: `epi:${record.person.id}:${record.rule.id}:${Date.now()}`,
   })
 }
+
+function recordKey(record) {
+  return `${record.person.id}:${record.rule.id}`
+}
+
+const attentionRecords = computed(() => records.value.filter(record =>
+  ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status)
+))
+
+const selectedRecords = computed(() => {
+  const keys = new Set(selectedRecordKeys.value)
+  return attentionRecords.value.filter(record => keys.has(recordKey(record)))
+})
+
+const allVisibleAttentionSelected = computed(() => {
+  const visible = filteredRecords.value.filter(record =>
+    ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status)
+  )
+  return visible.length > 0 && visible.every(record => selectedRecordKeys.value.includes(recordKey(record)))
+})
+
+function toggleRecord(record) {
+  const key = recordKey(record)
+  selectedRecordKeys.value = selectedRecordKeys.value.includes(key)
+    ? selectedRecordKeys.value.filter(value => value !== key)
+    : [...selectedRecordKeys.value, key]
+}
+
+function toggleVisibleAttention() {
+  const visibleKeys = filteredRecords.value
+    .filter(record => ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status))
+    .map(recordKey)
+  if (allVisibleAttentionSelected.value) {
+    selectedRecordKeys.value = selectedRecordKeys.value.filter(key => !visibleKeys.includes(key))
+    return
+  }
+  selectedRecordKeys.value = [...new Set([...selectedRecordKeys.value, ...visibleKeys])]
+}
+
+function openBulkDelivery() {
+  if (!selectedRecords.value.length) return
+  const choices = { ...bulkChoices.value }
+  for (const record of selectedRecords.value) {
+    const key = recordKey(record)
+    const matches = targetRows(record.rule)
+    if (!choices[key] && matches.length === 1) choices[key] = matches[0].variation.id
+  }
+  bulkChoices.value = choices
+  bulkOpen.value = true
+}
+
+function selectedRowForRecord(record) {
+  const variationId = bulkChoices.value[recordKey(record)]
+  const variation = variations.value.find(row => row.id === variationId)
+  const item = variation ? itemById.value.get(variation.itemId) : null
+  return variation && item ? { variation, item } : null
+}
+
+const bulkValidation = computed(() => {
+  if (!selectedRecords.value.length) return 'Selecione ao menos uma reposição.'
+  const requestedByVariation = new Map()
+  for (const record of selectedRecords.value) {
+    const row = selectedRowForRecord(record)
+    if (!row) return `Escolha a variação para ${record.person.name}.`
+    const qty = Number(record.rule.quantity || 1)
+    requestedByVariation.set(row.variation.id, (requestedByVariation.get(row.variation.id) || 0) + qty)
+  }
+  for (const [variationId, qty] of requestedByVariation) {
+    const variation = variations.value.find(row => row.id === variationId)
+    if (Number(variation?.stock || 0) < qty) return 'O estoque não cobre todas as reposições selecionadas.'
+  }
+  return ''
+})
+
+async function submitBulkDelivery() {
+  if (bulkValidation.value || bulkSubmitting.value) return
+  bulkSubmitting.value = true
+  try {
+    const lines = selectedRecords.value.map(record => {
+      const { variation, item } = selectedRowForRecord(record)
+      return {
+        type: 'saida',
+        variationId: variation.id,
+        itemId: item.id,
+        itemName: item.name,
+        itemGroup: item.group,
+        itemCategory: item.category || '',
+        itemSubcategory: item.subcategory || '',
+        itemUnit: item.unit,
+        variationValues: { ...(variation.values || {}) },
+        variationExtras: { ...(variation.extras || {}) },
+        qty: Number(record.rule.quantity || 1),
+        requestedBy: record.person.name,
+        requestedByPersonId: record.person.id,
+        destination: 'EPI',
+        docRef: 'REPOSICAO EPI',
+        note: `Reposição automática: ${readableTargetLabel(record.rule)}`,
+      }
+    })
+    const created = await addMovementBatch('saida', lines, {}, `epi_${Date.now()}_${lines.length}`)
+    for (const movement of created) {
+      const variation = variations.value.find(row => row.id === movement.variationId)
+      if (variation) variation.stock = movement.stockAfter
+    }
+    success(`${created.length} reposição(ões) de EPI registrada(s).`)
+    selectedRecordKeys.value = []
+    bulkChoices.value = {}
+    bulkOpen.value = false
+  } catch (cause) {
+    error(cause.message || 'Não foi possível registrar as reposições.')
+  } finally {
+    bulkSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -319,6 +497,26 @@ function quickMovement(record) {
         </div>
       </div>
       <div class="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+        <AppButton
+          v-if="canOperate"
+          variant="ghost"
+          :disabled="!filteredRecords.some(record => ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status))"
+          :aria-pressed="allVisibleAttentionSelected"
+          @click="toggleVisibleAttention"
+        >
+          {{ allVisibleAttentionSelected ? 'Limpar resultados' : 'Selecionar resultados' }}
+        </AppButton>
+        <AppButton
+          v-if="canOperate"
+          variant="secondary"
+          :disabled="!selectedRecords.length"
+          @click="openBulkDelivery"
+        >
+          Registrar reposições
+          <span v-if="selectedRecords.length" class="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900/50 dark:text-primary-200">
+            {{ selectedRecords.length }}
+          </span>
+        </AppButton>
         <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-[var(--ds-primary-text)] transition-colors hover:bg-primary-700" @click="sheetOpen = true">
           Ficha de EPI
         </button>
@@ -331,153 +529,111 @@ function quickMovement(record) {
       </div>
     </header>
 
-    <div class="grid gap-3 md:grid-cols-4">
-      <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'attention'">
-        <p class="ds-metric-label">Precisam trocar</p>
-        <p class="ds-metric-value text-red-500">{{ counts.attention }}</p>
-      </button>
-      <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'ok'">
-        <p class="ds-metric-label">Periodicidade OK</p>
-        <p class="ds-metric-value text-green-500">{{ counts.ok }}</p>
-      </button>
-      <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'pending'">
-        <p class="ds-metric-label">Pendentes</p>
-        <p class="ds-metric-value">{{ counts.pending }}</p>
-      </button>
-      <button type="button" class="ds-metric text-left cursor-pointer" @click="statusFilter = 'expired'">
-        <p class="ds-metric-label">Vencidos</p>
-        <p class="ds-metric-value text-red-500">{{ counts.expired }}</p>
-      </button>
-    </div>
-
-    <div
-      v-if="personStatusFilterOpen || statusFilterOpen"
-      class="fixed inset-0 z-20"
-      @click="personStatusFilterOpen = false; statusFilterOpen = false"
-    ></div>
-    <div
-      v-if="personStatusFilterOpen"
-      class="fixed z-50 min-w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-gray-700 dark:bg-gray-900"
-      :style="filterMenuStyle"
-    >
-      <button
-        v-for="tab in personStatusTabs"
-        :key="tab.id"
-        type="button"
-        class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left font-semibold transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-        :class="personStatusFilter === tab.id ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'"
-        @click.stop="setPersonStatusFilter(tab.id)"
-      >
-        <span>{{ tab.label }}</span>
-        <span v-if="personStatusFilter === tab.id">✓</span>
-      </button>
-    </div>
-    <div
-      v-if="statusFilterOpen"
-      class="fixed z-50 min-w-48 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-gray-700 dark:bg-gray-900"
-      :style="filterMenuStyle"
-    >
-      <button
-        v-for="tab in filterTabs"
-        :key="tab.id"
-        type="button"
-        class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left font-semibold transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-        :class="statusFilter === tab.id ? 'text-primary-700 dark:text-primary-300' : 'text-gray-700 dark:text-gray-200'"
-        @click.stop="setStatusFilter(tab.id)"
-      >
-        <span>{{ tab.label }}</span>
-        <span class="text-gray-400">{{ tab.count }}</span>
-      </button>
-    </div>
-
     <div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <div class="grid gap-3 border-b border-gray-200 bg-gray-50/60 p-3 dark:border-gray-700 dark:bg-gray-800/30 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <div class="min-w-0">
+          <p class="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">Situação do EPI</p>
+          <div class="flex min-h-10 min-w-0 items-center gap-1 overflow-x-auto rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
+            <button
+              v-for="tab in filterTabs"
+              :key="tab.id"
+              type="button"
+              class="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+              :class="statusFilterActive(tab.id)
+                ? 'bg-primary-600 text-[var(--ds-primary-text)]'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100'"
+              :aria-pressed="statusFilterActive(tab.id)"
+              @click="toggleStatusFilter(tab.id)"
+            >
+              {{ tab.label }} <span class="tabular-nums opacity-70">({{ tab.count }})</span>
+            </button>
+          </div>
+        </div>
+        <div class="min-w-0">
+          <p class="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">Situação da pessoa</p>
+          <div class="flex min-h-10 min-w-0 items-center gap-1 overflow-x-auto rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-700">
+            <button
+              v-for="tab in personStatusTabs"
+              :key="tab.id"
+              type="button"
+              class="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+              :class="personStatusFilter === tab.id
+                ? 'bg-primary-600 text-[var(--ds-primary-text)]'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100'"
+              :aria-pressed="personStatusFilter === tab.id"
+              @click="personStatusFilter = tab.id"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full min-w-[780px] text-sm">
           <thead>
             <tr class="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
-              <th class="relative px-4 py-3 text-left font-semibold">
-                <div class="flex items-center gap-2">
-                  <span>Pessoa</span>
-                  <button
-                    type="button"
-                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold normal-case tracking-normal transition-colors"
-                    :class="personStatusFilter !== 'ativo'
-                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-                    title="Filtrar pessoas"
-                    @click.stop="openFilterMenu('person', $event)"
-                  >
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h18l-7 8v5l-4 2v-7l-7-8Z" />
-                    </svg>
-                    <span>{{ currentPersonStatusFilterLabel }}</span>
-                  </button>
-                </div>
-              </th>
-              <th class="px-4 py-3 text-left font-semibold">EPI exigido</th>
-              <th class="px-4 py-3 text-left font-semibold">Ultima saida</th>
-              <th class="px-4 py-3 text-left font-semibold">Vencimento</th>
-              <th class="relative px-4 py-3 text-left font-semibold">
-                <div class="flex items-center gap-2">
-                  <span>Status</span>
-                  <button
-                    type="button"
-                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold normal-case tracking-normal transition-colors"
-                    :class="statusFilter !== 'all'
-                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-                    title="Filtrar status"
-                    @click.stop="openFilterMenu('status', $event)"
-                  >
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h18l-7 8v5l-4 2v-7l-7-8Z" />
-                    </svg>
-                    <span>{{ currentStatusFilterLabel }}</span>
-                  </button>
-                </div>
-              </th>
-              <th class="px-4 py-3 text-right font-semibold">Ação</th>
+              <th class="px-3 py-2 text-left font-semibold">Pessoa</th>
+              <th class="px-3 py-2 text-left font-semibold">EPI e periodicidade</th>
+              <th class="px-3 py-2 text-left font-semibold">Situação</th>
+              <th class="px-3 py-2 text-right font-semibold">Ações</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
             <tr v-if="!filteredRecords.length">
-              <td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+              <td colspan="4" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 Nenhum EPI encontrado para os filtros selecionados.
               </td>
             </tr>
-            <tr v-for="record in paginatedRecords" :key="`${record.person.id}:${record.rule.id}`" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
-              <td class="px-4 py-3">
+            <tr
+              v-for="record in paginatedRecords"
+              :key="`${record.person.id}:${record.rule.id}`"
+              class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40"
+              :class="selectedRecordKeys.includes(recordKey(record)) ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''"
+            >
+              <td class="px-3 py-2">
                 <p class="font-semibold text-gray-900 dark:text-gray-100">{{ record.person.name }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ record.person.role || '-' }}
                   <span v-if="record.person.status !== 'ativo'"> · {{ personStatusLabel(record.person.status) }}</span>
                 </p>
               </td>
-              <td class="px-4 py-3">
-                <span class="inline-flex rounded bg-primary-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                  {{ targetTypeLabels[record.rule.targetType] }}
-                </span>
+              <td class="px-3 py-2">
                 <template v-if="targetVariationRow(record.rule)">
-                  <p class="mt-0.5 font-medium text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
+                  <p class="font-medium text-gray-900 dark:text-gray-100">{{ targetVariationRow(record.rule).item.name }}</p>
                   <AttributeBadges class="mt-1" :item="targetVariationRow(record.rule).item" :variation="targetVariationRow(record.rule).variation" compact />
                 </template>
-                <p v-else class="mt-1 font-medium text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
-                <p v-if="record.period" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Periodicidade: {{ record.period.days }} dias</p>
-              </td>
-              <td class="px-4 py-3">
-                <p class="font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.movement?.date) }}</p>
-                <p class="max-w-xs truncate text-xs text-gray-500 dark:text-gray-400">
-                  {{ record.movement ? `${record.movement.itemName} - ${record.movement.qty} ${record.movement.itemUnit}` : 'Nenhuma saida registrada' }}
+                <p v-else class="font-medium text-gray-900 dark:text-gray-100">{{ readableTargetLabel(record.rule) }}</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ targetTypeLabels[record.rule.targetType] }}<template v-if="record.period"> · troca a cada {{ record.period.days }} dias</template>
                 </p>
               </td>
-              <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ formatDate(record.dueDate) }}</td>
-              <td class="px-4 py-3">
+              <td class="px-3 py-2">
                 <span class="rounded-full px-2 py-1 text-xs font-semibold" :class="statusConfig[record.status].pill">
                   {{ statusConfig[record.status].label }}
                 </span>
+                <p class="mt-1.5 text-xs text-gray-600 dark:text-gray-300">
+                  Última saída: <strong>{{ formatDate(record.movement?.date) }}</strong>
+                  <template v-if="record.dueDate"> · vence: <strong>{{ formatDate(record.dueDate) }}</strong></template>
+                </p>
               </td>
-              <td class="px-4 py-3 text-right">
+              <td class="px-3 py-2 text-right">
                 <div class="flex flex-wrap justify-end gap-2">
+                  <button
+                    v-if="canOperate && ['Pendente', 'Programar troca', 'Vence em breve', 'Vencido'].includes(record.status)"
+                    type="button"
+                    class="inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors"
+                    :class="selectedRecordKeys.includes(recordKey(record))
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
+                      : 'border-gray-200 text-gray-600 hover:border-primary-400 hover:text-primary-700 dark:border-gray-700 dark:text-gray-300 dark:hover:text-primary-300'"
+                    :aria-pressed="selectedRecordKeys.includes(recordKey(record))"
+                    @click="toggleRecord(record)"
+                  >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="9" />
+                      <path v-if="selectedRecordKeys.includes(recordKey(record))" stroke-linecap="round" stroke-linejoin="round" d="m8.5 12 2.25 2.25L15.5 9.5" />
+                    </svg>
+                    {{ selectedRecordKeys.includes(recordKey(record)) ? 'Selecionado' : 'Selecionar' }}
+                  </button>
                   <button
                     type="button"
                     class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 cursor-pointer"
@@ -521,10 +677,97 @@ function quickMovement(record) {
     </div>
 
     <AppDialog
+      :visible="bulkOpen"
+      aria-label="Registrar reposições de EPI"
+      :persistent="bulkSubmitting"
+      @close="bulkOpen = false"
+    >
+      <section class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-300">Entrega em lote</p>
+            <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">Registrar {{ selectedRecords.length }} reposições</h3>
+            <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+              Confirme a variação entregue para cada pessoa. O estoque só será alterado depois da confirmação.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            :disabled="bulkSubmitting"
+            @click="bulkOpen = false"
+          >
+            Fechar
+          </button>
+        </header>
+
+        <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <article
+            v-for="record in selectedRecords"
+            :key="recordKey(record)"
+            class="grid gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,1.4fr)_auto] lg:items-center"
+          >
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="font-semibold text-gray-900 dark:text-gray-100">{{ record.person.name }}</p>
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="statusConfig[record.status].pill">
+                  {{ statusConfig[record.status].label }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ record.person.role || 'Sem cargo' }} · {{ readableTargetLabel(record.rule) }}
+              </p>
+            </div>
+
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Variação entregue</span>
+              <select
+                v-model="bulkChoices[recordKey(record)]"
+                class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              >
+                <option value="">Escolha uma variação</option>
+                <option
+                  v-for="row in targetRows(record.rule)"
+                  :key="row.variation.id"
+                  :value="row.variation.id"
+                >
+                  {{ variationLabel(row.variation, row.item) }} — estoque {{ row.variation.stock }} {{ row.item.unit }}
+                </option>
+              </select>
+            </label>
+
+            <div class="rounded-lg bg-gray-50 px-3 py-2 text-center dark:bg-gray-800/70">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Quantidade</p>
+              <p class="mt-0.5 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ Number(record.rule.quantity || 1) }}</p>
+            </div>
+          </article>
+        </div>
+
+        <footer class="flex flex-col gap-3 border-t border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/40 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-sm" :class="bulkValidation ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">
+            {{ bulkValidation || 'Tudo pronto para registrar.' }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <AppButton variant="ghost" :disabled="bulkSubmitting" @click="bulkOpen = false">Cancelar</AppButton>
+            <AppButton
+              variant="primary"
+              :loading="bulkSubmitting"
+              :disabled="Boolean(bulkValidation)"
+              @click="submitBulkDelivery"
+            >
+              Confirmar entregas
+            </AppButton>
+          </div>
+        </footer>
+      </section>
+    </AppDialog>
+
+    <AppDialog
       v-if="historyRecord"
       visible
       aria-label="Histórico de retirada de EPI"
-      @close="historyRecord = null"
+      :persistent="historyEditSaving"
+      @close="closeHistory"
     >
       <section class="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
@@ -536,7 +779,8 @@ function quickMovement(record) {
           <button
             type="button"
             class="rounded-lg px-3 py-2 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-            @click="historyRecord = null"
+            :disabled="historyEditSaving"
+            @click="closeHistory"
           >
             Fechar
           </button>
@@ -550,21 +794,60 @@ function quickMovement(record) {
                 <th class="px-4 py-3 text-left font-semibold">EPI retirado</th>
                 <th class="px-4 py-3 text-center font-semibold">Qtd.</th>
                 <th class="px-4 py-3 text-left font-semibold">Destino / Doc</th>
+                <th v-if="isAdmin" class="px-4 py-3 text-right font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-              <tr v-for="movement in selectedHistoryRows" :key="movement.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
-                <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ formatDate(movement.date) }}</td>
-                <td class="px-4 py-3">
-                  <p class="font-semibold text-gray-900 dark:text-gray-100">{{ movement.itemName }}</p>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ movementAttributesText(movement) || 'Sem atributos' }}</p>
-                </td>
-                <td class="px-4 py-3 text-center font-semibold text-red-600 dark:text-red-400">-{{ movement.qty }} {{ movement.itemUnit }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
-                  <p>{{ movement.destination || '-' }}</p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ movement.docRef || movement.note || '-' }}</p>
-                </td>
-              </tr>
+              <template v-for="movement in selectedHistoryRows" :key="movement.id">
+                <tr class="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+                  <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ formatDate(movement.date) }}</td>
+                  <td class="px-4 py-3">
+                    <p class="font-semibold text-gray-900 dark:text-gray-100">{{ movement.itemName }}</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ movementAttributesText(movement) || 'Sem atributos' }}</p>
+                  </td>
+                  <td class="px-4 py-3 text-center font-semibold text-red-600 dark:text-red-400">-{{ movement.qty }} {{ movement.itemUnit }}</td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                    <p>{{ movement.destination || '-' }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ movement.docRef || movement.note || '-' }}</p>
+                  </td>
+                  <td v-if="isAdmin" class="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                      :disabled="historyEditSaving"
+                      @click="startHistoryEdit(movement)"
+                    >
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="editingHistoryMovement?.id === movement.id" class="bg-primary-50/40 dark:bg-primary-900/10">
+                  <td :colspan="isAdmin ? 5 : 4" class="p-4">
+                    <form class="grid gap-3 md:grid-cols-[13rem_8rem_1fr_1fr_auto]" @submit.prevent="saveHistoryEdit">
+                      <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Data e hora</span>
+                        <input v-model="historyEditForm.date" type="datetime-local" class="ds-input w-full" />
+                      </label>
+                      <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Quantidade</span>
+                        <input v-model="historyEditForm.qty" type="number" min="0.001" step="any" class="ds-input w-full" />
+                      </label>
+                      <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Documento</span>
+                        <input v-model="historyEditForm.docRef" type="text" class="ds-input w-full" placeholder="Opcional" />
+                      </label>
+                      <label class="block">
+                        <span class="mb-1 block text-xs font-semibold text-gray-600 dark:text-gray-300">Observação</span>
+                        <input v-model="historyEditForm.note" type="text" class="ds-input w-full" placeholder="Opcional" />
+                      </label>
+                      <div class="flex items-end justify-end gap-2">
+                        <AppButton type="button" size="sm" variant="ghost" :disabled="historyEditSaving" @click="cancelHistoryEdit">Cancelar</AppButton>
+                        <AppButton type="submit" size="sm" variant="primary" :loading="historyEditSaving">Salvar</AppButton>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>

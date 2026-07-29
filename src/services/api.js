@@ -405,6 +405,11 @@ export async function deleteClosing(id) {
   return request(`/closings/${id}`, { method: 'DELETE' })
 }
 
+export async function getRecentMovementDefaults(variationId, type) {
+  const params = new URLSearchParams({ variationId, type })
+  return request(`/automation/recent-defaults?${params}`)
+}
+
 // ===== Motors =====
 export async function getMotors() {
   return request('/motors')

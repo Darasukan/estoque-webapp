@@ -44,6 +44,7 @@ const {
   editAttrValue,
   addingAttrItemId,
   newAttrName,
+  removingAttr,
   startAttrEdit,
   saveAttrEdit,
   cancelAttrEdit,
@@ -53,8 +54,13 @@ const {
   cancelAddAttr,
   onNewAttrKeydown,
   onRemoveAttr,
+  cancelRemoveAttr,
+  confirmRemoveAttr,
   editingUnitItemId,
   editUnitValue,
+  editingItemModel,
+  startEditItemModel,
+  cancelEditItemModel,
   startEditUnit,
   saveEditUnit,
   cancelEditUnit,
@@ -363,6 +369,10 @@ const {
                   <button class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click.stop="cancelDelete">Nao</button>
                 </div>
                 <div v-else class="flex items-center gap-1">
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Editar atributos do modelo" @click.stop="startEditItemModel(item)">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    Editar
+                  </button>
                   <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
                     Mover
@@ -563,6 +573,10 @@ const {
                   <button class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600" @click.stop="cancelDelete">Nao</button>
                 </div>
                 <div v-else class="flex items-center gap-1">
+                  <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Editar atributos do modelo" @click.stop="startEditItemModel(item)">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    Editar
+                  </button>
                   <button class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300" title="Mover modelo" @click.stop="startMoveItem(item)">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3" /></svg>
                     Mover
@@ -894,6 +908,13 @@ const {
                 <div v-else class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover/card:opacity-100">
                   <button
                     class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                    title="Editar atributos do modelo"
+                    @click.stop="startEditItemModel(item)"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                  </button>
+                  <button
+                    class="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-primary-100 hover:text-primary-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
                     title="Mover modelo"
                     @click.stop="startMoveItem(item)"
                   >
@@ -1114,6 +1135,78 @@ const {
         </button>
       </div>
     </div>
+  </AppDialog>
+
+  <AppDialog
+    v-if="editingItemModel"
+    visible
+    aria-label="Editar atributos do modelo"
+    @close="cancelEditItemModel"
+  >
+    <section class="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Atributos do modelo</p>
+          <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ editingItemModel.name }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Renomear preserva os valores das variações. Excluir remove o campo das variações atuais.</p>
+        </div>
+        <button type="button" class="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" @click="cancelEditItemModel">Fechar</button>
+      </div>
+
+      <div class="space-y-3 px-5 py-4">
+        <div v-if="editingItemModel.attributes?.length" class="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+          <div v-for="attr in editingItemModel.attributes" :key="attr" class="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+            <template v-if="isEditingAttr(editingItemModel.id, attr)">
+              <input v-model="editAttrValue" class="ds-input min-w-0 flex-1" autofocus @keydown="onAttrEditKeydown" />
+              <div class="flex shrink-0 gap-2">
+                <button type="button" class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="cancelAttrEdit">Cancelar</button>
+                <button type="button" class="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold hover:bg-primary-700" style="color: var(--ds-primary-text)" @click="saveAttrEdit">Salvar</button>
+              </div>
+            </template>
+            <template v-else>
+              <span class="font-medium text-gray-800 dark:text-gray-100">{{ attr }}</span>
+              <div class="flex shrink-0 gap-1">
+                <button type="button" class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 hover:text-primary-600 dark:text-gray-300 dark:hover:bg-gray-800" @click="startAttrEdit(editingItemModel.id, attr)">Renomear</button>
+                <button type="button" class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-gray-300 dark:hover:bg-red-900/20" @click="onRemoveAttr(editingItemModel.id, attr)">Excluir</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <p v-else class="rounded-lg border border-dashed border-gray-200 px-3 py-5 text-center text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">Este modelo ainda não possui atributos.</p>
+
+        <div v-if="addingAttrItemId === editingItemModel.id" class="flex gap-2">
+          <input v-model="newAttrName" class="ds-input min-w-0 flex-1" placeholder="Nome do novo atributo" autofocus @keydown="onNewAttrKeydown" />
+          <button type="button" class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="cancelAddAttr">Cancelar</button>
+          <button type="button" class="rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold hover:bg-primary-700 disabled:opacity-50" style="color: var(--ds-primary-text)" :disabled="!newAttrName.trim()" @click="saveNewAttr">Adicionar</button>
+        </div>
+        <button v-else type="button" class="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" @click="startAddAttr(editingItemModel.id)">
+          <span aria-hidden="true">+</span> Novo atributo
+        </button>
+      </div>
+    </section>
+  </AppDialog>
+
+  <AppDialog
+    v-if="removingAttr"
+    visible
+    aria-label="Confirmar exclusão do atributo"
+    @close="cancelRemoveAttr"
+  >
+    <section class="w-full max-w-md overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+      <div class="px-5 py-4">
+        <p class="text-[11px] font-bold uppercase tracking-widest text-red-500">Excluir atributo</p>
+        <h3 class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ removingAttr.attrName }}</h3>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          O atributo será removido do modelo
+          <template v-if="removingAttr.affectedVariations"> e de {{ removingAttr.affectedVariations }} variação(ões) que possuem valor preenchido</template>.
+          O histórico de movimentações não será alterado.
+        </p>
+      </div>
+      <div class="flex justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+        <button type="button" class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" @click="cancelRemoveAttr">Cancelar</button>
+        <button type="button" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700" @click="confirmRemoveAttr">Excluir atributo</button>
+      </div>
+    </section>
   </AppDialog>
 
   <AppDialog
