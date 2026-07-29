@@ -40,7 +40,7 @@ npm run prod:promote-people -- --confirm=ENVIAR_PESSOAS_CARGOS_PARA_PROD
 ## Instalação
 
 ```powershell
-git clone https://github.com/Darasukan/estoque-webapp.git
+git clone https://github.com/tearedflower/estoque-webapp.git
 cd estoque-webapp
 npm install
 ```
@@ -125,6 +125,19 @@ npm run backup:restore -- --env=.env.prod --file="server/backups/estoque-AAAA-MM
 
 Antes da troca, o comando valida o backup e preserva uma cópia do banco atual na pasta de backups.
 
+O servidor também agenda backups locais, aplica retenção horária, diária e mensal e verifica cada arquivo por restauração de teste. As opções principais ficam no `.env`:
+
+```text
+BACKUP_ENABLED=true
+BACKUP_INTERVAL_HOURS=24
+BACKUP_KEEP_HOURLY=24
+BACKUP_KEEP_DAILY=30
+BACKUP_KEEP_MONTHLY=12
+BACKUP_MIRROR_DIR=
+```
+
+`BACKUP_MIRROR_DIR` é opcional e permite copiar os backups verificados para outro diretório. A interface mostra o estado e a previsão do próximo backup.
+
 ### Acesso pela rede
 
 O servidor aceita a própria origem e acessos locais. Se o frontend e a API usarem origens diferentes na rede, liste-as separadas por vírgula:
@@ -157,17 +170,19 @@ O sistema exige a troca de `admin123` antes de liberar ações protegidas.
 
 - Dashboard operacional com alertas e atalhos.
 - Catálogo por grupos, categorias, subcategorias, itens e variações.
-- Cadastro e edição de hierarquia.
+- Cadastro e edição de hierarquia, incluindo adicionar, renomear e excluir atributos dos modelos.
 - Inventário com tabela, filtros, estoque mínimo, ajustes e ficha operacional da variação.
-- Entrada e saída de materiais com lote de movimentações.
+- Entrada e saída de materiais com lote de movimentações e sugestão editável baseada na última movimentação relevante.
 - Histórico de movimentações com busca única e filtros.
 - Resumo por destino em blocos hierárquicos.
-- Fechamento mensal de estoque com exportação CSV.
+- Fechamento mensal com prévia, revisão de inconsistências, substituição controlada e exportação CSV.
 - Ordens de serviço comuns e ordens de serviço de motor.
 - Exportação CSV de OS individual, filtrada ou completa.
 - Motores com eventos, histórico, OS vinculadas e materiais previstos/usados.
 - Cadastros auxiliares: pessoas, cargos, destinos, locais, fornecedores, usuários e EPIs.
-- Controle de EPIs por cargo, periodicidade e pessoa.
+- Controle de EPIs por cargo, periodicidade e pessoa, com filtros de situação e registro de entregas em lote.
+- Histórico de retiradas de EPI com edição administrativa e recálculo do estoque.
+- Backup local agendado, verificado e com retenção configurável.
 - Atalhos de teclado e popup de ajuda com `?`.
 
 ## Seed e ferramentas de teste
@@ -183,6 +198,8 @@ Isso deve ficar ligado no ambiente dev e desligado em produção.
 As rotas destrutivas também são bloqueadas pelo servidor fora de `.env.dev`; esconder os botões não é a única proteção.
 
 A exibição desses botões depende do `.env` usado no build, independentemente da branch.
+
+O seed operacional inclui pessoas, cargos, hierarquia, variações, fornecedores, movimentações, estoque, situações de EPI, ordens de serviço, motores, fechamentos e auditorias com referências e saldos consistentes.
 
 ## Estrutura
 
